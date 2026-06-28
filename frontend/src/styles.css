@@ -1,0 +1,178 @@
+html,
+body,
+#root {
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  background: #f6f8fa;
+  color: #1f2328;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.app-shell {
+  min-height: 100vh;
+  background: #f6f8fa;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 56px;
+  padding: 0 24px;
+  background: #ffffff;
+  border-bottom: 1px solid #d8dee4;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #1f2328;
+  font-size: 18px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.workspace {
+  width: min(1120px, calc(100% - 32px));
+  margin: 0 auto;
+  padding: 32px 0 48px;
+}
+
+.detail-stack {
+  display: grid;
+  gap: 20px;
+}
+
+.center-pane {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: calc(100vh - 56px);
+}
+
+.panel {
+  padding: 24px;
+  background: #ffffff;
+  border: 1px solid #d8dee4;
+  border-radius: 8px;
+}
+
+.input-panel {
+  max-width: 760px;
+}
+
+.page-toolbar,
+.section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.page-toolbar {
+  margin-bottom: 4px;
+}
+
+.page-toolbar h1.ant-typography,
+.panel h1.ant-typography,
+.panel h2.ant-typography {
+  margin: 0 0 12px;
+}
+
+.page-toolbar h1.ant-typography {
+  font-size: 28px;
+}
+
+.panel h1.ant-typography {
+  font-size: 30px;
+}
+
+.panel h2.ant-typography {
+  font-size: 18px;
+}
+
+.full-width {
+  width: 100%;
+}
+
+.muted {
+  color: #656d76;
+}
+
+.score {
+  color: #0969da;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.artifact-pane {
+  display: grid;
+  gap: 12px;
+}
+
+.prd-editor {
+  display: grid;
+  gap: 16px;
+}
+
+.json-editor textarea,
+.json-editor {
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.skeleton-preview .ant-table-wrapper,
+.event-list {
+  margin-top: 8px;
+}
+
+.artifact-pane pre {
+  max-height: 520px;
+  margin: 0;
+  padding: 16px;
+  overflow: auto;
+  color: #1f2328;
+  background: #f6f8fa;
+  border: 1px solid #d8dee4;
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.ant-btn a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.ant-form-item-label > label {
+  font-weight: 600;
+}
+
+@media (max-width: 720px) {
+  .workspace {
+    width: min(100% - 24px, 1120px);
+    padding-top: 20px;
+  }
+
+  .page-toolbar,
+  .section-heading {
+    display: block;
+  }
+
+  .page-toolbar .ant-space {
+    margin-top: 16px;
+  }
+
+  .panel {
+    padding: 16px;
+  }
+
+  .panel h1.ant-typography {
+    font-size: 26px;
+  }
+}
