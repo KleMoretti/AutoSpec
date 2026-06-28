@@ -1,5 +1,14 @@
 # Repository Guidelines
 
+## Local Tool Paths
+
+本项目固定使用以下本机工具路径，后续执行命令时不要再询问：
+
+- Use these exact local executables for this project and do not ask the user to repeat them.
+- Maven: `D:\apache-maven-3.8.9\bin\mvn.cmd`
+- Agent Python: `D:\miniconda3\envs\CrewAI_Study\python.exe`
+- Agent pytest: `D:\miniconda3\envs\CrewAI_Study\python.exe -m pytest`
+
 ## Project Scope
 
 本仓库用于实现 **AutoSpec：基于多 Agent 协作的软件需求分析与原型生成系统**。目标不是直接部署 MetaGPT，而是参考其“软件公司流程 + 多角色协作”的思想，自研一个轻量、可解释、可观测的平台：用户输入一句需求，系统生成 PRD、用户故事、架构设计、数据库设计、API 文档、前端页面骨架、任务拆解和一致性审查报告。
