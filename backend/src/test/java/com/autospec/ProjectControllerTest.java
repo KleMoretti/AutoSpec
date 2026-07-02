@@ -349,6 +349,59 @@ class ProjectControllerTest {
                 .andExpect(jsonPath("$.content").value(org.hamcrest.Matchers.containsString("# Agent Service Marketplace")));
     }
 
+    @Test
+    void generationPersistsEvaluationReportArtifactWhenAgentEngineReturnsV4Report() throws Exception {
+        String token = loginToken();
+        when(agentEngineClient.generate(contains("agent evaluation")))
+                .thenReturn(agentResultWithEvaluationReport());
+
+        long projectId = createProject(token, "Evaluation Project", "Build agent evaluation.");
+
+        mockMvc.perform(post("/api/projects/{projectId}/generate", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("COMPLETED"));
+
+        List<Artifact> artifacts = artifactService.lambdaQuery()
+                .eq(Artifact::getProjectId, projectId)
+                .orderByAsc(Artifact::getId)
+                .list();
+
+        assertThat(artifacts)
+                .extracting(Artifact::getType)
+                .contains("EVALUATION_REPORT");
+        Artifact evaluationReport = artifacts.stream()
+                .filter(artifact -> "EVALUATION_REPORT".equals(artifact.getType()))
+                .findFirst()
+                .orElseThrow();
+        assertThat(evaluationReport.getTitle()).isEqualTo("Evaluation Project Evaluation Report");
+        assertThat(evaluationReport.getSourceAgent()).isEqualTo("EvaluatorAgent_v1");
+        assertThat(evaluationReport.getContent())
+                .contains("\"overall_score\"")
+                .contains("92");
+    }
+
+    @Test
+    void generateV4EndpointCallsV4AgentEngineAndPersistsEvaluationReport() throws Exception {
+        String token = loginToken();
+        when(agentEngineClient.generateV4(contains("agent evaluation"), anyList()))
+                .thenReturn(agentResultWithEvaluationReport());
+
+        long projectId = createProject(token, "Evaluation V4 Project", "Build agent evaluation.");
+
+        mockMvc.perform(post("/api/projects/{projectId}/generate-v4", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("COMPLETED"))
+                .andExpect(jsonPath("$.percent").value(100));
+
+        verify(agentEngineClient).generateV4(eq("Build agent evaluation."), anyList());
+        assertThat(artifactService.lambdaQuery()
+                .eq(Artifact::getProjectId, projectId)
+                .eq(Artifact::getType, "EVALUATION_REPORT")
+                .count()).isEqualTo(1);
+    }
+
     private String loginToken() throws Exception {
         String response = mockMvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -452,6 +505,31 @@ class ProjectControllerTest {
                         new AgentEngineExecutionRecord("ProductManagerAgent_v1", "SUCCEEDED", "{\"requirement\":\"x\"}", prdJson, null),
                         new AgentEngineExecutionRecord("BackendEngineerAgent_v1", "SUCCEEDED", "{\"prd\":{}}", backendJson, null),
                         new AgentEngineExecutionRecord("ReviewerAgent_v1", "SUCCEEDED", "{\"backend_design\":{}}", reviewJson, null)
+                )
+        );
+    }
+
+    private AgentGenerationResult agentResultWithEvaluationReport() {
+        String evaluationJson = """
+                {
+                  "overall_score": 92,
+                  "final_grade": "A",
+                  "dimension_scores": [
+                    {"dimension": "RUNTIME_RELIABILITY", "score": 100, "rationale": "All nodes succeeded."}
+                  ],
+                  "issues": []
+                }
+                """;
+        AgentGenerationResult base = agentResultFromAgentService();
+        return new AgentGenerationResult(
+                base.prdJson(),
+                base.architectureDesignJson(),
+                base.backendDesignJson(),
+                base.frontendSkeletonJson(),
+                base.reviewReportJson(),
+                evaluationJson,
+                List.of(
+                        new AgentEngineExecutionRecord("evaluator", "EvaluatorAgent_v1", "SUCCEEDED", "{}", evaluationJson, null, 12, "EvaluatorAgent")
                 )
         );
     }

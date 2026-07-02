@@ -5,6 +5,7 @@ import org.h2.jdbcx.JdbcDataSource;
 import org.junit.jupiter.api.Test;
 
 import java.sql.Connection;
+import java.sql.ResultSet;
 import java.sql.Statement;
 
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -73,6 +74,39 @@ class SchemaInitSqlTest {
                     .doesNotThrowAnyException();
             assertThatCode(() -> execute(connection, "select project_id, workflow_key, version, graph_json from workflow_snapshot where 1 = 0"))
                     .doesNotThrowAnyException();
+        }
+    }
+
+    @Test
+    void flywayMigrationsSeedV4RoadmapPlan() throws Exception {
+        JdbcDataSource dataSource = new JdbcDataSource();
+        dataSource.setURL("jdbc:h2:mem:v4_plan;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1");
+        dataSource.setUser("sa");
+        dataSource.setPassword("");
+
+        Flyway.configure()
+                .dataSource(dataSource)
+                .locations("classpath:db/migration")
+                .load()
+                .migrate();
+
+        try (Connection connection = dataSource.getConnection();
+             Statement statement = connection.createStatement();
+             ResultSet resultSet = statement.executeQuery("""
+                     select a.title, a.version, a.format, a.status, length(a.content) as content_length
+                     from project p
+                     join artifact a on a.project_id = p.id
+                     where p.name = 'AutoSpec V4 Plan'
+                       and a.type = 'ROADMAP_PLAN'
+                       and a.version = 4
+                     """)) {
+            assertThat(resultSet.next()).isTrue();
+            assertThat(resultSet.getString("title")).isEqualTo("AutoSpec V4 Agent Orchestration and Evaluation Plan");
+            assertThat(resultSet.getInt("version")).isEqualTo(4);
+            assertThat(resultSet.getString("format")).isEqualTo("MARKDOWN");
+            assertThat(resultSet.getString("status")).isEqualTo("APPROVED");
+            assertThat(resultSet.getInt("content_length")).isGreaterThan(100);
+            assertThat(resultSet.next()).isFalse();
         }
     }
 

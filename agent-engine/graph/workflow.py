@@ -14,7 +14,9 @@ from schemas.architecture_design import ArchitectureDesignArtifact
 from schemas.backend_design import BackendDesignArtifact
 from schemas.frontend_skeleton import FrontendSkeletonArtifact
 from schemas.prd import PrdArtifact
+from schemas.evaluation import EvaluationReport
 from schemas.review import ReviewReport
+from review.evaluator import evaluate_artifacts
 
 try:
     from langgraph.graph import END, StateGraph
@@ -51,6 +53,17 @@ class WorkflowV2Result:
     backend_design: BackendDesignArtifact
     frontend_skeleton: FrontendSkeletonArtifact
     review_report: ReviewReport
+    records: list[AgentExecutionRecord] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class WorkflowV4Result:
+    prd: PrdArtifact
+    architecture_design: ArchitectureDesignArtifact
+    backend_design: BackendDesignArtifact
+    frontend_skeleton: FrontendSkeletonArtifact
+    review_report: ReviewReport
+    evaluation_report: EvaluationReport
     records: list[AgentExecutionRecord] = field(default_factory=list)
 
 
@@ -125,6 +138,58 @@ def run_v2_workflow(
         frontend_skeleton=downstream.frontend_skeleton,
         review_report=downstream.review_report,
         records=[*records, *downstream.records],
+    )
+
+
+def run_v4_workflow(
+    requirement: str,
+    model_client: ModelClient | None = None,
+    callbacks: list[Callback] | None = None,
+    retrieved_sources: list[dict[str, Any]] | None = None,
+    generated_files: list[dict[str, Any] | str] | None = None,
+) -> WorkflowV4Result:
+    callback_list = callbacks or []
+    v2_result = run_v2_workflow(
+        requirement,
+        model_client=model_client,
+        callbacks=callback_list,
+        retrieved_sources=retrieved_sources,
+    )
+    evaluation_report, evaluator_record = _execute_node(
+        node_name="evaluator",
+        agent_name="EvaluatorAgent_v1",
+        input_payload={
+            "requirement": requirement,
+            "prd": v2_result.prd.model_dump(),
+            "architecture_design": v2_result.architecture_design.model_dump(),
+            "backend_design": v2_result.backend_design.model_dump(),
+            "frontend_skeleton": v2_result.frontend_skeleton.model_dump(),
+            "review_report": v2_result.review_report.model_dump(),
+            "records": [record_response(record) for record in v2_result.records],
+            "retrieved_sources": retrieved_sources or [],
+            "generated_files": generated_files or [],
+        },
+        run=lambda: evaluate_artifacts(
+            requirement=requirement,
+            prd=v2_result.prd,
+            architecture_design=v2_result.architecture_design,
+            backend_design=v2_result.backend_design,
+            frontend_skeleton=v2_result.frontend_skeleton,
+            review_report=v2_result.review_report,
+            records=v2_result.records,
+            retrieved_sources=retrieved_sources or [],
+            generated_files=generated_files or [],
+        ),
+        callbacks=callback_list,
+    )
+    return WorkflowV4Result(
+        prd=v2_result.prd,
+        architecture_design=v2_result.architecture_design,
+        backend_design=v2_result.backend_design,
+        frontend_skeleton=v2_result.frontend_skeleton,
+        review_report=v2_result.review_report,
+        evaluation_report=evaluation_report,
+        records=[*v2_result.records, evaluator_record],
     )
 
 
@@ -452,3 +517,17 @@ def _execute_node(
 def _notify(callbacks: list[Callback], record: AgentExecutionRecord) -> None:
     for callback in callbacks:
         callback(record)
+
+
+def record_response(record: AgentExecutionRecord) -> dict[str, Any]:
+    return {
+        "node_name": record.node_name,
+        "agent_name": record.agent_name,
+        "input_payload": record.input_payload,
+        "output_payload": record.output_payload,
+        "status": record.status,
+        "duration_ms": record.duration_ms,
+        "error_message": record.error_message,
+        "provider_key": record.provider_key,
+        "model_name": record.model_name,
+    }

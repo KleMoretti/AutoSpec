@@ -104,6 +104,16 @@ public class ProjectController {
         return new GenerateProjectResponse(projectId, progress.status(), progress.percent());
     }
 
+    @PostMapping("/{projectId}/generate-v4")
+    public GenerateProjectResponse generateV4(
+            @PathVariable Long projectId,
+            @RequestHeader(value = "X-AutoSpec-Session-Token", required = false) String sessionToken
+    ) {
+        requireEditor(projectId, sessionToken);
+        ProjectProgressResponse progress = agentOrchestrationService.generateV4(projectId);
+        return new GenerateProjectResponse(projectId, progress.status(), progress.percent());
+    }
+
     @PostMapping("/{projectId}/continue")
     public GenerateProjectResponse continueGeneration(
             @PathVariable Long projectId,

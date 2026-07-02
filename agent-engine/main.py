@@ -1,16 +1,21 @@
 from pydantic import BaseModel, Field
 from fastapi import FastAPI, HTTPException
 
+from evaluation.case_catalog import list_evaluation_cases
 from graph.workflow import (
     AgentExecutionRecord,
     WorkflowResult,
     WorkflowV2Result,
+    WorkflowV4Result,
     run_prd_workflow,
     run_v1_workflow,
     run_v2_continue_workflow,
     run_v2_node,
     run_v2_workflow,
+    run_v4_workflow,
 )
+from review.experiments import compare_experiment_runs
+from schemas.evaluation import ExperimentRun
 from schemas.prd import PrdArtifact
 
 
@@ -26,6 +31,10 @@ class ContinueV2Request(BaseModel):
     requirement: str = Field(min_length=1)
     prd: dict
     retrieved_sources: list[dict] = Field(default_factory=list)
+
+
+class ExperimentCompareRequest(BaseModel):
+    runs: list[ExperimentRun] = Field(min_length=2)
 
 
 @app.get("/health")
@@ -53,6 +62,11 @@ def generate_v2(request: GenerateRequest) -> dict:
     return v2_response(run_v2_workflow(request.requirement, retrieved_sources=request.retrieved_sources))
 
 
+@app.post("/generate/v4")
+def generate_v4(request: GenerateRequest) -> dict:
+    return v4_response(run_v4_workflow(request.requirement, retrieved_sources=request.retrieved_sources))
+
+
 @app.post("/generate/v2/continue")
 def generate_v2_continue(request: ContinueV2Request) -> dict:
     prd = PrdArtifact.model_validate(request.prd)
@@ -65,6 +79,16 @@ def run_node(node_name: str, payload: dict) -> dict:
         return record_response(run_v2_node(node_name, payload))
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/evaluation/cases")
+def evaluation_cases() -> list[dict]:
+    return [case.model_dump() for case in list_evaluation_cases()]
+
+
+@app.post("/experiments/compare")
+def compare_experiments(request: ExperimentCompareRequest) -> dict:
+    return compare_experiment_runs(request.runs).model_dump(by_alias=True)
 
 
 def v1_response(result: WorkflowResult) -> dict:
@@ -85,6 +109,12 @@ def v2_response(result: WorkflowV2Result) -> dict:
         "review_report": result.review_report.model_dump(),
         "records": [record_response(record) for record in result.records],
     }
+
+
+def v4_response(result: WorkflowV4Result) -> dict:
+    response = v2_response(result)
+    response["evaluation_report"] = result.evaluation_report.model_dump()
+    return response
 
 
 def record_response(record: AgentExecutionRecord) -> dict:

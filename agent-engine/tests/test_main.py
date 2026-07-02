@@ -73,3 +73,55 @@ def test_generate_v2_and_node_runner_endpoints_return_v2_artifacts():
     assert v2_response.json()["frontend_skeleton"]["pages"][0]["name"] == "ProjectDetailPage"
     assert node_response.status_code == 200
     assert node_response.json()["node_name"] == "frontend_engineer"
+
+
+def test_evaluation_cases_endpoint_returns_v4_catalog():
+    response = client.get("/evaluation/cases")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body) >= 3
+    assert body[0]["case_id"]
+    assert "EVALUATION_REPORT" in body[0]["required_artifact_types"]
+
+
+def test_experiment_compare_endpoint_returns_rankings_and_deltas():
+    response = client.post(
+        "/experiments/compare",
+        json={
+            "runs": [
+                {
+                    "run_id": "baseline",
+                    "workflow_key": "autospec-v3",
+                    "workflow_version": "v3",
+                    "prompt_versions": {"reviewer": "v1"},
+                    "model_config": {"reviewer": "deterministic-fixture"},
+                    "overall_score": 82,
+                    "duration_ms": 1200,
+                    "status": "SUCCEEDED",
+                    "estimated_cost": 0.08,
+                    "failure_count": 0,
+                },
+                {
+                    "run_id": "candidate",
+                    "workflow_key": "autospec-v4",
+                    "workflow_version": "v4",
+                    "prompt_versions": {"reviewer": "v1", "evaluator": "v1"},
+                    "model_config": {
+                        "reviewer": "deterministic-fixture",
+                        "evaluator": "deterministic-rules",
+                    },
+                    "overall_score": 92,
+                    "duration_ms": 1500,
+                    "status": "SUCCEEDED",
+                    "estimated_cost": 0.10,
+                    "failure_count": 0,
+                },
+            ]
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["best_run_id"] == "candidate"
+    assert body["comparisons"][0]["score_delta"] == 10

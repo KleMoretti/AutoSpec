@@ -8,6 +8,7 @@ public record AgentGenerationResult(
         String backendDesignJson,
         String frontendSkeletonJson,
         String reviewReportJson,
+        String evaluationReportJson,
         List<AgentEngineExecutionRecord> records
 ) {
 
@@ -17,6 +18,17 @@ public record AgentGenerationResult(
             String reviewReportJson,
             List<AgentEngineExecutionRecord> records
     ) {
-        this(prdJson, null, backendDesignJson, null, reviewReportJson, records);
+        this(prdJson, null, backendDesignJson, null, reviewReportJson, null, records);
+    }
+
+    public AgentGenerationResult(
+            String prdJson,
+            String architectureDesignJson,
+            String backendDesignJson,
+            String frontendSkeletonJson,
+            String reviewReportJson,
+            List<AgentEngineExecutionRecord> records
+    ) {
+        this(prdJson, architectureDesignJson, backendDesignJson, frontendSkeletonJson, reviewReportJson, null, records);
     }
 }
