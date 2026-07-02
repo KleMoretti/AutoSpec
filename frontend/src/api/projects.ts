@@ -113,6 +113,10 @@ export async function generateProject(projectId: number): Promise<GenerateProjec
   return request(`/api/projects/${projectId}/generate`, { method: 'POST' });
 }
 
+export async function generateProjectV4(projectId: number): Promise<GenerateProjectResponse> {
+  return request(`/api/projects/${projectId}/generate-v4`, { method: 'POST' });
+}
+
 export async function generatePrd(projectId: number): Promise<GenerateProjectResponse> {
   return request(`/api/projects/${projectId}/generate-prd`, { method: 'POST' });
 }

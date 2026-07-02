@@ -381,6 +381,27 @@ class ProjectControllerTest {
                 .contains("92");
     }
 
+    @Test
+    void generateV4EndpointCallsV4AgentEngineAndPersistsEvaluationReport() throws Exception {
+        String token = loginToken();
+        when(agentEngineClient.generateV4(contains("agent evaluation"), anyList()))
+                .thenReturn(agentResultWithEvaluationReport());
+
+        long projectId = createProject(token, "Evaluation V4 Project", "Build agent evaluation.");
+
+        mockMvc.perform(post("/api/projects/{projectId}/generate-v4", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("COMPLETED"))
+                .andExpect(jsonPath("$.percent").value(100));
+
+        verify(agentEngineClient).generateV4(eq("Build agent evaluation."), anyList());
+        assertThat(artifactService.lambdaQuery()
+                .eq(Artifact::getProjectId, projectId)
+                .eq(Artifact::getType, "EVALUATION_REPORT")
+                .count()).isEqualTo(1);
+    }
+
     private String loginToken() throws Exception {
         String response = mockMvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)

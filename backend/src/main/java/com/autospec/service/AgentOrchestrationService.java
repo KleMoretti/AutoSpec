@@ -107,6 +107,33 @@ public class AgentOrchestrationService {
     }
 
     @Transactional
+    public ProjectProgressResponse generateV4(Long projectId) {
+        Project project = getProjectOrThrow(projectId);
+        workflowSnapshotService.ensureDefaultSnapshot(projectId);
+        project.setStatus("GENERATING");
+        projectService.updateById(project);
+
+        clearGeneratedData(projectId);
+
+        AgentGenerationResult generationResult = agentEngineClient.generateV4(
+                project.getOriginalRequirement(),
+                knowledgeIndexService.retrieve(project.getOriginalRequirement(), 5, project.getUserId())
+        );
+        recordTasks(projectId, generationResult);
+        saveArtifact(projectId, "PRD", project.getName() + " PRD", generationResult.prdJson(), "ProductManagerAgent_v1", "GENERATED");
+        saveArtifact(projectId, "ARCHITECTURE_DESIGN", project.getName() + " Architecture Design", generationResult.architectureDesignJson(), "ArchitectAgent_v1", "GENERATED");
+        saveArtifact(projectId, "BACKEND_DESIGN", project.getName() + " Backend Design", generationResult.backendDesignJson(), "BackendEngineerAgent_v1", "GENERATED");
+        saveArtifact(projectId, "FRONTEND_SKELETON", project.getName() + " Frontend Skeleton", generationResult.frontendSkeletonJson(), "FrontendEngineerAgent_v1", "GENERATED");
+        saveArtifact(projectId, "REVIEW_REPORT", project.getName() + " Review Report", generationResult.reviewReportJson(), "ReviewerAgent_v1", "GENERATED");
+        saveArtifact(projectId, "EVALUATION_REPORT", project.getName() + " Evaluation Report", generationResult.evaluationReportJson(), "EvaluatorAgent_v1", "GENERATED");
+        saveReviewIssues(projectId, generationResult.reviewReportJson());
+
+        project.setStatus("COMPLETED");
+        projectService.updateById(project);
+        return progress(projectId);
+    }
+
+    @Transactional
     public ProjectProgressResponse generatePrd(Long projectId) {
         Project project = getProjectOrThrow(projectId);
         workflowSnapshotService.ensureDefaultSnapshot(projectId);

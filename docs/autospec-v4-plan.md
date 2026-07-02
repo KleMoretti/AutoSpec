@@ -30,21 +30,21 @@ Updated on `2026-07-02`.
 | --- | --- | --- |
 | V4-01 | DONE | `agent-engine/schemas/workflow_spec.py`, `agent-engine/graph/workflow_specs.py`, `agent-engine/tests/test_workflow_spec.py` |
 | V4-02 | DONE | V4 workflow node specs declare input/output schema, prompt version, model policy, retry policy, timeout, human gate, artifact type, and dependencies. |
-| V4-03 | PARTIAL | `EvaluationCase` schema exists in `agent-engine/schemas/evaluation.py`; full benchmark case catalog is still pending. |
-| V4-04 | DONE | `agent-engine/review/evaluator.py`, `agent-engine/tests/test_evaluator.py`, `run_v4_workflow()`, `/generate/v4`, backend `EVALUATION_REPORT` persistence. |
-| V4-05 | TODO | Experiment comparison model/API is not implemented yet. |
-| V4-06 | PARTIAL | `README.md` and `docs/examples/v4-sample-artifacts.md` added; demo assets can still be expanded. |
+| V4-03 | DONE | `agent-engine/evaluation/case_catalog.py`, `agent-engine/tests/test_evaluation_cases.py`, `GET /evaluation/cases` |
+| V4-04 | DONE | `agent-engine/review/evaluator.py`, `agent-engine/tests/test_evaluator.py`, `run_v4_workflow()`, `/generate/v4`, backend `/api/projects/{projectId}/generate-v4`, frontend `generateProjectV4()`, backend `EVALUATION_REPORT` persistence. |
+| V4-05 | DONE | `ExperimentRun` / `ExperimentComparisonReport`, `agent-engine/review/experiments.py`, `POST /experiments/compare` |
+| V4-06 | DONE | `README.md`, `docs/examples/v4-sample-artifacts.md`, V4 workflow/evaluation/experiment examples. |
 
 ## Scope
 
 | ID | Title | Priority | Status | Description | Deliverables |
 | --- | --- | --- | --- | --- | --- |
-| V4-01 | Configurable SOP Workflow Spec | P0 | PLANNED | Replace hard-coded pipeline assumptions with a versioned workflow spec that declares nodes, edges, input contracts, output contracts, human gates, retry policy, and artifact mapping. | workflow spec schema, built-in `autospec-v4` spec, compatibility adapter for current V2/V3 flow |
-| V4-02 | Agent Node Runtime Contract | P0 | PLANNED | Standardize node execution around typed input/output, prompt version, model policy, timeout, retry, and error envelope. | node runtime schema, execution record mapping, contract validation tests |
-| V4-03 | Evaluation Case Suite | P0 | PLANNED | Add deterministic benchmark cases for common software requirements so different workflow/prompt/model versions can be compared. | evaluation case schema, sample cases, expected capability checklist |
-| V4-04 | Evaluator Agent and Scoring Report | P0 | PLANNED | Add a dedicated evaluator stage that scores generated artifacts across schema validity, feature coverage, API/DB consistency, permissions, frontend coverage, and RAG citation quality. | evaluator schema, scoring rules, report artifact, regression tests |
-| V4-05 | Experiment Comparison | P1 | PLANNED | Compare multiple runs by workflow version, prompt version, model config, duration, failure rate, cost, and evaluation score. | experiment run model, comparison API, summary view or export |
-| V4-06 | Resume-grade Packaging | P1 | PLANNED | Package the project as a MetaGPT-inspired but enterprise Java-oriented Agent engineering platform. | README update, architecture diagram, sample trace, sample evaluation report |
+| V4-01 | Configurable SOP Workflow Spec | P0 | DONE | Replace hard-coded pipeline assumptions with a versioned workflow spec that declares nodes, edges, input contracts, output contracts, human gates, retry policy, and artifact mapping. | workflow spec schema, built-in `autospec-v4` spec, compatibility adapter for current V2/V3 flow |
+| V4-02 | Agent Node Runtime Contract | P0 | DONE | Standardize node execution around typed input/output, prompt version, model policy, timeout, retry, and error envelope. | node runtime schema, execution record mapping, contract validation tests |
+| V4-03 | Evaluation Case Suite | P0 | DONE | Add deterministic benchmark cases for common software requirements so different workflow/prompt/model versions can be compared. | evaluation case schema, sample cases, expected capability checklist |
+| V4-04 | Evaluator Agent and Scoring Report | P0 | DONE | Add a dedicated evaluator stage that scores generated artifacts across schema validity, feature coverage, API/DB consistency, permissions, frontend coverage, and RAG citation quality. | evaluator schema, scoring rules, report artifact, regression tests |
+| V4-05 | Experiment Comparison | P1 | DONE | Compare multiple runs by workflow version, prompt version, model config, duration, failure rate, cost, and evaluation score. | experiment run model, comparison API, summary view or export |
+| V4-06 | Resume-grade Packaging | P1 | DONE | Package the project as a MetaGPT-inspired but enterprise Java-oriented Agent engineering platform. | README update, architecture diagram, sample trace, sample evaluation report |
 
 ## Milestones
 

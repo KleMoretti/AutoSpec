@@ -24,6 +24,7 @@ class EvaluationCase(BaseModel):
     requirement: str = Field(min_length=1)
     expected_capabilities: list[str] = Field(default_factory=list)
     required_artifact_types: list[str] = Field(default_factory=list)
+    scoring_dimensions: list[EvaluationDimension] = Field(default_factory=list)
 
 
 class EvaluationIssue(BaseModel):
@@ -71,3 +72,39 @@ class EvaluationInput(BaseModel):
     records: list[dict] = Field(default_factory=list)
     retrieved_sources: list[dict] = Field(default_factory=list)
     generated_files: list[dict | str] = Field(default_factory=list)
+
+
+class ExperimentRun(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    run_id: str = Field(min_length=1)
+    workflow_key: str = Field(min_length=1)
+    workflow_version: str = Field(min_length=1)
+    prompt_versions: dict[str, str] = Field(default_factory=dict)
+    model_configurations: dict[str, str] = Field(default_factory=dict, alias="model_config")
+    overall_score: int = Field(ge=0, le=100)
+    duration_ms: int = Field(ge=0)
+    status: str = Field(min_length=1)
+    estimated_cost: float = Field(default=0.0, ge=0.0)
+    failure_count: int = Field(default=0, ge=0)
+
+
+class ExperimentComparison(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    baseline_run_id: str = Field(min_length=1)
+    candidate_run_id: str = Field(min_length=1)
+    score_delta: int
+    duration_delta_ms: int
+    cost_delta: float
+    failure_delta: int
+
+
+class ExperimentComparisonReport(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    baseline_run_id: str = Field(min_length=1)
+    best_run_id: str = Field(min_length=1)
+    rankings: list[ExperimentRun] = Field(min_length=1)
+    comparisons: list[ExperimentComparison] = Field(default_factory=list)
+    issues: list[EvaluationIssue] = Field(default_factory=list)

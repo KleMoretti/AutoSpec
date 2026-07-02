@@ -7,6 +7,7 @@ import {
   exportMarkdown,
   generatePrd,
   generateProject,
+  generateProjectV4,
   getArtifacts,
   getEventHistory,
   getProgress,
@@ -89,6 +90,14 @@ describe('project api client', () => {
     expect(fetchMock).toHaveBeenNthCalledWith(3, '/api/projects/7/artifacts');
     expect(fetchMock).toHaveBeenNthCalledWith(4, '/api/projects/7/review');
     expect(fetchMock).toHaveBeenNthCalledWith(5, '/api/projects/7/export?format=MARKDOWN', { method: 'POST' });
+  });
+
+  it('calls v4 project generation endpoint', async () => {
+    fetchMock.mockReturnValueOnce(jsonResponse({ projectId: 7, status: 'COMPLETED', percent: 100 }));
+
+    await expect(generateProjectV4(7)).resolves.toMatchObject({ percent: 100 });
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/projects/7/generate-v4', { method: 'POST' });
   });
 
   it('supports v2 prd gate approve continue retry events and pdf export', async () => {

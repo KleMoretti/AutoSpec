@@ -21,6 +21,8 @@
 - Modify `agent-engine/graph/workflow.py`: add `WorkflowV4Result` and `run_v4_workflow()` that extends V2 with evaluator output.
 - Modify `agent-engine/main.py`: add `/generate/v4` and response serialization for evaluation reports.
 - Modify `backend` only after Agent Engine V4 outputs are stable: persist `EVALUATION_REPORT`, expose model/run comparison if needed.
+- Create `agent-engine/evaluation/case_catalog.py`: built-in reproducible V4 benchmark case catalog.
+- Create `agent-engine/review/experiments.py`: compare run score, prompt versions, model config, duration, cost, status, and failure count.
 - Modify docs: add sample V4 evaluation report and README packaging after core behavior is verified.
 
 ## Task 1: Workflow Spec Contract
@@ -30,7 +32,7 @@
 - Create: `agent-engine/graph/workflow_specs.py`
 - Create: `agent-engine/tests/test_workflow_spec.py`
 
-- [ ] **Step 1: Write failing workflow spec tests**
+- [x] **Step 1: Write failing workflow spec tests**
 
 Add tests that assert:
 
@@ -88,7 +90,7 @@ def test_workflow_spec_rejects_edges_to_unknown_nodes():
         WorkflowSpec.model_validate(payload)
 ```
 
-- [ ] **Step 2: Run tests and verify RED**
+- [x] **Step 2: Run tests and verify RED**
 
 Run:
 
@@ -98,11 +100,11 @@ python -m pytest agent-engine/tests/test_workflow_spec.py
 
 Expected: fail because `schemas.workflow_spec` and `graph.workflow_specs` do not exist.
 
-- [ ] **Step 3: Implement workflow spec models and registry**
+- [x] **Step 3: Implement workflow spec models and registry**
 
 Implement Pydantic models with `model_validator` checking duplicate node ids, unknown edge endpoints, and node dependency references. Add `get_workflow_spec("autospec-v4")`.
 
-- [ ] **Step 4: Run tests and verify GREEN**
+- [x] **Step 4: Run tests and verify GREEN**
 
 Run the same pytest command and expect all workflow spec tests to pass.
 
@@ -113,7 +115,7 @@ Run the same pytest command and expect all workflow spec tests to pass.
 - Create: `agent-engine/review/evaluator.py`
 - Create: `agent-engine/tests/test_evaluator.py`
 
-- [ ] **Step 1: Write failing evaluator tests**
+- [x] **Step 1: Write failing evaluator tests**
 
 Add tests that create fixture PRD, architecture, backend design, frontend skeleton, review report, records, and generated files. Assert that:
 
@@ -123,7 +125,7 @@ Add tests that create fixture PRD, architecture, backend design, frontend skelet
 - failed runtime records lower the runtime reliability score
 - generated files with concrete secrets create an `EXPORT_READINESS` issue
 
-- [ ] **Step 2: Run tests and verify RED**
+- [x] **Step 2: Run tests and verify RED**
 
 Run:
 
@@ -133,15 +135,15 @@ python -m pytest agent-engine/tests/test_evaluator.py
 
 Expected: fail because evaluator modules do not exist.
 
-- [ ] **Step 3: Implement evaluation models**
+- [x] **Step 3: Implement evaluation models**
 
 Define `EvaluationCase`, `EvaluationIssue`, `EvaluationDimensionScore`, `EvaluationReport`, and `EvaluationInput` with strict but practical fields.
 
-- [ ] **Step 4: Implement deterministic evaluator**
+- [x] **Step 4: Implement deterministic evaluator**
 
 Implement `evaluate_artifacts()` using existing artifact objects and `AgentExecutionRecord` data. Use score dimensions from the V4 design: schema validity, requirement coverage, cross-artifact consistency, permission coverage, RAG citation quality, runtime reliability, and export readiness.
 
-- [ ] **Step 5: Run tests and verify GREEN**
+- [x] **Step 5: Run tests and verify GREEN**
 
 Run evaluator tests and then the full Agent Engine pytest suite.
 
@@ -152,11 +154,11 @@ Run evaluator tests and then the full Agent Engine pytest suite.
 - Modify: `agent-engine/main.py`
 - Modify: `agent-engine/tests/test_workflow.py`
 
-- [ ] **Step 1: Write failing V4 workflow test**
+- [x] **Step 1: Write failing V4 workflow test**
 
 Add a test that calls `run_v4_workflow()` with `V2FakeModelClient` and asserts node execution order includes `evaluator`, result has `evaluation_report`, and evaluator report is serialized by the API helper.
 
-- [ ] **Step 2: Run test and verify RED**
+- [x] **Step 2: Run test and verify RED**
 
 Run:
 
@@ -166,15 +168,15 @@ python -m pytest agent-engine/tests/test_workflow.py -k v4
 
 Expected: fail because `run_v4_workflow` does not exist.
 
-- [ ] **Step 3: Implement `WorkflowV4Result` and `run_v4_workflow()`**
+- [x] **Step 3: Implement `WorkflowV4Result` and `run_v4_workflow()`**
 
 Run the existing V2 workflow, then evaluate all generated artifacts and append an evaluator execution record. Keep V2 behavior unchanged.
 
-- [ ] **Step 4: Add `/generate/v4`**
+- [x] **Step 4: Add `/generate/v4`**
 
 Expose V4 generation from FastAPI and include `evaluation_report` in the response body.
 
-- [ ] **Step 5: Run tests and verify GREEN**
+- [x] **Step 5: Run tests and verify GREEN**
 
 Run Agent Engine pytest suite.
 
@@ -186,11 +188,11 @@ Run Agent Engine pytest suite.
 - Modify: DTOs as needed under `backend/src/main/java/com/autospec/dto`
 - Modify tests under `backend/src/test/java/com/autospec`
 
-- [ ] **Step 1: Add failing backend test**
+- [x] **Step 1: Add failing backend test**
 
 Extend controller/service tests so a V4-style Agent Engine response containing `evaluation_report` persists an `EVALUATION_REPORT` artifact.
 
-- [ ] **Step 2: Run backend test and verify RED**
+- [x] **Step 2: Run backend test and verify RED**
 
 Run:
 
@@ -199,11 +201,11 @@ cd backend
 mvn -Dtest=ProjectControllerTest test
 ```
 
-- [ ] **Step 3: Persist evaluation report artifact**
+- [x] **Step 3: Persist evaluation report artifact**
 
 Map `evaluation_report` from the Agent Engine response into `artifact.type = EVALUATION_REPORT`, `format = JSON`, `source_agent = EvaluatorAgent_v1`.
 
-- [ ] **Step 4: Run backend tests and verify GREEN**
+- [x] **Step 4: Run backend tests and verify GREEN**
 
 Run backend targeted tests, then full `mvn test`.
 
@@ -214,15 +216,15 @@ Run backend targeted tests, then full `mvn test`.
 - Modify: `docs/autospec-v4-plan.md`
 - Modify: `README.md` if present, otherwise create it.
 
-- [ ] **Step 1: Add sample V4 evaluation report**
+- [x] **Step 1: Add sample V4 evaluation report**
 
 Document a sanitized `EVALUATION_REPORT` JSON example with dimension scores and issues.
 
-- [ ] **Step 2: Add resume-grade README section**
+- [x] **Step 2: Add resume-grade README section**
 
 Explain the MetaGPT-inspired positioning, V4 architecture, how to run tests, and how to demo V4.
 
-- [ ] **Step 3: Verify docs contain no secrets**
+- [x] **Step 3: Verify docs contain no secrets**
 
 Run:
 
@@ -231,6 +233,65 @@ rg -n "api_key|apikey|secret|password|token|D:\\\\" README.md docs
 ```
 
 Expected: only policy text or placeholder examples, no real credentials.
+
+## Task 6: Evaluation Case Catalog and Experiment Comparison
+
+**Files:**
+- Create: `agent-engine/evaluation/case_catalog.py`
+- Create: `agent-engine/review/experiments.py`
+- Modify: `agent-engine/schemas/evaluation.py`
+- Modify: `agent-engine/main.py`
+- Test: `agent-engine/tests/test_evaluation_cases.py`
+- Test: `agent-engine/tests/test_experiment_comparison.py`
+- Test: `agent-engine/tests/test_main.py`
+
+- [x] **Step 1: Add reproducible evaluation cases**
+
+Implemented at least three deterministic cases: campus marketplace, dorm repair workflow, and club activity platform.
+
+- [x] **Step 2: Add experiment comparison models**
+
+Implemented `ExperimentRun`, `ExperimentComparison`, and `ExperimentComparisonReport`.
+
+- [x] **Step 3: Add experiment comparison logic**
+
+Implemented ranking by failure count/status, score, estimated cost, and duration; also emits failure issues for failed runs.
+
+- [x] **Step 4: Expose Agent Engine APIs**
+
+Implemented `GET /evaluation/cases` and `POST /experiments/compare`.
+
+- [x] **Step 5: Verify**
+
+Run: `python -m pytest agent-engine`
+Expected: all Agent Engine tests pass.
+
+## Task 7: Backend and Frontend V4 Invocation Path
+
+**Files:**
+- Modify: `backend/src/main/java/com/autospec/service/AgentEngineClient.java`
+- Modify: `backend/src/main/java/com/autospec/service/HttpAgentEngineClient.java`
+- Modify: `backend/src/main/java/com/autospec/service/AgentOrchestrationService.java`
+- Modify: `backend/src/main/java/com/autospec/controller/ProjectController.java`
+- Modify: `backend/src/test/java/com/autospec/ProjectControllerTest.java`
+- Modify: `frontend/src/api/projects.ts`
+- Modify: `frontend/src/api/projects.test.ts`
+
+- [x] **Step 1: Add backend failing test**
+
+Added a test requiring `POST /api/projects/{projectId}/generate-v4` to call `AgentEngineClient.generateV4()` and persist `EVALUATION_REPORT`.
+
+- [x] **Step 2: Implement backend V4 generation path**
+
+Added `generateV4()` to the Agent Engine client, HTTP client, orchestration service, and project controller.
+
+- [x] **Step 3: Add frontend API client**
+
+Added `generateProjectV4(projectId)` and Vitest coverage.
+
+- [x] **Step 4: Verify**
+
+Run backend and frontend targeted tests, then full verification.
 
 ## Final Verification
 

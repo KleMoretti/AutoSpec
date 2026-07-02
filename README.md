@@ -32,11 +32,24 @@ The backend remains the system of record for projects, artifacts, review issues,
 - `agent-engine/schemas/workflow_spec.py`: V4 workflow contract models.
 - `agent-engine/graph/workflow_specs.py`: built-in `autospec-v4` workflow registry.
 - `agent-engine/schemas/evaluation.py`: evaluation case, score, issue, and report schemas.
+- `agent-engine/evaluation/case_catalog.py`: reproducible V4 evaluation cases.
+- `agent-engine/review/experiments.py`: experiment comparison by workflow version, prompt version, model config, score, cost, duration, and failure count.
 - `agent-engine/review/evaluator.py`: deterministic evaluator rules.
 - `backend/src/main/java/com/autospec/service/AgentOrchestrationService.java`: persists generated artifacts, including `EVALUATION_REPORT`.
 - `docs/examples/v4-sample-artifacts.md`: sanitized V4 sample outputs.
 
 ## Verification
+
+Useful Agent Engine endpoints:
+
+- `POST /generate/v4`: run the V4 workflow and return `evaluation_report`.
+- `GET /evaluation/cases`: list built-in reproducible benchmark cases.
+- `POST /experiments/compare`: compare multiple Agent runs by score, runtime, cost, model/prompt config, and failure count.
+
+Useful backend/frontend path:
+
+- `POST /api/projects/{projectId}/generate-v4`: run the V4 Agent workflow through the backend and persist `EVALUATION_REPORT`.
+- `generateProjectV4(projectId)`: frontend API client helper for V4 generation.
 
 Run Agent Engine tests:
 

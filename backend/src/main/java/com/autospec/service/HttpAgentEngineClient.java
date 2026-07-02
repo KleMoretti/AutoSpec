@@ -47,6 +47,18 @@ public class HttpAgentEngineClient implements AgentEngineClient {
     }
 
     @Override
+    public AgentGenerationResult generateV4(String requirement, List<KnowledgeSourceResponse> retrievedSources) {
+        JsonNode root = restClient.post()
+                .uri("/generate/v4")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("requirement", requirement, "retrieved_sources", retrievedSources))
+                .retrieve()
+                .body(JsonNode.class);
+
+        return result(root);
+    }
+
+    @Override
     public AgentGenerationResult generatePrd(String requirement) {
         return generatePrd(requirement, List.of());
     }

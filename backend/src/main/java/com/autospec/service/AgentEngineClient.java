@@ -12,6 +12,10 @@ public interface AgentEngineClient {
         return generate(requirement);
     }
 
+    default AgentGenerationResult generateV4(String requirement, List<KnowledgeSourceResponse> retrievedSources) {
+        return generate(requirement, retrievedSources);
+    }
+
     AgentGenerationResult generatePrd(String requirement);
 
     default AgentGenerationResult generatePrd(String requirement, List<KnowledgeSourceResponse> retrievedSources) {

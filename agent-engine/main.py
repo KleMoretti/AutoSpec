@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field
 from fastapi import FastAPI, HTTPException
 
+from evaluation.case_catalog import list_evaluation_cases
 from graph.workflow import (
     AgentExecutionRecord,
     WorkflowResult,
@@ -13,6 +14,8 @@ from graph.workflow import (
     run_v2_workflow,
     run_v4_workflow,
 )
+from review.experiments import compare_experiment_runs
+from schemas.evaluation import ExperimentRun
 from schemas.prd import PrdArtifact
 
 
@@ -28,6 +31,10 @@ class ContinueV2Request(BaseModel):
     requirement: str = Field(min_length=1)
     prd: dict
     retrieved_sources: list[dict] = Field(default_factory=list)
+
+
+class ExperimentCompareRequest(BaseModel):
+    runs: list[ExperimentRun] = Field(min_length=2)
 
 
 @app.get("/health")
@@ -72,6 +79,16 @@ def run_node(node_name: str, payload: dict) -> dict:
         return record_response(run_v2_node(node_name, payload))
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.get("/evaluation/cases")
+def evaluation_cases() -> list[dict]:
+    return [case.model_dump() for case in list_evaluation_cases()]
+
+
+@app.post("/experiments/compare")
+def compare_experiments(request: ExperimentCompareRequest) -> dict:
+    return compare_experiment_runs(request.runs).model_dump(by_alias=True)
 
 
 def v1_response(result: WorkflowResult) -> dict:
