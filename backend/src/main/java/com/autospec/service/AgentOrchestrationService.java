@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -41,6 +42,9 @@ public class AgentOrchestrationService {
     private final ArtifactVersionService artifactVersionService;
     private final AgentEventService agentEventService;
     private final PromptRegistryService promptRegistryService;
+    private final KnowledgeIndexService knowledgeIndexService;
+    private final ModelInvocationService modelInvocationService;
+    private final WorkflowSnapshotService workflowSnapshotService;
     private final ObjectMapper objectMapper;
 
     public AgentOrchestrationService(
@@ -52,6 +56,9 @@ public class AgentOrchestrationService {
             ArtifactVersionService artifactVersionService,
             AgentEventService agentEventService,
             PromptRegistryService promptRegistryService,
+            KnowledgeIndexService knowledgeIndexService,
+            ModelInvocationService modelInvocationService,
+            WorkflowSnapshotService workflowSnapshotService,
             ObjectMapper objectMapper
     ) {
         this.projectService = projectService;
@@ -62,12 +69,16 @@ public class AgentOrchestrationService {
         this.artifactVersionService = artifactVersionService;
         this.agentEventService = agentEventService;
         this.promptRegistryService = promptRegistryService;
+        this.knowledgeIndexService = knowledgeIndexService;
+        this.modelInvocationService = modelInvocationService;
+        this.workflowSnapshotService = workflowSnapshotService;
         this.objectMapper = objectMapper;
     }
 
     @Transactional
     public ProjectProgressResponse generate(Long projectId) {
         Project project = getProjectOrThrow(projectId);
+        workflowSnapshotService.ensureDefaultSnapshot(projectId);
         project.setStatus("GENERATING");
         projectService.updateById(project);
 
@@ -88,12 +99,16 @@ public class AgentOrchestrationService {
     @Transactional
     public ProjectProgressResponse generatePrd(Long projectId) {
         Project project = getProjectOrThrow(projectId);
+        workflowSnapshotService.ensureDefaultSnapshot(projectId);
         project.setStatus("GENERATING");
         projectService.updateById(project);
 
         clearGeneratedData(projectId);
 
-        AgentGenerationResult result = agentEngineClient.generatePrd(project.getOriginalRequirement());
+        AgentGenerationResult result = agentEngineClient.generatePrd(
+                project.getOriginalRequirement(),
+                knowledgeIndexService.retrieve(project.getOriginalRequirement(), 5, project.getUserId())
+        );
         recordTasks(projectId, result);
         saveArtifact(projectId, "PRD", project.getName() + " PRD", result.prdJson(), "ProductManagerAgent_v1", "PENDING_REVIEW");
 
@@ -106,6 +121,7 @@ public class AgentOrchestrationService {
     public ProjectProgressResponse continueAfterApprovedPrd(Long projectId) {
         Project project = getProjectOrThrow(projectId);
         Artifact approvedPrd = artifactVersionService.latestApproved(projectId, "PRD");
+        workflowSnapshotService.ensureDefaultSnapshot(projectId);
 
         project.setStatus("GENERATING");
         projectService.updateById(project);
@@ -118,7 +134,8 @@ public class AgentOrchestrationService {
 
         AgentGenerationResult result = agentEngineClient.continueAfterPrd(
                 project.getOriginalRequirement(),
-                approvedPrd.getContent()
+                approvedPrd.getContent(),
+                knowledgeIndexService.retrieve(project.getOriginalRequirement(), 5, project.getUserId())
         );
         recordTasks(projectId, result);
         saveArtifact(projectId, "ARCHITECTURE_DESIGN", project.getName() + " Architecture Design", result.architectureDesignJson(), "ArchitectAgent_v1", "GENERATED");
@@ -249,7 +266,25 @@ public class AgentOrchestrationService {
                 task.getAgentName() + " " + task.getStatus().toLowerCase(),
                 task.getOutputText()
         );
+        recordModelInvocation(projectId, task, record);
         return task;
+    }
+
+    private void recordModelInvocation(Long projectId, AgentTask task, AgentEngineExecutionRecord record) {
+        com.autospec.entity.ModelInvocation invocation = new com.autospec.entity.ModelInvocation();
+        invocation.setProjectId(projectId);
+        invocation.setTaskId(task.getId());
+        invocation.setProviderKey(record.providerKey() == null ? "local" : record.providerKey());
+        invocation.setModelName(record.modelName() == null ? "deterministic-fixture" : record.modelName());
+        invocation.setAgentNode(task.getNodeName());
+        invocation.setPromptVersionId(task.getPromptVersionId());
+        invocation.setStatus(task.getStatus());
+        invocation.setDurationMs(task.getDurationMs() == null ? 0 : task.getDurationMs());
+        invocation.setInputTokens(0);
+        invocation.setOutputTokens(0);
+        invocation.setScore("SUCCEEDED".equals(task.getStatus()) ? BigDecimal.valueOf(100) : BigDecimal.ZERO);
+        invocation.setErrorMessage(task.getErrorMessage());
+        modelInvocationService.save(invocation);
     }
 
     private void saveArtifact(Long projectId, String type, String title, String content, String sourceAgent, String status) {

@@ -340,6 +340,30 @@ def test_v2_workflow_runs_architect_frontend_and_reviewer_after_prd():
     ]
 
 
+def test_v2_workflow_passes_retrieved_sources_to_model_prompts():
+    model_client = V2FakeModelClient()
+    retrieved_sources = [
+        {
+            "artifact_id": 9,
+            "artifact_type": "PRD",
+            "title": "Approved Marketplace PRD",
+            "content": "Favorites require create and delete APIs.",
+        }
+    ]
+
+    run_v2_workflow(
+        "Build AutoSpec V2 with historical reuse.",
+        model_client=model_client,
+        retrieved_sources=retrieved_sources,
+    )
+
+    assert model_client.calls[0][1]["retrieved_sources"] == retrieved_sources
+    assert model_client.calls[1][1]["retrieved_sources"] == retrieved_sources
+    assert model_client.calls[2][1]["retrieved_sources"] == retrieved_sources
+    assert model_client.calls[3][1]["retrieved_sources"] == retrieved_sources
+    assert model_client.calls[4][1]["retrieved_sources"] == retrieved_sources
+
+
 def test_run_v2_node_runs_single_frontend_engineer_node():
     model_client = V2FakeModelClient()
     payload = {

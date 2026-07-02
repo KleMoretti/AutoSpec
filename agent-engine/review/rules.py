@@ -1,3 +1,5 @@
+from typing import Any
+
 from schemas.backend_design import BackendDesignArtifact
 from schemas.prd import PrdArtifact
 from schemas.architecture_design import ArchitectureDesignArtifact
@@ -103,8 +105,49 @@ def run_v2_rule_checks(
     return issues
 
 
+def run_v3_rule_checks(
+    prd: PrdArtifact,
+    backend_design: BackendDesignArtifact,
+    retrieved_sources: list[dict[str, Any]] | None,
+    generated_files: list[dict[str, Any] | str] | None,
+) -> list[ReviewIssue]:
+    issues: list[ReviewIssue] = []
+    prd_text = _prd_text(prd)
+
+    if _mentions_any(
+        prd_text,
+        ["login", "permission", "private project", "private projects", "auth", "鏉冮檺", "鐧诲綍"],
+    ):
+        issues.extend(_require_authenticated_project_apis(backend_design))
+
+    if _mentions_any(
+        prd_text,
+        ["history", "rag", "historical", "reuse", "鍘嗗彶", "鐭ヨ瘑澶嶇敤"],
+    ) and not _has_valid_retrieved_source(retrieved_sources or []):
+        issues.append(
+            _issue(
+                severity="HIGH",
+                issue_type="RAG_SOURCE_CITATION",
+                description="Historical reuse is requested but no retrieved artifact source is attached.",
+                suggestion="Attach approved artifact source references to Agent task input.",
+            )
+        )
+
+    if generated_files and any(_contains_secret_marker(file) for file in generated_files):
+        issues.append(
+            _issue(
+                severity="CRITICAL",
+                issue_type="CODE_EXPORT_SECRET",
+                description="Generated code skeleton contains secret-like configuration.",
+                suggestion="Use placeholder variables and .env.example only.",
+            )
+        )
+
+    return issues
+
+
 def score_from_issues(issues: list[ReviewIssue]) -> int:
-    severity_penalty = {"HIGH": 20, "MEDIUM": 10, "LOW": 5}
+    severity_penalty = {"CRITICAL": 30, "HIGH": 20, "MEDIUM": 10, "LOW": 5}
     penalty = sum(severity_penalty.get(issue.severity.upper(), 5) for issue in issues)
     return max(0, 100 - penalty)
 
@@ -295,3 +338,89 @@ def _require_architecture_text(
             suggestion=f"Document {required_term} ownership in the architecture design.",
         )
     ]
+
+
+def _require_authenticated_project_apis(backend_design: BackendDesignArtifact) -> list[ReviewIssue]:
+    issues: list[ReviewIssue] = []
+    for api in backend_design.apis:
+        if "/api/projects" not in api.path.lower():
+            continue
+        if api.auth_required and api.required_roles:
+            continue
+        issues.append(
+            _issue(
+                severity="HIGH",
+                issue_type="PERMISSION_BOUNDARY",
+                description=f"Project API '{api.path}' is outside the authenticated project/member boundary.",
+                suggestion="Require authentication and at least one project member role for project-scoped APIs.",
+            )
+        )
+    return issues
+
+
+def _has_valid_retrieved_source(retrieved_sources: list[dict[str, Any]]) -> bool:
+    for source in retrieved_sources:
+        if not isinstance(source, dict):
+            continue
+        if source.get("artifact_id") or source.get("document_id") or source.get("chunk_id"):
+            return True
+        if source.get("artifactType") or source.get("artifact_type") or source.get("title"):
+            return True
+    return False
+
+
+def _contains_secret_marker(generated_file: dict[str, Any] | str) -> bool:
+    text = generated_file if isinstance(generated_file, str) else str(generated_file.get("content", ""))
+    lower_text = text.lower()
+    for marker in ["api_key", "api-key", "apikey", "secret", "password", "token"]:
+        marker_index = lower_text.find(marker)
+        while marker_index >= 0:
+            value = _value_after_assignment(lower_text, marker_index + len(marker))
+            if value and not _is_placeholder_value(value):
+                return True
+            marker_index = lower_text.find(marker, marker_index + len(marker))
+    return False
+
+
+def _value_after_assignment(text: str, start_index: int) -> str | None:
+    remainder = text[start_index:].lstrip()
+    if not remainder or remainder[0] not in [":", "="]:
+        return None
+    value = remainder[1:].strip().strip("'\"")
+    if not value:
+        return None
+    return value.split()[0].strip(",").strip("'\"")
+
+
+def _is_placeholder_value(value: str) -> bool:
+    placeholder_terms = [
+        "",
+        "changeme",
+        "change-me",
+        "example",
+        "placeholder",
+        "replace_me",
+        "replace-me",
+        "todo",
+        "your-value",
+        "your_value",
+        "***",
+        "******",
+    ]
+    normalized = value.strip().lower()
+    return (
+        normalized in placeholder_terms
+        or normalized.startswith("${")
+        or normalized.startswith("<")
+        or normalized.startswith("your-")
+        or normalized.startswith("your_")
+    )
+
+
+def _issue(severity: str, issue_type: str, description: str, suggestion: str) -> ReviewIssue:
+    return ReviewIssue(
+        severity=severity,
+        issue_type=issue_type,
+        description=description,
+        suggestion=suggestion,
+    )

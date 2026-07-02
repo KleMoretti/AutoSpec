@@ -27,11 +27,14 @@ import {
   subscribeProjectEvents,
   updateArtifact
 } from '../api/projects';
+import { type WorkflowSnapshotResponse, getWorkflow } from '../api/v3';
 import AgentTimeline from '../components/AgentTimeline';
 import ArtifactTabs from '../components/ArtifactTabs';
+import CodeExportPanel from '../components/CodeExportPanel';
 import ExecutionEventList from '../components/ExecutionEventList';
 import PrdEditor from '../components/PrdEditor';
 import ReviewIssueTable from '../components/ReviewIssueTable';
+import WorkflowGraph from '../components/WorkflowGraph';
 
 function ProjectDetailPage() {
   const params = useParams();
@@ -40,6 +43,7 @@ function ProjectDetailPage() {
   const [artifacts, setArtifacts] = useState<ArtifactResponse[]>([]);
   const [review, setReview] = useState<ReviewResponse | null>(null);
   const [events, setEvents] = useState<AgentEventResponse[]>([]);
+  const [workflow, setWorkflow] = useState<WorkflowSnapshotResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [continuing, setContinuing] = useState(false);
@@ -61,16 +65,18 @@ function ProjectDetailPage() {
       return;
     }
     try {
-      const [nextProgress, nextArtifacts, nextReview, nextEvents] = await Promise.all([
+      const [nextProgress, nextArtifacts, nextReview, nextEvents, nextWorkflow] = await Promise.all([
         getProgress(projectId),
         getArtifacts(projectId),
         getReview(projectId).catch(() => null),
-        getEventHistory(projectId).catch(() => [])
+        getEventHistory(projectId).catch(() => []),
+        getWorkflow(projectId).catch(() => null)
       ]);
       setProgress(nextProgress);
       setArtifacts(nextArtifacts);
       setReview(nextReview);
       setEvents(nextEvents);
+      setWorkflow(nextWorkflow);
       setError(null);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Load failed');
@@ -295,7 +301,9 @@ function ProjectDetailPage() {
         <PrdEditor artifact={latestPrd} onSave={handleSavePrd} onApprove={handleApprovePrd} />
       ) : null}
       <AgentTimeline progress={progress} onRetryTask={handleRetryTask} retryingTaskId={retryingTaskId} />
+      <WorkflowGraph workflow={workflow} />
       {projectStatus === 'GENERATING' || events.length > 0 ? <ExecutionEventList events={events} /> : null}
+      {projectStatus === 'COMPLETED' ? <CodeExportPanel projectId={projectId} disabled={artifacts.length === 0} /> : null}
       <ArtifactTabs artifacts={artifacts} />
       <ReviewIssueTable review={review} />
     </main>

@@ -32,6 +32,8 @@ class AgentExecutionRecord:
     status: str
     duration_ms: int
     error_message: str | None = None
+    provider_key: str = "local"
+    model_name: str = "deterministic-fixture"
 
 
 @dataclass(frozen=True)
@@ -68,9 +70,10 @@ def run_v1_workflow(
     requirement: str,
     model_client: ModelClient | None = None,
     callbacks: list[Callback] | None = None,
+    retrieved_sources: list[dict[str, Any]] | None = None,
 ) -> WorkflowResult:
     workflow = build_v1_workflow(model_client=model_client, callbacks=callbacks or [])
-    state = workflow.invoke({"requirement": requirement, "records": []})
+    state = workflow.invoke({"requirement": requirement, "retrieved_sources": retrieved_sources or [], "records": []})
     return WorkflowResult(
         prd=state["prd"],
         backend_design=state["backend_design"],
@@ -83,12 +86,13 @@ def run_prd_workflow(
     requirement: str,
     model_client: ModelClient | None = None,
     callbacks: list[Callback] | None = None,
+    retrieved_sources: list[dict[str, Any]] | None = None,
 ) -> tuple[PrdArtifact, list[AgentExecutionRecord]]:
     prd, record = _execute_node(
         node_name="product_manager",
         agent_name=ProductManagerAgent.prompt_name,
-        input_payload={"requirement": requirement},
-        run=lambda: ProductManagerAgent(model_client).run(requirement),
+        input_payload={"requirement": requirement, "retrieved_sources": retrieved_sources or []},
+        run=lambda: ProductManagerAgent(model_client).run(requirement, retrieved_sources=retrieved_sources or []),
         callbacks=callbacks or [],
     )
     return prd, [record]
@@ -98,14 +102,21 @@ def run_v2_workflow(
     requirement: str,
     model_client: ModelClient | None = None,
     callbacks: list[Callback] | None = None,
+    retrieved_sources: list[dict[str, Any]] | None = None,
 ) -> WorkflowV2Result:
     callback_list = callbacks or []
-    prd, records = run_prd_workflow(requirement, model_client=model_client, callbacks=callback_list)
+    prd, records = run_prd_workflow(
+        requirement,
+        model_client=model_client,
+        callbacks=callback_list,
+        retrieved_sources=retrieved_sources,
+    )
     downstream = run_v2_continue_workflow(
         requirement,
         prd,
         model_client=model_client,
         callbacks=callback_list,
+        retrieved_sources=retrieved_sources,
     )
     return WorkflowV2Result(
         prd=prd,
@@ -122,6 +133,7 @@ def run_v2_continue_workflow(
     prd: PrdArtifact,
     model_client: ModelClient | None = None,
     callbacks: list[Callback] | None = None,
+    retrieved_sources: list[dict[str, Any]] | None = None,
 ) -> WorkflowV2Result:
     callback_list = callbacks or []
     records: list[AgentExecutionRecord] = []
@@ -129,8 +141,8 @@ def run_v2_continue_workflow(
     architecture_design, record = _execute_node(
         node_name="architect",
         agent_name=ArchitectAgent.prompt_name,
-        input_payload={"requirement": requirement, "prd": prd.model_dump()},
-        run=lambda: ArchitectAgent(model_client).run(requirement, prd),
+        input_payload={"requirement": requirement, "prd": prd.model_dump(), "retrieved_sources": retrieved_sources or []},
+        run=lambda: ArchitectAgent(model_client).run(requirement, prd, retrieved_sources=retrieved_sources or []),
         callbacks=callback_list,
     )
     records.append(record)
@@ -138,8 +150,8 @@ def run_v2_continue_workflow(
     backend_design, record = _execute_node(
         node_name="backend_engineer",
         agent_name=BackendEngineerAgent.prompt_name,
-        input_payload={"requirement": requirement, "prd": prd.model_dump()},
-        run=lambda: BackendEngineerAgent(model_client).run(requirement, prd),
+        input_payload={"requirement": requirement, "prd": prd.model_dump(), "retrieved_sources": retrieved_sources or []},
+        run=lambda: BackendEngineerAgent(model_client).run(requirement, prd, retrieved_sources=retrieved_sources or []),
         callbacks=callback_list,
     )
     records.append(record)
@@ -152,12 +164,14 @@ def run_v2_continue_workflow(
             "prd": prd.model_dump(),
             "architecture_design": architecture_design.model_dump(),
             "backend_design": backend_design.model_dump(),
+            "retrieved_sources": retrieved_sources or [],
         },
         run=lambda: FrontendEngineerAgent(model_client).run(
             requirement,
             prd,
             architecture_design,
             backend_design,
+            retrieved_sources=retrieved_sources or [],
         ),
         callbacks=callback_list,
     )
@@ -171,12 +185,14 @@ def run_v2_continue_workflow(
             "architecture_design": architecture_design.model_dump(),
             "backend_design": backend_design.model_dump(),
             "frontend_skeleton": frontend_skeleton.model_dump(),
+            "retrieved_sources": retrieved_sources or [],
         },
         run=lambda: ReviewerAgent(model_client).run(
             prd,
             backend_design,
             architecture_design,
             frontend_skeleton,
+            retrieved_sources=retrieved_sources or [],
         ),
         callbacks=callback_list,
     )
@@ -220,8 +236,14 @@ def build_v1_workflow(model_client: ModelClient | None, callbacks: list[Callback
         prd, record = _execute_node(
             node_name="product_manager",
             agent_name=ProductManagerAgent.prompt_name,
-            input_payload={"requirement": state["requirement"]},
-            run=lambda: ProductManagerAgent(model_client).run(state["requirement"]),
+            input_payload={
+                "requirement": state["requirement"],
+                "retrieved_sources": state.get("retrieved_sources", []),
+            },
+            run=lambda: ProductManagerAgent(model_client).run(
+                state["requirement"],
+                retrieved_sources=state.get("retrieved_sources", []),
+            ),
             callbacks=callbacks,
         )
         return {"prd": prd, "records": [*state["records"], record]}
@@ -233,8 +255,13 @@ def build_v1_workflow(model_client: ModelClient | None, callbacks: list[Callback
             input_payload={
                 "requirement": state["requirement"],
                 "prd": state["prd"].model_dump(),
+                "retrieved_sources": state.get("retrieved_sources", []),
             },
-            run=lambda: BackendEngineerAgent(model_client).run(state["requirement"], state["prd"]),
+            run=lambda: BackendEngineerAgent(model_client).run(
+                state["requirement"],
+                state["prd"],
+                retrieved_sources=state.get("retrieved_sources", []),
+            ),
             callbacks=callbacks,
         )
         return {"backend_design": backend_design, "records": [*state["records"], record]}
@@ -246,8 +273,13 @@ def build_v1_workflow(model_client: ModelClient | None, callbacks: list[Callback
             input_payload={
                 "prd": state["prd"].model_dump(),
                 "backend_design": state["backend_design"].model_dump(),
+                "retrieved_sources": state.get("retrieved_sources", []),
             },
-            run=lambda: ReviewerAgent(model_client).run(state["prd"], state["backend_design"]),
+            run=lambda: ReviewerAgent(model_client).run(
+                state["prd"],
+                state["backend_design"],
+                retrieved_sources=state.get("retrieved_sources", []),
+            ),
             callbacks=callbacks,
         )
         return {"review_report": review_report, "records": [*state["records"], record]}
@@ -274,8 +306,11 @@ class SequentialV1Workflow:
         prd, record = _execute_node(
             node_name="product_manager",
             agent_name=ProductManagerAgent.prompt_name,
-            input_payload={"requirement": requirement},
-            run=lambda: ProductManagerAgent(self.model_client).run(requirement),
+            input_payload={"requirement": requirement, "retrieved_sources": state.get("retrieved_sources", [])},
+            run=lambda: ProductManagerAgent(self.model_client).run(
+                requirement,
+                retrieved_sources=state.get("retrieved_sources", []),
+            ),
             callbacks=self.callbacks,
         )
         records.append(record)
@@ -283,8 +318,12 @@ class SequentialV1Workflow:
         backend_design, record = _execute_node(
             node_name="backend_engineer",
             agent_name=BackendEngineerAgent.prompt_name,
-            input_payload={"requirement": requirement, "prd": prd.model_dump()},
-            run=lambda: BackendEngineerAgent(self.model_client).run(requirement, prd),
+            input_payload={"requirement": requirement, "prd": prd.model_dump(), "retrieved_sources": state.get("retrieved_sources", [])},
+            run=lambda: BackendEngineerAgent(self.model_client).run(
+                requirement,
+                prd,
+                retrieved_sources=state.get("retrieved_sources", []),
+            ),
             callbacks=self.callbacks,
         )
         records.append(record)
@@ -295,8 +334,13 @@ class SequentialV1Workflow:
             input_payload={
                 "prd": prd.model_dump(),
                 "backend_design": backend_design.model_dump(),
+                "retrieved_sources": state.get("retrieved_sources", []),
             },
-            run=lambda: ReviewerAgent(self.model_client).run(prd, backend_design),
+            run=lambda: ReviewerAgent(self.model_client).run(
+                prd,
+                backend_design,
+                retrieved_sources=state.get("retrieved_sources", []),
+            ),
             callbacks=self.callbacks,
         )
         records.append(record)
@@ -327,16 +371,17 @@ def _run_v2_node_output(
     model_client: ModelClient | None,
 ) -> Any:
     requirement = _require_str(payload, "requirement") if node_name != "reviewer" else payload.get("requirement", "")
+    retrieved_sources = payload.get("retrieved_sources", [])
 
     if node_name == "product_manager":
-        return ProductManagerAgent(model_client).run(requirement)
+        return ProductManagerAgent(model_client).run(requirement, retrieved_sources=retrieved_sources)
 
     prd = PrdArtifact.model_validate(payload["prd"])
     if node_name == "architect":
-        return ArchitectAgent(model_client).run(requirement, prd)
+        return ArchitectAgent(model_client).run(requirement, prd, retrieved_sources=retrieved_sources)
 
     if node_name == "backend_engineer":
-        return BackendEngineerAgent(model_client).run(requirement, prd)
+        return BackendEngineerAgent(model_client).run(requirement, prd, retrieved_sources=retrieved_sources)
 
     backend_design = BackendDesignArtifact.model_validate(payload["backend_design"])
     architecture_design = ArchitectureDesignArtifact.model_validate(payload["architecture_design"])
@@ -346,6 +391,7 @@ def _run_v2_node_output(
             prd,
             architecture_design,
             backend_design,
+            retrieved_sources=retrieved_sources,
         )
 
     frontend_skeleton = FrontendSkeletonArtifact.model_validate(payload["frontend_skeleton"])
@@ -354,6 +400,9 @@ def _run_v2_node_output(
         backend_design,
         architecture_design,
         frontend_skeleton,
+        retrieved_sources=retrieved_sources,
+        generated_files=payload.get("generated_files", []),
+        model_invocations=payload.get("model_invocations", []),
     )
 
 

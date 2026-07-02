@@ -317,11 +317,18 @@ Implementation status on 2026-06-28: V2 code has been implemented across backend
 
 ## V3 Backlog
 
-- Add multi-model routing and result scoring.
-- Add historical project RAG.
-- Add Spring Boot / React code skeleton ZIP generation.
-- Add LangGraph workflow visualization.
-- Add permission model and user login.
+Canonical V3 plan: `docs/superpowers/plans/2026-06-28-autospec-v3-implementation-plan.md`.
+
+Planning status on 2026-06-28: V3 has been defined with `superpowers:writing-plans` and stored as a `ROADMAP_PLAN` artifact.
+
+Implementation status on 2026-06-29: V3 has been implemented in this workspace.
+
+- Implemented permission model and user login.
+- Implemented historical project RAG source retrieval and Agent context injection.
+- Implemented multi-model invocation logging and result scoring support.
+- Implemented Spring Boot / React code skeleton ZIP generation.
+- Implemented LangGraph workflow visualization.
+- Added V3 reviewer checks for permission boundaries, RAG source citation, and code export secrets.
 
 ## Verification Checklist
 

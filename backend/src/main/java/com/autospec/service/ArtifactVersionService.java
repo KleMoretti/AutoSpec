@@ -14,10 +14,16 @@ public class ArtifactVersionService {
 
     private final ArtifactService artifactService;
     private final ProjectService projectService;
+    private final KnowledgeIndexService knowledgeIndexService;
 
-    public ArtifactVersionService(ArtifactService artifactService, ProjectService projectService) {
+    public ArtifactVersionService(
+            ArtifactService artifactService,
+            ProjectService projectService,
+            KnowledgeIndexService knowledgeIndexService
+    ) {
         this.artifactService = artifactService;
         this.projectService = projectService;
+        this.knowledgeIndexService = knowledgeIndexService;
     }
 
     @Transactional
@@ -43,6 +49,7 @@ public class ArtifactVersionService {
         artifact.setStatus("APPROVED");
         artifact.setApprovedAt(LocalDateTime.now());
         artifactService.updateById(artifact);
+        knowledgeIndexService.indexApprovedArtifact(artifact);
         if ("PRD".equals(artifact.getType())) {
             Project project = requireProject(projectId);
             project.setStatus("PRD_APPROVED");

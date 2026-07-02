@@ -1,3 +1,5 @@
+import { readSession } from './auth';
+
 export interface CreateProjectPayload {
   name: string;
   requirement: string;
@@ -159,7 +161,9 @@ export function subscribeProjectEvents(
   onEvent: (event: AgentEventResponse) => void,
   onError?: (event: Event) => void
 ): EventSource {
-  const source = new EventSource(`/api/projects/${projectId}/events`);
+  const token = readSessionToken();
+  const query = token ? `?sessionToken=${encodeURIComponent(token)}` : '';
+  const source = new EventSource(`/api/projects/${projectId}/events${query}`);
   source.onmessage = (message) => onEvent(JSON.parse(message.data) as AgentEventResponse);
   if (onError) {
     source.onerror = onError;
@@ -183,9 +187,28 @@ export async function exportPdf(projectId: number): Promise<ExportMetadataRespon
 }
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = init === undefined ? await fetch(url) : await fetch(url, init);
+  const nextInit = withSessionHeader(init);
+  const response = nextInit === undefined ? await fetch(url) : await fetch(url, nextInit);
   if (!response.ok) {
     throw new Error(`Request failed: ${response.status}`);
   }
   return response.json() as Promise<T>;
+}
+
+function withSessionHeader(init?: RequestInit): RequestInit | undefined {
+  const sessionToken = readSessionToken();
+  if (!sessionToken) {
+    return init;
+  }
+  return {
+    ...init,
+    headers: {
+      ...(init?.headers as Record<string, string> | undefined),
+      'X-AutoSpec-Session-Token': sessionToken
+    }
+  };
+}
+
+function readSessionToken(): string | null {
+  return readSession()?.sessionToken ?? null;
 }

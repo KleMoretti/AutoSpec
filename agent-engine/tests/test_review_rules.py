@@ -1,4 +1,5 @@
-from review.rules import run_rule_checks, run_v2_rule_checks, score_from_issues
+from agents.reviewer import ReviewerAgent
+from review.rules import run_rule_checks, run_v2_rule_checks, run_v3_rule_checks, score_from_issues
 from schemas.backend_design import BackendDesignArtifact
 from schemas.prd import PrdArtifact
 from schemas.architecture_design import ArchitectureDesignArtifact
@@ -155,8 +156,8 @@ def _architecture_without_text(text: str) -> ArchitectureDesignArtifact:
     )
 
 
-def _backend_with_api(method: str, path: str) -> BackendDesignArtifact:
-    return _backend_design([_api(method, path, f"{method} {path}")])
+def _backend_with_api(method: str, path: str, auth_required: bool = True) -> BackendDesignArtifact:
+    return _backend_design([_api(method, path, f"{method} {path}", auth_required=auth_required)])
 
 
 def _frontend_without_api_binding(path: str) -> FrontendSkeletonArtifact:
@@ -314,3 +315,67 @@ def test_v2_reviewer_detects_architecture_missing_agent_event_storage():
     issues = run_v2_rule_checks(prd, architecture, backend_design, frontend)
 
     assert "event" in issues[0].description.lower()
+
+
+def test_v3_reviewer_detects_missing_permission_boundary():
+    prd = _prd_with_features("user login", "private projects")
+    backend_design = _backend_with_api(
+        "GET",
+        "/api/projects/{projectId}/artifacts",
+        auth_required=False,
+    )
+
+    issues = run_v3_rule_checks(
+        prd=prd,
+        backend_design=backend_design,
+        retrieved_sources=[],
+        generated_files=[],
+    )
+
+    assert issues[0].issue_type == "PERMISSION_BOUNDARY"
+    assert "authentication" in issues[0].suggestion.lower()
+
+
+def test_v3_reviewer_requires_rag_source_citations():
+    prd = _prd_with_features("historical project reuse")
+
+    issues = run_v3_rule_checks(
+        prd=prd,
+        backend_design=_backend_with_api("GET", "/api/projects"),
+        retrieved_sources=[],
+        generated_files=[],
+    )
+
+    assert issues[0].issue_type == "RAG_SOURCE_CITATION"
+    assert "source" in issues[0].description.lower()
+
+
+def test_v3_reviewer_detects_secret_like_generated_code():
+    prd = _prd_with_features("code skeleton export")
+
+    issues = run_v3_rule_checks(
+        prd=prd,
+        backend_design=_backend_with_api("GET", "/api/projects"),
+        retrieved_sources=[],
+        generated_files=[
+            {
+                "path": "backend/src/main/resources/application.yml",
+                "content": "spring.datasource.password=real-password",
+            }
+        ],
+    )
+
+    assert [issue.issue_type for issue in issues] == ["CODE_EXPORT_SECRET"]
+
+
+def test_reviewer_agent_appends_v3_rules_when_v3_context_is_present():
+    prd = _prd_with_features("historical project reuse")
+
+    report = ReviewerAgent().run(
+        prd,
+        _backend_with_api("GET", "/api/projects"),
+        retrieved_sources=[],
+        generated_files=[],
+    )
+
+    assert [issue.issue_type for issue in report.issues] == ["RAG_SOURCE_CITATION"]

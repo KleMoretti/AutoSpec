@@ -11,10 +11,16 @@ class BackendEngineerAgent:
     def __init__(self, model_client: ModelClient | None = None):
         self.model_client = model_client
 
-    def run(self, requirement: str, prd: PrdArtifact) -> BackendDesignArtifact:
+    def run(
+        self,
+        requirement: str,
+        prd: PrdArtifact,
+        retrieved_sources: list[dict[str, Any]] | None = None,
+    ) -> BackendDesignArtifact:
         input_payload: Mapping[str, Any] = {
             "requirement": requirement,
             "prd": prd.model_dump(),
+            "retrieved_sources": retrieved_sources or [],
         }
         if self.model_client is not None:
             return BackendDesignArtifact.model_validate(

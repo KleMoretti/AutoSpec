@@ -14,6 +14,7 @@ import {
   retryTask,
   updateArtifact
 } from './projects';
+import { generateCodeSkeleton, getWorkflow } from './v3';
 
 function jsonResponse(body: unknown) {
   return Promise.resolve({
@@ -32,6 +33,28 @@ describe('project api client', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     fetchMock.mockReset();
+  });
+
+  it('attaches the autospec session token header when a session exists', async () => {
+    const storage = new Map<string, string>();
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => storage.set(key, value),
+      removeItem: (key: string) => storage.delete(key)
+    });
+    localStorage.setItem(
+      'autospec.session',
+      JSON.stringify({ userId: 3, username: 'owner', displayName: 'Owner', sessionToken: 'session-abc' })
+    );
+    fetchMock.mockReturnValueOnce(jsonResponse({ projectId: 7, status: 'CREATED' }));
+
+    await createProject({ name: 'Campus Marketplace', requirement: 'Build it.' });
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/projects', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-AutoSpec-Session-Token': 'session-abc' },
+      body: JSON.stringify({ name: 'Campus Marketplace', requirement: 'Build it.' })
+    });
   });
 
   it('creates a project with name and requirement', async () => {
@@ -105,5 +128,36 @@ describe('project api client', () => {
     expect(fetchMock).toHaveBeenNthCalledWith(5, '/api/projects/7/events/history');
     expect(fetchMock).toHaveBeenNthCalledWith(6, '/api/projects/7/tasks/8/retry', { method: 'POST' });
     expect(fetchMock).toHaveBeenNthCalledWith(7, '/api/projects/7/export?format=PDF', { method: 'POST' });
+  });
+
+  it('supports v3 code skeleton export', async () => {
+    fetchMock.mockReturnValueOnce(
+      jsonResponse({
+        format: 'ZIP',
+        content: 'UEs=',
+        fileName: 'autospec-project-7-skeleton.zip',
+        mediaType: 'application/zip',
+        encoding: 'base64'
+      })
+    );
+
+    await expect(generateCodeSkeleton(7)).resolves.toMatchObject({ format: 'ZIP' });
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/projects/7/code-skeleton', { method: 'POST' });
+  });
+
+  it('supports v3 workflow graph retrieval', async () => {
+    fetchMock.mockReturnValueOnce(
+      jsonResponse({
+        workflowKey: 'autospec-v3',
+        version: 'v3',
+        nodes: [{ id: 'product_manager', label: 'Product Manager' }],
+        edges: []
+      })
+    );
+
+    await expect(getWorkflow(7)).resolves.toMatchObject({ workflowKey: 'autospec-v3' });
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/projects/7/workflow');
   });
 });

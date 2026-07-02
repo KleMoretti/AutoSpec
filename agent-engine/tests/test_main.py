@@ -14,6 +14,29 @@ def test_generate_prd_endpoint_runs_product_manager_only():
     body = response.json()
     assert body["prd"]["project_name"]
     assert [record["node_name"] for record in body["records"]] == ["product_manager"]
+    assert body["records"][0]["provider_key"] == "local"
+    assert body["records"][0]["model_name"] == "deterministic-fixture"
+
+
+def test_generate_accepts_retrieved_sources():
+    response = client.post(
+        "/generate",
+        json={
+            "requirement": "Build favorite products.",
+            "retrieved_sources": [
+                {
+                    "artifact_id": 9,
+                    "artifact_type": "PRD",
+                    "title": "Marketplace PRD",
+                    "content": "Favorites require create and delete APIs.",
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    first_record = response.json()["records"][0]
+    assert first_record["input_payload"]["retrieved_sources"][0]["artifact_id"] == 9
 
 
 def test_generate_v2_continue_endpoint_uses_approved_prd_payload():

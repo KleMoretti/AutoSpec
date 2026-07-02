@@ -3,15 +3,21 @@ package com.autospec;
 import com.autospec.entity.AgentTask;
 import com.autospec.entity.AgentEvent;
 import com.autospec.entity.Artifact;
+import com.autospec.entity.ProjectMember;
 import com.autospec.entity.PromptVersion;
 import com.autospec.entity.Project;
 import com.autospec.entity.ReviewIssue;
+import com.autospec.entity.UserAccount;
+import com.autospec.entity.WorkflowSnapshot;
 import com.autospec.service.AgentEventService;
 import com.autospec.service.AgentTaskService;
 import com.autospec.service.ArtifactService;
+import com.autospec.service.ProjectMemberService;
 import com.autospec.service.PromptVersionService;
 import com.autospec.service.ProjectService;
 import com.autospec.service.ReviewIssueService;
+import com.autospec.service.UserAccountService;
+import com.autospec.service.WorkflowSnapshotService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -42,6 +48,15 @@ class CoreDataModelTest {
 
     @Autowired
     private ReviewIssueService reviewIssueService;
+
+    @Autowired
+    private UserAccountService userAccountService;
+
+    @Autowired
+    private ProjectMemberService projectMemberService;
+
+    @Autowired
+    private WorkflowSnapshotService workflowSnapshotService;
 
     @Test
     void persistsProjectArtifactsAgentTasksAndReviewIssues() {
@@ -130,5 +145,25 @@ class CoreDataModelTest {
                 .eq(ReviewIssue::getProjectId, project.getId())
                 .eq(ReviewIssue::getStatus, "OPEN")
                 .count()).isEqualTo(1);
+
+        UserAccount user = new UserAccount();
+        user.setUsername("alice");
+        user.setDisplayName("Alice");
+        user.setPasswordHash("sha256:test");
+        user.setEnabled(true);
+        assertThat(userAccountService.save(user)).isTrue();
+
+        ProjectMember member = new ProjectMember();
+        member.setProjectId(project.getId());
+        member.setUserId(user.getId());
+        member.setRole("OWNER");
+        assertThat(projectMemberService.save(member)).isTrue();
+
+        WorkflowSnapshot snapshot = new WorkflowSnapshot();
+        snapshot.setProjectId(project.getId());
+        snapshot.setWorkflowKey("autospec-v3");
+        snapshot.setVersion("v3");
+        snapshot.setGraphJson("{\"nodes\":[\"product_manager\"],\"edges\":[]}");
+        assertThat(workflowSnapshotService.save(snapshot)).isTrue();
     }
 }

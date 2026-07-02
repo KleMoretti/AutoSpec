@@ -41,6 +41,41 @@ class SchemaInitSqlTest {
         }
     }
 
+    @Test
+    void flywayMigrationsCreateV3TablesAndColumns() throws Exception {
+        JdbcDataSource dataSource = new JdbcDataSource();
+        dataSource.setURL("jdbc:h2:mem:v3_schema;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1");
+        dataSource.setUser("sa");
+        dataSource.setPassword("");
+
+        Flyway.configure()
+                .dataSource(dataSource)
+                .locations("classpath:db/migration")
+                .load()
+                .migrate();
+
+        try (Connection connection = dataSource.getConnection()) {
+            assertThatCode(() -> execute(connection, "select username, display_name, password_hash, enabled from user_account where 1 = 0"))
+                    .doesNotThrowAnyException();
+            assertThatCode(() -> execute(connection, "select project_id, user_id, role from project_member where 1 = 0"))
+                    .doesNotThrowAnyException();
+            assertThatCode(() -> execute(connection, "select artifact_id, artifact_type, artifact_version from knowledge_document where 1 = 0"))
+                    .doesNotThrowAnyException();
+            assertThatCode(() -> execute(connection, "select document_id, chunk_index, retrieval_terms from knowledge_chunk where 1 = 0"))
+                    .doesNotThrowAnyException();
+            assertThatCode(() -> execute(connection, "select provider_key, model_name, agent_node from model_config where 1 = 0"))
+                    .doesNotThrowAnyException();
+            assertThatCode(() -> execute(connection, "select project_id, task_id, provider_key, model_name, status, duration_ms, score from model_invocation where 1 = 0"))
+                    .doesNotThrowAnyException();
+            assertThatCode(() -> execute(connection, "select project_id, status, manifest, completed_at from code_generation_job where 1 = 0"))
+                    .doesNotThrowAnyException();
+            assertThatCode(() -> execute(connection, "select project_id, file_name, media_type, encoding from export_file where 1 = 0"))
+                    .doesNotThrowAnyException();
+            assertThatCode(() -> execute(connection, "select project_id, workflow_key, version, graph_json from workflow_snapshot where 1 = 0"))
+                    .doesNotThrowAnyException();
+        }
+    }
+
     private void execute(Connection connection, String sql) throws Exception {
         try (Statement statement = connection.createStatement()) {
             assertThat(statement.execute(sql)).isTrue();

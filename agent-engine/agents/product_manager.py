@@ -10,8 +10,15 @@ class ProductManagerAgent:
     def __init__(self, model_client: ModelClient | None = None):
         self.model_client = model_client
 
-    def run(self, requirement: str) -> PrdArtifact:
-        input_payload: Mapping[str, Any] = {"requirement": requirement}
+    def run(
+        self,
+        requirement: str,
+        retrieved_sources: list[dict[str, Any]] | None = None,
+    ) -> PrdArtifact:
+        input_payload: Mapping[str, Any] = {
+            "requirement": requirement,
+            "retrieved_sources": retrieved_sources or [],
+        }
         if self.model_client is not None:
             return PrdArtifact.model_validate(
                 self.model_client.generate_json(self.prompt_name, input_payload)

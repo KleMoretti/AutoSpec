@@ -1,5 +1,6 @@
 package com.autospec.service;
 
+import com.autospec.dto.KnowledgeSourceResponse;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
@@ -30,10 +31,15 @@ public class HttpAgentEngineClient implements AgentEngineClient {
 
     @Override
     public AgentGenerationResult generate(String requirement) {
+        return generate(requirement, List.of());
+    }
+
+    @Override
+    public AgentGenerationResult generate(String requirement, List<KnowledgeSourceResponse> retrievedSources) {
         JsonNode root = restClient.post()
                 .uri("/generate")
                 .contentType(MediaType.APPLICATION_JSON)
-                .body(Map.of("requirement", requirement))
+                .body(Map.of("requirement", requirement, "retrieved_sources", retrievedSources))
                 .retrieve()
                 .body(JsonNode.class);
 
@@ -42,10 +48,15 @@ public class HttpAgentEngineClient implements AgentEngineClient {
 
     @Override
     public AgentGenerationResult generatePrd(String requirement) {
+        return generatePrd(requirement, List.of());
+    }
+
+    @Override
+    public AgentGenerationResult generatePrd(String requirement, List<KnowledgeSourceResponse> retrievedSources) {
         JsonNode root = restClient.post()
                 .uri("/generate/prd")
                 .contentType(MediaType.APPLICATION_JSON)
-                .body(Map.of("requirement", requirement))
+                .body(Map.of("requirement", requirement, "retrieved_sources", retrievedSources))
                 .retrieve()
                 .body(JsonNode.class);
 
@@ -54,6 +65,15 @@ public class HttpAgentEngineClient implements AgentEngineClient {
 
     @Override
     public AgentGenerationResult continueAfterPrd(String requirement, String approvedPrdJson) {
+        return continueAfterPrd(requirement, approvedPrdJson, List.of());
+    }
+
+    @Override
+    public AgentGenerationResult continueAfterPrd(
+            String requirement,
+            String approvedPrdJson,
+            List<KnowledgeSourceResponse> retrievedSources
+    ) {
         JsonNode prd;
         try {
             prd = objectMapper.readTree(approvedPrdJson);
@@ -63,7 +83,7 @@ public class HttpAgentEngineClient implements AgentEngineClient {
         JsonNode root = restClient.post()
                 .uri("/generate/v2/continue")
                 .contentType(MediaType.APPLICATION_JSON)
-                .body(Map.of("requirement", requirement, "prd", prd))
+                .body(Map.of("requirement", requirement, "prd", prd, "retrieved_sources", retrievedSources))
                 .retrieve()
                 .body(JsonNode.class);
 
@@ -130,7 +150,9 @@ public class HttpAgentEngineClient implements AgentEngineClient {
                 recordNode.path("duration_ms").isMissingNode() || recordNode.path("duration_ms").isNull()
                         ? null
                         : recordNode.path("duration_ms").asInt(),
-                text(recordNode, "prompt_key")
+                text(recordNode, "prompt_key"),
+                text(recordNode, "provider_key"),
+                text(recordNode, "model_name")
         );
     }
 

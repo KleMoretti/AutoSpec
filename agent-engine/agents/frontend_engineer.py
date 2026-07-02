@@ -19,12 +19,14 @@ class FrontendEngineerAgent:
         prd: PrdArtifact,
         architecture_design: ArchitectureDesignArtifact,
         backend_design: BackendDesignArtifact,
+        retrieved_sources: list[dict[str, Any]] | None = None,
     ) -> FrontendSkeletonArtifact:
         input_payload: Mapping[str, Any] = {
             "requirement": requirement,
             "prd": prd.model_dump(),
             "architecture_design": architecture_design.model_dump(),
             "backend_design": backend_design.model_dump(),
+            "retrieved_sources": retrieved_sources or [],
         }
         if self.model_client is not None:
             return FrontendSkeletonArtifact.model_validate(
