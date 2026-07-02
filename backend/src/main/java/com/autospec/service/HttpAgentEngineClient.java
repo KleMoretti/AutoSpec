@@ -124,6 +124,7 @@ public class HttpAgentEngineClient implements AgentEngineClient {
                 nullableJson(root.get("backend_design")),
                 nullableJson(root.get("frontend_skeleton")),
                 nullableJson(root.get("review_report")),
+                nullableJson(root.get("evaluation_report")),
                 records(root.path("records"))
         );
     }

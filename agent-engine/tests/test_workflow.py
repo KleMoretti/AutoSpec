@@ -1,4 +1,5 @@
-from graph.workflow import run_v1_workflow, run_v2_node, run_v2_workflow
+from graph.workflow import run_v1_workflow, run_v2_node, run_v2_workflow, run_v4_workflow
+from main import v4_response
 
 
 class FakeModelClient:
@@ -377,3 +378,42 @@ def test_run_v2_node_runs_single_frontend_engineer_node():
 
     assert result.node_name == "frontend_engineer"
     assert result.output_payload["routes"][0]["page"] == "ProjectDetailPage"
+
+
+def test_v4_workflow_appends_evaluator_report_after_reviewer():
+    records = []
+    model_client = V2FakeModelClient()
+
+    result = run_v4_workflow(
+        "Build AutoSpec V4 with Agent orchestration evaluation.",
+        model_client=model_client,
+        callbacks=[records.append],
+        retrieved_sources=[{"artifact_id": 9, "title": "Approved V3 Plan"}],
+    )
+
+    assert [record.node_name for record in result.records] == [
+        "product_manager",
+        "architect",
+        "backend_engineer",
+        "frontend_engineer",
+        "reviewer",
+        "evaluator",
+    ]
+    assert result.evaluation_report.overall_score >= 80
+    assert result.evaluation_report.dimension("RUNTIME_RELIABILITY").score == 100
+    evaluator_record = result.records[-1]
+    assert evaluator_record.agent_name == "EvaluatorAgent_v1"
+    assert evaluator_record.output_payload["final_grade"] in ["A", "B"]
+
+
+def test_v4_response_serializes_evaluation_report():
+    result = run_v4_workflow(
+        "Build AutoSpec V4 with Agent orchestration evaluation.",
+        model_client=V2FakeModelClient(),
+        retrieved_sources=[{"artifact_id": 9, "title": "Approved V3 Plan"}],
+    )
+
+    response = v4_response(result)
+
+    assert response["evaluation_report"]["overall_score"] == result.evaluation_report.overall_score
+    assert response["records"][-1]["node_name"] == "evaluator"

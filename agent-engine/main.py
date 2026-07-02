@@ -5,11 +5,13 @@ from graph.workflow import (
     AgentExecutionRecord,
     WorkflowResult,
     WorkflowV2Result,
+    WorkflowV4Result,
     run_prd_workflow,
     run_v1_workflow,
     run_v2_continue_workflow,
     run_v2_node,
     run_v2_workflow,
+    run_v4_workflow,
 )
 from schemas.prd import PrdArtifact
 
@@ -53,6 +55,11 @@ def generate_v2(request: GenerateRequest) -> dict:
     return v2_response(run_v2_workflow(request.requirement, retrieved_sources=request.retrieved_sources))
 
 
+@app.post("/generate/v4")
+def generate_v4(request: GenerateRequest) -> dict:
+    return v4_response(run_v4_workflow(request.requirement, retrieved_sources=request.retrieved_sources))
+
+
 @app.post("/generate/v2/continue")
 def generate_v2_continue(request: ContinueV2Request) -> dict:
     prd = PrdArtifact.model_validate(request.prd)
@@ -85,6 +92,12 @@ def v2_response(result: WorkflowV2Result) -> dict:
         "review_report": result.review_report.model_dump(),
         "records": [record_response(record) for record in result.records],
     }
+
+
+def v4_response(result: WorkflowV4Result) -> dict:
+    response = v2_response(result)
+    response["evaluation_report"] = result.evaluation_report.model_dump()
+    return response
 
 
 def record_response(record: AgentExecutionRecord) -> dict:

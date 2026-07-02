@@ -34,6 +34,15 @@ public class AgentOrchestrationService {
             "ReviewerAgent_v1"
     );
 
+    private static final List<String> V4_AGENTS = List.of(
+            "ProductManagerAgent_v1",
+            "ArchitectAgent_v1",
+            "BackendEngineerAgent_v1",
+            "FrontendEngineerAgent_v1",
+            "ReviewerAgent_v1",
+            "EvaluatorAgent_v1"
+    );
+
     private final ProjectService projectService;
     private final AgentTaskService agentTaskService;
     private final ArtifactService artifactService;
@@ -89,6 +98,7 @@ public class AgentOrchestrationService {
         saveArtifact(projectId, "PRD", project.getName() + " PRD", generationResult.prdJson(), "ProductManagerAgent_v1", "GENERATED");
         saveArtifact(projectId, "BACKEND_DESIGN", project.getName() + " Backend Design", generationResult.backendDesignJson(), "BackendEngineerAgent_v1", "GENERATED");
         saveArtifact(projectId, "REVIEW_REPORT", project.getName() + " Review Report", generationResult.reviewReportJson(), "ReviewerAgent_v1", "GENERATED");
+        saveArtifact(projectId, "EVALUATION_REPORT", project.getName() + " Evaluation Report", generationResult.evaluationReportJson(), "EvaluatorAgent_v1", "GENERATED");
         saveReviewIssues(projectId, generationResult.reviewReportJson());
 
         project.setStatus("COMPLETED");
@@ -142,6 +152,7 @@ public class AgentOrchestrationService {
         saveArtifact(projectId, "BACKEND_DESIGN", project.getName() + " Backend Design", result.backendDesignJson(), "BackendEngineerAgent_v1", "GENERATED");
         saveArtifact(projectId, "FRONTEND_SKELETON", project.getName() + " Frontend Skeleton", result.frontendSkeletonJson(), "FrontendEngineerAgent_v1", "GENERATED");
         saveArtifact(projectId, "REVIEW_REPORT", project.getName() + " Review Report", result.reviewReportJson(), "ReviewerAgent_v1", "GENERATED");
+        saveArtifact(projectId, "EVALUATION_REPORT", project.getName() + " Evaluation Report", result.evaluationReportJson(), "EvaluatorAgent_v1", "GENERATED");
         saveReviewIssues(projectId, result.reviewReportJson());
 
         project.setStatus("COMPLETED");
@@ -240,6 +251,9 @@ public class AgentOrchestrationService {
         if (generationResult.reviewReportJson() != null) {
             recordTask(projectId, new AgentEngineExecutionRecord("reviewer", "ReviewerAgent_v1", "SUCCEEDED", null, generationResult.reviewReportJson(), null, null, "ReviewerAgent"), null);
         }
+        if (generationResult.evaluationReportJson() != null) {
+            recordTask(projectId, new AgentEngineExecutionRecord("evaluator", "EvaluatorAgent_v1", "SUCCEEDED", null, generationResult.evaluationReportJson(), null, null, "EvaluatorAgent"), null);
+        }
     }
 
     private AgentTask recordTask(Long projectId, AgentEngineExecutionRecord record, Long retryOfTaskId) {
@@ -316,7 +330,7 @@ public class AgentOrchestrationService {
     }
 
     private String nextAgentName(List<AgentTask> tasks) {
-        List<String> expected = isV2(tasks) ? V2_AGENTS : V1_AGENTS;
+        List<String> expected = isV4(tasks) ? V4_AGENTS : isV2(tasks) ? V2_AGENTS : V1_AGENTS;
         List<String> finished = tasks.stream()
                 .filter(task -> "SUCCEEDED".equals(task.getStatus()))
                 .map(AgentTask::getAgentName)
@@ -334,9 +348,15 @@ public class AgentOrchestrationService {
         if (tasks.isEmpty()) {
             return 0;
         }
-        int denominator = isV2(tasks) ? V2_AGENTS.size() : V1_AGENTS.size();
+        int denominator = isV4(tasks) ? V4_AGENTS.size() : isV2(tasks) ? V2_AGENTS.size() : V1_AGENTS.size();
         long succeeded = tasks.stream().filter(task -> "SUCCEEDED".equals(task.getStatus())).count();
         return Math.min((int) Math.round((succeeded * 100.0) / denominator), 100);
+    }
+
+    private boolean isV4(List<AgentTask> tasks) {
+        return tasks.stream().anyMatch(task ->
+                "EvaluatorAgent_v1".equals(task.getAgentName())
+                        || "evaluator".equals(task.getNodeName()));
     }
 
     private boolean isV2(List<AgentTask> tasks) {
@@ -358,6 +378,8 @@ public class AgentOrchestrationService {
         } else if ("reviewer".equals(nodeName)) {
             saveArtifact(projectId, "REVIEW_REPORT", project.getName() + " Review Report", outputJson, "ReviewerAgent_v1", "GENERATED");
             saveReviewIssues(projectId, outputJson);
+        } else if ("evaluator".equals(nodeName)) {
+            saveArtifact(projectId, "EVALUATION_REPORT", project.getName() + " Evaluation Report", outputJson, "EvaluatorAgent_v1", "GENERATED");
         }
     }
 
@@ -381,6 +403,7 @@ public class AgentOrchestrationService {
             case "BackendEngineerAgent_v1" -> "backend_engineer";
             case "FrontendEngineerAgent_v1" -> "frontend_engineer";
             case "ReviewerAgent_v1" -> "reviewer";
+            case "EvaluatorAgent_v1" -> "evaluator";
             default -> agentName;
         };
     }

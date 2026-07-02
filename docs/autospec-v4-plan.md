@@ -22,6 +22,19 @@ The target positioning is:
 
 > AutoSpec is a multi-agent SOP orchestration and evaluation platform for software requirements engineering. It turns natural-language requirements into structured software artifacts, then evaluates completeness, consistency, permissions, API/database alignment, and frontend coverage through rule-based and LLM-assisted reviewers.
 
+## Implementation Status
+
+Updated on `2026-07-02`.
+
+| ID | Status | Evidence |
+| --- | --- | --- |
+| V4-01 | DONE | `agent-engine/schemas/workflow_spec.py`, `agent-engine/graph/workflow_specs.py`, `agent-engine/tests/test_workflow_spec.py` |
+| V4-02 | DONE | V4 workflow node specs declare input/output schema, prompt version, model policy, retry policy, timeout, human gate, artifact type, and dependencies. |
+| V4-03 | PARTIAL | `EvaluationCase` schema exists in `agent-engine/schemas/evaluation.py`; full benchmark case catalog is still pending. |
+| V4-04 | DONE | `agent-engine/review/evaluator.py`, `agent-engine/tests/test_evaluator.py`, `run_v4_workflow()`, `/generate/v4`, backend `EVALUATION_REPORT` persistence. |
+| V4-05 | TODO | Experiment comparison model/API is not implemented yet. |
+| V4-06 | PARTIAL | `README.md` and `docs/examples/v4-sample-artifacts.md` added; demo assets can still be expanded. |
+
 ## Scope
 
 | ID | Title | Priority | Status | Description | Deliverables |
