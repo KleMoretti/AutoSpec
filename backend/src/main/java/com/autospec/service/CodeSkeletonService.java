@@ -37,37 +37,47 @@ public class CodeSkeletonService {
         this.objectMapper = objectMapper;
     }
 
-    @Transactional
+    @Transactional(noRollbackFor = RuntimeException.class)
     public CodeGenerationResponse generate(Long projectId) {
         CodeGenerationJob job = new CodeGenerationJob();
         job.setProjectId(projectId);
         job.setStatus("RUNNING");
         codeGenerationJobService.save(job);
 
-        List<Artifact> artifacts = artifactService.lambdaQuery()
-                .eq(Artifact::getProjectId, projectId)
-                .orderByAsc(Artifact::getId)
-                .list();
-        byte[] zipBytes = zip(projectId, artifacts);
-        String content = Base64.getEncoder().encodeToString(zipBytes);
-        String fileName = "autospec-project-" + projectId + "-skeleton.zip";
-        String manifest = manifestJson(projectId, artifacts);
+        try {
+            List<Artifact> artifacts = artifactService.lambdaQuery()
+                    .eq(Artifact::getProjectId, projectId)
+                    .orderByAsc(Artifact::getId)
+                    .list();
+            byte[] zipBytes = zip(projectId, artifacts);
+            String content = Base64.getEncoder().encodeToString(zipBytes);
+            String fileName = "autospec-project-" + projectId + "-skeleton.zip";
+            String manifest = manifestJson(projectId, artifacts);
 
-        job.setStatus("SUCCEEDED");
-        job.setManifest(manifest);
-        job.setCompletedAt(LocalDateTime.now());
-        codeGenerationJobService.updateById(job);
+            job.setStatus("SUCCEEDED");
+            job.setManifest(manifest);
+            job.setCompletedAt(LocalDateTime.now());
+            codeGenerationJobService.updateById(job);
 
-        ExportFile file = new ExportFile();
-        file.setProjectId(projectId);
-        file.setJobId(job.getId());
-        file.setFileName(fileName);
-        file.setMediaType("application/zip");
-        file.setEncoding("base64");
-        file.setContent(content);
-        exportFileService.save(file);
+            ExportFile file = new ExportFile();
+            file.setProjectId(projectId);
+            file.setJobId(job.getId());
+            file.setFileName(fileName);
+            file.setMediaType("application/zip");
+            file.setEncoding("base64");
+            file.setContent(content);
+            exportFileService.save(file);
 
-        return new CodeGenerationResponse("ZIP", content, fileName, "application/zip", "base64");
+            return new CodeGenerationResponse("ZIP", content, fileName, "application/zip", "base64");
+        } catch (RuntimeException ex) {
+            job.setStatus("FAILED");
+            job.setErrorMessage(ex.getMessage() == null || ex.getMessage().isBlank()
+                    ? ex.getClass().getSimpleName()
+                    : ex.getMessage());
+            job.setCompletedAt(LocalDateTime.now());
+            codeGenerationJobService.updateById(job);
+            throw ex;
+        }
     }
 
     private byte[] zip(Long projectId, List<Artifact> artifacts) {
