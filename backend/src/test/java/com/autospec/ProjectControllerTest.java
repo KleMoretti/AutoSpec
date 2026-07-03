@@ -466,6 +466,33 @@ class ProjectControllerTest {
         assertThat(projectService.getById(projectId).getStatus()).isEqualTo("FAILED");
     }
 
+    @Test
+    void workflowRunHistoryReturnsProjectScopedRunsAndRequiresMembership() throws Exception {
+        String token = loginToken();
+        when(agentEngineClient.generateV4(contains("observable generation"), anyList()))
+                .thenReturn(agentResultWithEvaluationReport());
+
+        long projectId = createProject(token, "Observable V4 Project", "Build observable generation.");
+        mockMvc.perform(post("/api/projects/{projectId}/generate-v4", projectId)
+                        .header(SESSION_HEADER, token)
+                        .header("Idempotency-Key", "observable-run-key"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/projects/{projectId}/workflow-runs", projectId))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(get("/api/projects/{projectId}/workflow-runs", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].operation").value("GENERATE_V4"))
+                .andExpect(jsonPath("$[0].idempotencyKey").value("observable-run-key"))
+                .andExpect(jsonPath("$[0].status").value("COMPLETED"))
+                .andExpect(jsonPath("$[0].responseStatus").value("COMPLETED"))
+                .andExpect(jsonPath("$[0].responsePercent").value(100))
+                .andExpect(jsonPath("$[0].startedAt").isString())
+                .andExpect(jsonPath("$[0].completedAt").isString());
+    }
+
     private String loginToken() throws Exception {
         String response = mockMvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)

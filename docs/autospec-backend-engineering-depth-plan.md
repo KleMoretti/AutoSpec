@@ -39,7 +39,7 @@ Updated on `2026-07-03`.
 | ID | Status | Evidence |
 | --- | --- | --- |
 | BE-02 | PARTIAL | `workflow_run` table in `V6__workflow_run_idempotency.sql`, V4 generation `Idempotency-Key` handling, duplicate request and failed-run regressions in `ProjectControllerTest`. |
-| BE-04 | PARTIAL | Failed V4 Agent Engine calls persist `workflow_run.status = FAILED`, `error_message`, and `completed_at`; project status is moved to `FAILED`. |
+| BE-04 | PARTIAL | Failed V4 Agent Engine calls persist `workflow_run.status = FAILED`, `error_message`, and `completed_at`; project status is moved to `FAILED`; project members can query run history through `GET /api/projects/{projectId}/workflow-runs`. |
 | BE-06 | PARTIAL | `ApiErrorResponse`, `GlobalExceptionHandler`, validation and `ResponseStatusException` regression tests in `ApiErrorResponseTest`. |
 | BE-08 | PARTIAL | Flyway migration coverage for `workflow_run` in `SchemaInitSqlTest`. |
 
