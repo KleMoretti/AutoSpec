@@ -107,10 +107,11 @@ public class ProjectController {
     @PostMapping("/{projectId}/generate-v4")
     public GenerateProjectResponse generateV4(
             @PathVariable Long projectId,
-            @RequestHeader(value = "X-AutoSpec-Session-Token", required = false) String sessionToken
+            @RequestHeader(value = "X-AutoSpec-Session-Token", required = false) String sessionToken,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey
     ) {
         requireEditor(projectId, sessionToken);
-        ProjectProgressResponse progress = agentOrchestrationService.generateV4(projectId);
+        ProjectProgressResponse progress = agentOrchestrationService.generateV4(projectId, idempotencyKey);
         return new GenerateProjectResponse(projectId, progress.status(), progress.percent());
     }
 

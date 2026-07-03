@@ -34,6 +34,7 @@ import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import org.mockito.ArgumentCaptor;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -396,6 +397,35 @@ class ProjectControllerTest {
                 .andExpect(jsonPath("$.percent").value(100));
 
         verify(agentEngineClient).generateV4(eq("Build agent evaluation."), anyList());
+        assertThat(artifactService.lambdaQuery()
+                .eq(Artifact::getProjectId, projectId)
+                .eq(Artifact::getType, "EVALUATION_REPORT")
+                .count()).isEqualTo(1);
+    }
+
+    @Test
+    void generateV4EndpointUsesIdempotencyKeyToAvoidDuplicateAgentRuns() throws Exception {
+        String token = loginToken();
+        when(agentEngineClient.generateV4(contains("duplicate generation"), anyList()))
+                .thenReturn(agentResultWithEvaluationReport());
+
+        long projectId = createProject(token, "Idempotent V4 Project", "Build duplicate generation.");
+
+        mockMvc.perform(post("/api/projects/{projectId}/generate-v4", projectId)
+                        .header(SESSION_HEADER, token)
+                        .header("Idempotency-Key", "same-run-key"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("COMPLETED"))
+                .andExpect(jsonPath("$.percent").value(100));
+
+        mockMvc.perform(post("/api/projects/{projectId}/generate-v4", projectId)
+                        .header(SESSION_HEADER, token)
+                        .header("Idempotency-Key", "same-run-key"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("COMPLETED"))
+                .andExpect(jsonPath("$.percent").value(100));
+
+        verify(agentEngineClient, times(1)).generateV4(eq("Build duplicate generation."), anyList());
         assertThat(artifactService.lambdaQuery()
                 .eq(Artifact::getProjectId, projectId)
                 .eq(Artifact::getType, "EVALUATION_REPORT")

@@ -6,6 +6,7 @@ import com.autospec.entity.AgentTask;
 import com.autospec.entity.Artifact;
 import com.autospec.entity.Project;
 import com.autospec.entity.ReviewIssue;
+import com.autospec.entity.WorkflowRun;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.http.HttpStatus;
@@ -54,6 +55,7 @@ public class AgentOrchestrationService {
     private final KnowledgeIndexService knowledgeIndexService;
     private final ModelInvocationService modelInvocationService;
     private final WorkflowSnapshotService workflowSnapshotService;
+    private final WorkflowRunService workflowRunService;
     private final ObjectMapper objectMapper;
 
     public AgentOrchestrationService(
@@ -68,6 +70,7 @@ public class AgentOrchestrationService {
             KnowledgeIndexService knowledgeIndexService,
             ModelInvocationService modelInvocationService,
             WorkflowSnapshotService workflowSnapshotService,
+            WorkflowRunService workflowRunService,
             ObjectMapper objectMapper
     ) {
         this.projectService = projectService;
@@ -81,6 +84,7 @@ public class AgentOrchestrationService {
         this.knowledgeIndexService = knowledgeIndexService;
         this.modelInvocationService = modelInvocationService;
         this.workflowSnapshotService = workflowSnapshotService;
+        this.workflowRunService = workflowRunService;
         this.objectMapper = objectMapper;
     }
 
@@ -104,6 +108,43 @@ public class AgentOrchestrationService {
         project.setStatus("COMPLETED");
         projectService.updateById(project);
         return progress(projectId);
+    }
+
+    @Transactional
+    public ProjectProgressResponse generateV4(Long projectId, String idempotencyKey) {
+        String normalizedKey = normalizeIdempotencyKey(idempotencyKey);
+        if (normalizedKey == null) {
+            return generateV4(projectId);
+        }
+
+        WorkflowRun existing = workflowRunService.lambdaQuery()
+                .eq(WorkflowRun::getProjectId, projectId)
+                .eq(WorkflowRun::getOperation, "GENERATE_V4")
+                .eq(WorkflowRun::getIdempotencyKey, normalizedKey)
+                .oneOpt()
+                .orElse(null);
+        if (existing != null) {
+            if ("COMPLETED".equals(existing.getStatus())) {
+                return progress(projectId);
+            }
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Workflow run is already in progress");
+        }
+
+        WorkflowRun run = new WorkflowRun();
+        run.setProjectId(projectId);
+        run.setOperation("GENERATE_V4");
+        run.setIdempotencyKey(normalizedKey);
+        run.setStatus("RUNNING");
+        run.setStartedAt(LocalDateTime.now());
+        workflowRunService.save(run);
+
+        ProjectProgressResponse response = generateV4(projectId);
+        run.setStatus("COMPLETED");
+        run.setResponseStatus(response.status());
+        run.setResponsePercent(response.percent());
+        run.setCompletedAt(LocalDateTime.now());
+        workflowRunService.updateById(run);
+        return response;
     }
 
     @Transactional
@@ -131,6 +172,13 @@ public class AgentOrchestrationService {
         project.setStatus("COMPLETED");
         projectService.updateById(project);
         return progress(projectId);
+    }
+
+    private String normalizeIdempotencyKey(String idempotencyKey) {
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            return null;
+        }
+        return idempotencyKey.trim();
     }
 
     @Transactional
