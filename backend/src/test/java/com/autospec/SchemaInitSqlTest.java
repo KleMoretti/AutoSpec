@@ -110,6 +110,42 @@ class SchemaInitSqlTest {
         }
     }
 
+    @Test
+    void flywayMigrationsSeedBackendEngineeringDepthPlan() throws Exception {
+        JdbcDataSource dataSource = new JdbcDataSource();
+        dataSource.setURL("jdbc:h2:mem:backend_depth_plan;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1");
+        dataSource.setUser("sa");
+        dataSource.setPassword("");
+
+        Flyway.configure()
+                .dataSource(dataSource)
+                .locations("classpath:db/migration")
+                .load()
+                .migrate();
+
+        try (Connection connection = dataSource.getConnection();
+             Statement statement = connection.createStatement();
+             ResultSet resultSet = statement.executeQuery("""
+                     select a.title, a.version, a.format, a.status, a.content
+                     from project p
+                     join artifact a on a.project_id = p.id
+                     where p.name = 'AutoSpec Backend Engineering Depth Plan'
+                       and a.type = 'ROADMAP_PLAN'
+                       and a.version = 5
+                     """)) {
+            assertThat(resultSet.next()).isTrue();
+            assertThat(resultSet.getString("title")).isEqualTo("AutoSpec Backend Engineering Depth Plan");
+            assertThat(resultSet.getInt("version")).isEqualTo(5);
+            assertThat(resultSet.getString("format")).isEqualTo("MARKDOWN");
+            assertThat(resultSet.getString("status")).isEqualTo("APPROVED");
+            assertThat(resultSet.getString("content"))
+                    .contains("transactional orchestration")
+                    .contains("observability")
+                    .contains("Testcontainers");
+            assertThat(resultSet.next()).isFalse();
+        }
+    }
+
     private void execute(Connection connection, String sql) throws Exception {
         try (Statement statement = connection.createStatement()) {
             assertThat(statement.execute(sql)).isTrue();
