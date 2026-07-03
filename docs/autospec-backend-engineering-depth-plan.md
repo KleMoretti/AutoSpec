@@ -23,7 +23,7 @@ The target positioning is:
 
 | ID | Title | Priority | Status | Description | Deliverables |
 | --- | --- | --- | --- | --- | --- |
-| BE-01 | Domain Boundary and Service Contracts | P0 | PLANNED | Clarify bounded contexts for project, artifact, workflow, agent task, review, knowledge, export, and model invocation. | package boundary notes, service contract docs, DTO ownership rules |
+| BE-01 | Domain Boundary and Service Contracts | P0 | IN_PROGRESS | Clarify bounded contexts for project, artifact, workflow, agent task, review, knowledge, export, and model invocation. | package boundary notes, service contract docs, DTO ownership rules |
 | BE-02 | Transactional Orchestration and Idempotency | P0 | IN_PROGRESS | Make generation, continuation, retry, and export operations safe under duplicate requests and partial failures. | transactional orchestration model, workflow run key, idempotency key, transaction boundary tests, duplicate request tests |
 | BE-03 | Async Job Reliability | P0 | PLANNED | Move long-running generation and code export toward durable job records with retry, timeout, cancellation, and failure state transitions. | job state machine, retry policy, timeout handling, cancellation API, recovery tests |
 | BE-04 | Observability and Audit Trail | P0 | IN_PROGRESS | Expose backend-level observability for Agent tasks, model invocations, external calls, latency, failures, and user actions. | structured logs, metrics plan, trace correlation id, audit event table or event stream |
@@ -38,6 +38,7 @@ Updated on `2026-07-03`.
 
 | ID | Status | Evidence |
 | --- | --- | --- |
+| BE-01 | PARTIAL | Backend bounded contexts, service contracts, layer ownership, transaction rules, and DTO ownership rules are documented in `docs/backend-service-contracts.md`. |
 | BE-02 | PARTIAL | `workflow_run` table in `V6__workflow_run_idempotency.sql`, V4 generation `Idempotency-Key` handling, duplicate request and failed-run regressions in `ProjectControllerTest`. |
 | BE-04 | PARTIAL | Failed V4 Agent Engine calls persist `workflow_run.status = FAILED`, `error_message`, and `completed_at`; project status is moved to `FAILED`; project members can query run history through `GET /api/projects/{projectId}/workflow-runs`. |
 | BE-05 | PARTIAL | Cross-project non-member access is denied for artifacts, Markdown export, workflow run history, model invocations, code skeleton generation, and failed task retry in `ProjectControllerTest`. |
