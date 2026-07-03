@@ -110,7 +110,7 @@ public class AgentOrchestrationService {
         return progress(projectId);
     }
 
-    @Transactional
+    @Transactional(noRollbackFor = ResponseStatusException.class)
     public ProjectProgressResponse generateV4(Long projectId, String idempotencyKey) {
         String normalizedKey = normalizeIdempotencyKey(idempotencyKey);
         if (normalizedKey == null) {
@@ -127,6 +127,9 @@ public class AgentOrchestrationService {
             if ("COMPLETED".equals(existing.getStatus())) {
                 return progress(projectId);
             }
+            if ("FAILED".equals(existing.getStatus())) {
+                throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Workflow run failed: " + existing.getErrorMessage());
+            }
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Workflow run is already in progress");
         }
 
@@ -138,13 +141,21 @@ public class AgentOrchestrationService {
         run.setStartedAt(LocalDateTime.now());
         workflowRunService.save(run);
 
-        ProjectProgressResponse response = generateV4(projectId);
-        run.setStatus("COMPLETED");
-        run.setResponseStatus(response.status());
-        run.setResponsePercent(response.percent());
-        run.setCompletedAt(LocalDateTime.now());
-        workflowRunService.updateById(run);
-        return response;
+        try {
+            ProjectProgressResponse response = generateV4(projectId);
+            run.setStatus("COMPLETED");
+            run.setResponseStatus(response.status());
+            run.setResponsePercent(response.percent());
+            run.setCompletedAt(LocalDateTime.now());
+            workflowRunService.updateById(run);
+            return response;
+        } catch (ResponseStatusException ex) {
+            markWorkflowRunFailed(projectId, run, ex.getReason() == null ? ex.getMessage() : ex.getReason());
+            throw ex;
+        } catch (Exception ex) {
+            markWorkflowRunFailed(projectId, run, ex.getMessage());
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Workflow generation failed", ex);
+        }
     }
 
     @Transactional
@@ -179,6 +190,18 @@ public class AgentOrchestrationService {
             return null;
         }
         return idempotencyKey.trim();
+    }
+
+    private void markWorkflowRunFailed(Long projectId, WorkflowRun run, String message) {
+        run.setStatus("FAILED");
+        run.setErrorMessage(message == null || message.isBlank() ? "Workflow generation failed" : message);
+        run.setCompletedAt(LocalDateTime.now());
+        workflowRunService.updateById(run);
+        Project project = projectService.getById(projectId);
+        if (project != null) {
+            project.setStatus("FAILED");
+            projectService.updateById(project);
+        }
     }
 
     @Transactional

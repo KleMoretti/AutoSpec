@@ -7,9 +7,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.web.server.ResponseStatusException;
 
 import com.autospec.service.AgentEngineClient;
 import com.autospec.service.AgentEngineExecutionRecord;
@@ -19,11 +21,13 @@ import com.autospec.service.KnowledgeIndexService;
 import com.autospec.service.ProjectMemberService;
 import com.autospec.service.ProjectService;
 import com.autospec.service.UserAccountService;
+import com.autospec.service.WorkflowRunService;
 import com.autospec.service.WorkflowSnapshotService;
 import com.autospec.entity.Artifact;
 import com.autospec.entity.Project;
 import com.autospec.entity.ProjectMember;
 import com.autospec.entity.UserAccount;
+import com.autospec.entity.WorkflowRun;
 import com.autospec.entity.WorkflowSnapshot;
 
 import java.util.List;
@@ -74,6 +78,9 @@ class ProjectControllerTest {
 
     @Autowired
     private WorkflowSnapshotService workflowSnapshotService;
+
+    @Autowired
+    private WorkflowRunService workflowRunService;
 
     @Test
     void loginReturnsDemoSessionUser() throws Exception {
@@ -430,6 +437,33 @@ class ProjectControllerTest {
                 .eq(Artifact::getProjectId, projectId)
                 .eq(Artifact::getType, "EVALUATION_REPORT")
                 .count()).isEqualTo(1);
+    }
+
+    @Test
+    void generateV4EndpointMarksWorkflowRunFailedWhenAgentEngineFails() throws Exception {
+        String token = loginToken();
+        when(agentEngineClient.generateV4(contains("failing generation"), anyList()))
+                .thenThrow(new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Agent Engine unavailable"));
+
+        long projectId = createProject(token, "Failing V4 Project", "Build failing generation.");
+
+        mockMvc.perform(post("/api/projects/{projectId}/generate-v4", projectId)
+                        .header(SESSION_HEADER, token)
+                        .header("Idempotency-Key", "failed-run-key"))
+                .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.code").value("BAD_GATEWAY"))
+                .andExpect(jsonPath("$.message").value("Agent Engine unavailable"));
+
+        WorkflowRun workflowRun = workflowRunService.lambdaQuery()
+                .eq(WorkflowRun::getProjectId, projectId)
+                .eq(WorkflowRun::getOperation, "GENERATE_V4")
+                .eq(WorkflowRun::getIdempotencyKey, "failed-run-key")
+                .one();
+
+        assertThat(workflowRun.getStatus()).isEqualTo("FAILED");
+        assertThat(workflowRun.getErrorMessage()).contains("Agent Engine unavailable");
+        assertThat(workflowRun.getCompletedAt()).isNotNull();
+        assertThat(projectService.getById(projectId).getStatus()).isEqualTo("FAILED");
     }
 
     private String loginToken() throws Exception {
