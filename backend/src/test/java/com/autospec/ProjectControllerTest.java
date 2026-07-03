@@ -16,27 +16,35 @@ import org.springframework.web.server.ResponseStatusException;
 import com.autospec.service.AgentEngineClient;
 import com.autospec.service.AgentEngineExecutionRecord;
 import com.autospec.service.AgentGenerationResult;
+import com.autospec.service.AgentTaskService;
 import com.autospec.service.ArtifactService;
+import com.autospec.service.AuthService;
 import com.autospec.service.KnowledgeIndexService;
+import com.autospec.service.ModelInvocationService;
 import com.autospec.service.ProjectMemberService;
 import com.autospec.service.ProjectService;
 import com.autospec.service.UserAccountService;
 import com.autospec.service.WorkflowRunService;
 import com.autospec.service.WorkflowSnapshotService;
+import com.autospec.entity.AgentTask;
 import com.autospec.entity.Artifact;
+import com.autospec.entity.ModelInvocation;
 import com.autospec.entity.Project;
 import com.autospec.entity.ProjectMember;
 import com.autospec.entity.UserAccount;
 import com.autospec.entity.WorkflowRun;
 import com.autospec.entity.WorkflowSnapshot;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import org.mockito.ArgumentCaptor;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
@@ -62,7 +70,16 @@ class ProjectControllerTest {
     private AgentEngineClient agentEngineClient;
 
     @Autowired
+    private AuthService authService;
+
+    @Autowired
+    private AgentTaskService agentTaskService;
+
+    @Autowired
     private ArtifactService artifactService;
+
+    @Autowired
+    private ModelInvocationService modelInvocationService;
 
     @Autowired
     private ProjectService projectService;
@@ -136,6 +153,69 @@ class ProjectControllerTest {
                         .header(SESSION_HEADER, token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.format").value("MARKDOWN"));
+    }
+
+    @Test
+    void crossProjectRequestsAreForbiddenForNonMembers() throws Exception {
+        String ownerToken = loginToken();
+        long projectId = createProject(ownerToken, "Tenant Project", "Build tenant isolation.");
+        String otherUserToken = sessionTokenForNewUser("tenant-user-" + System.nanoTime());
+
+        artifact(projectId, "PRD", "Tenant PRD", "{\"project_name\":\"Tenant\"}");
+        artifact(projectId, "BACKEND_DESIGN", "Tenant Backend", "{\"tables\":[],\"apis\":[]}");
+        artifact(projectId, "REVIEW_REPORT", "Tenant Review", "{\"score\":100,\"issues\":[]}");
+
+        WorkflowRun run = new WorkflowRun();
+        run.setProjectId(projectId);
+        run.setOperation("GENERATE_V4");
+        run.setIdempotencyKey("tenant-run-key");
+        run.setStatus("COMPLETED");
+        run.setResponseStatus("COMPLETED");
+        run.setResponsePercent(100);
+        run.setStartedAt(LocalDateTime.now().minusSeconds(1));
+        run.setCompletedAt(LocalDateTime.now());
+        workflowRunService.save(run);
+
+        ModelInvocation invocation = new ModelInvocation();
+        invocation.setProjectId(projectId);
+        invocation.setProviderKey("local");
+        invocation.setModelName("deterministic-fixture");
+        invocation.setAgentNode("product_manager");
+        invocation.setStatus("SUCCEEDED");
+        invocation.setDurationMs(10);
+        invocation.setInputTokens(1);
+        invocation.setOutputTokens(1);
+        modelInvocationService.save(invocation);
+
+        AgentTask failedTask = new AgentTask();
+        failedTask.setProjectId(projectId);
+        failedTask.setAgentName("ProductManagerAgent_v1");
+        failedTask.setNodeName("product_manager");
+        failedTask.setStatus("FAILED");
+        failedTask.setInputText("{\"requirement\":\"tenant isolation\"}");
+        failedTask.setErrorMessage("failed before retry");
+        agentTaskService.save(failedTask);
+
+        mockMvc.perform(get("/api/projects/{projectId}/artifacts", projectId)
+                        .header(SESSION_HEADER, otherUserToken))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/projects/{projectId}/export?format=MARKDOWN", projectId)
+                        .header(SESSION_HEADER, otherUserToken))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/projects/{projectId}/workflow-runs", projectId)
+                        .header(SESSION_HEADER, otherUserToken))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/projects/{projectId}/model-invocations", projectId)
+                        .header(SESSION_HEADER, otherUserToken))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/projects/{projectId}/code-skeleton", projectId)
+                        .header(SESSION_HEADER, otherUserToken))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/projects/{projectId}/tasks/{taskId}/retry", projectId, failedTask.getId())
+                        .header(SESSION_HEADER, otherUserToken))
+                .andExpect(status().isForbidden());
+
+        verify(agentEngineClient, never()).runNode(anyString(), anyString());
     }
 
     @Test
@@ -504,6 +584,16 @@ class ProjectControllerTest {
                 .getResponse()
                 .getContentAsString();
         return objectMapper.readTree(response).get("sessionToken").asText();
+    }
+
+    private String sessionTokenForNewUser(String username) {
+        UserAccount user = new UserAccount();
+        user.setUsername(username);
+        user.setDisplayName(username);
+        user.setPasswordHash("test-only-hash");
+        user.setEnabled(true);
+        userAccountService.save(user);
+        return authService.issueSession(user);
     }
 
     private long createProject(String token, String name, String requirement) throws Exception {
