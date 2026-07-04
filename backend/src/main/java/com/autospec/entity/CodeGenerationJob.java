@@ -25,4 +25,6 @@ public class CodeGenerationJob {
     private LocalDateTime createdAt;
 
     private LocalDateTime completedAt;
+
+    private LocalDateTime cancelledAt;
 }

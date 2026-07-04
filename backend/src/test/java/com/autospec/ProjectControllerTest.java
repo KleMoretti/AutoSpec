@@ -19,6 +19,7 @@ import com.autospec.service.AgentGenerationResult;
 import com.autospec.service.AgentTaskService;
 import com.autospec.service.ArtifactService;
 import com.autospec.service.AuthService;
+import com.autospec.service.CodeGenerationJobService;
 import com.autospec.service.KnowledgeIndexService;
 import com.autospec.service.ModelInvocationService;
 import com.autospec.service.ProjectMemberService;
@@ -28,6 +29,7 @@ import com.autospec.service.WorkflowRunService;
 import com.autospec.service.WorkflowSnapshotService;
 import com.autospec.entity.AgentTask;
 import com.autospec.entity.Artifact;
+import com.autospec.entity.CodeGenerationJob;
 import com.autospec.entity.ModelInvocation;
 import com.autospec.entity.Project;
 import com.autospec.entity.ProjectMember;
@@ -81,6 +83,9 @@ class ProjectControllerTest {
 
     @Autowired
     private ArtifactService artifactService;
+
+    @Autowired
+    private CodeGenerationJobService codeGenerationJobService;
 
     @Autowired
     private ModelInvocationService modelInvocationService;
@@ -200,6 +205,11 @@ class ProjectControllerTest {
         failedTask.setErrorMessage("failed before retry");
         agentTaskService.save(failedTask);
 
+        CodeGenerationJob runningCodeJob = new CodeGenerationJob();
+        runningCodeJob.setProjectId(projectId);
+        runningCodeJob.setStatus("RUNNING");
+        codeGenerationJobService.save(runningCodeJob);
+
         mockMvc.perform(get("/api/projects/{projectId}/artifacts", projectId)
                         .header(SESSION_HEADER, otherUserToken))
                 .andExpect(status().isForbidden());
@@ -216,6 +226,9 @@ class ProjectControllerTest {
                         .header(SESSION_HEADER, otherUserToken))
                 .andExpect(status().isForbidden());
         mockMvc.perform(post("/api/projects/{projectId}/code-skeleton", projectId)
+                        .header(SESSION_HEADER, otherUserToken))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/projects/{projectId}/code-generation-jobs/{jobId}/cancel", projectId, runningCodeJob.getId())
                         .header(SESSION_HEADER, otherUserToken))
                 .andExpect(status().isForbidden());
         mockMvc.perform(post("/api/projects/{projectId}/tasks/{taskId}/retry", projectId, failedTask.getId())
@@ -624,6 +637,35 @@ class ProjectControllerTest {
                         .header(SESSION_HEADER, token))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+    }
+
+    @Test
+    void codeGenerationJobsCanBeListedAndRunningJobCanBeCancelled() throws Exception {
+        String token = loginToken();
+        long projectId = createProject(token, "Cancelable Code Job Project", "Build cancellable code export.");
+
+        CodeGenerationJob runningJob = new CodeGenerationJob();
+        runningJob.setProjectId(projectId);
+        runningJob.setStatus("RUNNING");
+        codeGenerationJobService.save(runningJob);
+
+        mockMvc.perform(get("/api/projects/{projectId}/code-generation-jobs", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value(runningJob.getId()))
+                .andExpect(jsonPath("$[0].status").value("RUNNING"));
+
+        mockMvc.perform(post("/api/projects/{projectId}/code-generation-jobs/{jobId}/cancel", projectId, runningJob.getId())
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(runningJob.getId()))
+                .andExpect(jsonPath("$.status").value("CANCELLED"))
+                .andExpect(jsonPath("$.cancelledAt").isString())
+                .andExpect(jsonPath("$.completedAt").isString());
+
+        CodeGenerationJob cancelledJob = codeGenerationJobService.getById(runningJob.getId());
+        assertThat(cancelledJob.getStatus()).isEqualTo("CANCELLED");
+        assertThat(cancelledJob.getCompletedAt()).isNotNull();
     }
 
     private String loginToken() throws Exception {
