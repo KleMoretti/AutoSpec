@@ -7,6 +7,7 @@ import java.time.LocalDateTime;
 public record ExternalCallLogResponse(
         Long id,
         String targetService,
+        String correlationId,
         String operation,
         String status,
         Integer durationMs,
@@ -20,6 +21,7 @@ public record ExternalCallLogResponse(
         return new ExternalCallLogResponse(
                 log.getId(),
                 log.getTargetService(),
+                log.getCorrelationId(),
                 log.getOperation(),
                 log.getStatus(),
                 log.getDurationMs(),

@@ -21,6 +21,8 @@ public class ModelInvocation {
 
     private Long workflowRunId;
 
+    private String correlationId;
+
     private String providerKey;
 
     private String modelName;

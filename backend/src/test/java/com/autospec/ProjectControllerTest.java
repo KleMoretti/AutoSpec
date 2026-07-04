@@ -754,6 +754,54 @@ class ProjectControllerTest {
     }
 
     @Test
+    void generateV4EndpointCorrelatesWorkflowAuditExternalCallAndModelInvocationHistory() throws Exception {
+        String token = loginToken();
+        when(agentEngineClient.generateV4(contains("trace correlation"), anyList()))
+                .thenReturn(agentResultWithEvaluationReport());
+
+        long projectId = createProject(token, "Traceable V4 Project", "Build trace correlation.");
+
+        mockMvc.perform(post("/api/projects/{projectId}/generate-v4", projectId)
+                        .header(SESSION_HEADER, token)
+                        .header("Idempotency-Key", "trace-run-key"))
+                .andExpect(status().isOk());
+
+        JsonNode workflowRuns = objectMapper.readTree(mockMvc.perform(get("/api/projects/{projectId}/workflow-runs", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString());
+        String correlationId = workflowRuns.get(0).path("correlationId").asText();
+        assertThat(correlationId).startsWith("wf-");
+
+        JsonNode auditEvents = objectMapper.readTree(mockMvc.perform(get("/api/projects/{projectId}/audit-events", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString());
+        assertThat(auditEvents.findValuesAsText("correlationId")).contains(correlationId);
+
+        JsonNode externalCalls = objectMapper.readTree(mockMvc.perform(get("/api/projects/{projectId}/external-calls", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString());
+        assertThat(externalCalls.get(0).path("correlationId").asText()).isEqualTo(correlationId);
+        assertThat(externalCalls.get(0).path("requestContext").asText()).contains(correlationId);
+
+        JsonNode modelInvocations = objectMapper.readTree(mockMvc.perform(get("/api/projects/{projectId}/model-invocations", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString());
+        assertThat(modelInvocations.get(0).path("correlationId").asText()).isEqualTo(correlationId);
+    }
+
+    @Test
     void generateV4EndpointUsesIdempotencyKeyToAvoidDuplicateAgentRuns() throws Exception {
         String token = loginToken();
         when(agentEngineClient.generateV4(contains("duplicate generation"), anyList()))

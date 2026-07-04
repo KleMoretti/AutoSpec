@@ -36,9 +36,27 @@ public class ExternalCallLogServiceImpl extends ServiceImpl<ExternalCallLogMappe
             LocalDateTime startedAt,
             LocalDateTime completedAt
     ) {
+        record(projectId, targetService, null, operation, status, durationMs, requestContext, errorMessage, startedAt, completedAt);
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void record(
+            Long projectId,
+            String targetService,
+            String correlationId,
+            String operation,
+            String status,
+            Integer durationMs,
+            String requestContext,
+            String errorMessage,
+            LocalDateTime startedAt,
+            LocalDateTime completedAt
+    ) {
         ExternalCallLog log = new ExternalCallLog();
         log.setProjectId(projectId);
         log.setTargetService(targetService);
+        log.setCorrelationId(correlationId);
         log.setOperation(operation);
         log.setStatus(status);
         log.setDurationMs(durationMs);

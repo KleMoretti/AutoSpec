@@ -21,9 +21,24 @@ public class AuditEventServiceImpl extends ServiceImpl<AuditEventMapper, AuditEv
             String message,
             String metadata
     ) {
+        record(projectId, actorUserId, null, eventType, entityType, entityId, message, metadata);
+    }
+
+    @Override
+    public void record(
+            Long projectId,
+            Long actorUserId,
+            String correlationId,
+            String eventType,
+            String entityType,
+            Long entityId,
+            String message,
+            String metadata
+    ) {
         AuditEvent event = new AuditEvent();
         event.setProjectId(projectId);
         event.setActorUserId(actorUserId);
+        event.setCorrelationId(correlationId);
         event.setEventType(eventType);
         event.setEntityType(entityType);
         event.setEntityId(entityId);

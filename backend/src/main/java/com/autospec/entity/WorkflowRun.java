@@ -20,6 +20,8 @@ public class WorkflowRun {
 
     private String idempotencyKey;
 
+    private String correlationId;
+
     private String status;
 
     private String responseStatus;

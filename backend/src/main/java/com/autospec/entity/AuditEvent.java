@@ -18,6 +18,8 @@ public class AuditEvent {
 
     private Long actorUserId;
 
+    private String correlationId;
+
     private String eventType;
 
     private String entityType;

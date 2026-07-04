@@ -18,6 +18,8 @@ public class ExternalCallLog {
 
     private String targetService;
 
+    private String correlationId;
+
     private String operation;
 
     private String status;

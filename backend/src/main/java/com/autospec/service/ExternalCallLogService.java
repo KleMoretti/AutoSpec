@@ -21,4 +21,17 @@ public interface ExternalCallLogService extends IService<ExternalCallLog> {
             LocalDateTime startedAt,
             LocalDateTime completedAt
     );
+
+    void record(
+            Long projectId,
+            String targetService,
+            String correlationId,
+            String operation,
+            String status,
+            Integer durationMs,
+            String requestContext,
+            String errorMessage,
+            LocalDateTime startedAt,
+            LocalDateTime completedAt
+    );
 }

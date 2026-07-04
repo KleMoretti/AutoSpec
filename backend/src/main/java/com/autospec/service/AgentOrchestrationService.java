@@ -20,6 +20,7 @@ import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 @Service
 public class AgentOrchestrationService {
@@ -146,13 +147,14 @@ public class AgentOrchestrationService {
         run.setProjectId(projectId);
         run.setOperation("GENERATE_V4");
         run.setIdempotencyKey(normalizedKey);
+        run.setCorrelationId(newCorrelationId());
         run.setStatus("RUNNING");
         run.setStartedAt(LocalDateTime.now());
         workflowRunService.save(run);
         auditWorkflowRun(projectId, run, "WORKFLOW_RUN_STARTED", "V4 workflow run started");
 
         try {
-            ProjectProgressResponse response = generateV4Internal(projectId, normalizedKey, run.getId());
+            ProjectProgressResponse response = generateV4Internal(projectId, normalizedKey, run.getId(), run.getCorrelationId());
             run.setStatus("COMPLETED");
             run.setResponseStatus(response.status());
             run.setResponsePercent(response.percent());
@@ -171,10 +173,10 @@ public class AgentOrchestrationService {
 
     @Transactional
     public ProjectProgressResponse generateV4(Long projectId) {
-        return generateV4Internal(projectId, null, null);
+        return generateV4Internal(projectId, null, null, null);
     }
 
-    private ProjectProgressResponse generateV4Internal(Long projectId, String idempotencyKey, Long workflowRunId) {
+    private ProjectProgressResponse generateV4Internal(Long projectId, String idempotencyKey, Long workflowRunId, String correlationId) {
         Project project = getProjectOrThrow(projectId);
         workflowSnapshotService.ensureDefaultSnapshot(projectId);
         project.setStatus("GENERATING");
@@ -183,8 +185,8 @@ public class AgentOrchestrationService {
         clearGeneratedData(projectId);
 
         List<KnowledgeSourceResponse> retrievedSources = knowledgeIndexService.retrieve(project.getOriginalRequirement(), 5, project.getUserId());
-        AgentGenerationResult generationResult = callGenerateV4AgentEngine(project, retrievedSources, idempotencyKey, workflowRunId);
-        recordTasks(projectId, generationResult, workflowRunId);
+        AgentGenerationResult generationResult = callGenerateV4AgentEngine(project, retrievedSources, idempotencyKey, workflowRunId, correlationId);
+        recordTasks(projectId, generationResult, workflowRunId, correlationId);
         saveArtifact(projectId, "PRD", project.getName() + " PRD", generationResult.prdJson(), "ProductManagerAgent_v1", "GENERATED");
         saveArtifact(projectId, "ARCHITECTURE_DESIGN", project.getName() + " Architecture Design", generationResult.architectureDesignJson(), "ArchitectAgent_v1", "GENERATED");
         saveArtifact(projectId, "BACKEND_DESIGN", project.getName() + " Backend Design", generationResult.backendDesignJson(), "BackendEngineerAgent_v1", "GENERATED");
@@ -202,26 +204,28 @@ public class AgentOrchestrationService {
             Project project,
             List<KnowledgeSourceResponse> retrievedSources,
             String idempotencyKey,
-            Long workflowRunId
+            Long workflowRunId,
+            String correlationId
     ) {
         LocalDateTime startedAt = LocalDateTime.now();
         long startedNanos = System.nanoTime();
-        String requestContext = agentEngineRequestContext(project, retrievedSources, idempotencyKey, workflowRunId);
+        String requestContext = agentEngineRequestContext(project, retrievedSources, idempotencyKey, workflowRunId, correlationId);
         try {
             AgentGenerationResult result = agentEngineClient.generateV4(project.getOriginalRequirement(), retrievedSources);
-            recordExternalCall(project.getId(), "GENERATE_V4", "SUCCEEDED", startedAt, startedNanos, requestContext, null);
+            recordExternalCall(project.getId(), correlationId, "GENERATE_V4", "SUCCEEDED", startedAt, startedNanos, requestContext, null);
             return result;
         } catch (ResponseStatusException ex) {
-            recordExternalCall(project.getId(), "GENERATE_V4", "FAILED", startedAt, startedNanos, requestContext, responseStatusMessage(ex));
+            recordExternalCall(project.getId(), correlationId, "GENERATE_V4", "FAILED", startedAt, startedNanos, requestContext, responseStatusMessage(ex));
             throw ex;
         } catch (RuntimeException ex) {
-            recordExternalCall(project.getId(), "GENERATE_V4", "FAILED", startedAt, startedNanos, requestContext, ex.getMessage());
+            recordExternalCall(project.getId(), correlationId, "GENERATE_V4", "FAILED", startedAt, startedNanos, requestContext, ex.getMessage());
             throw ex;
         }
     }
 
     private void recordExternalCall(
             Long projectId,
+            String correlationId,
             String operation,
             String status,
             LocalDateTime startedAt,
@@ -232,6 +236,7 @@ public class AgentOrchestrationService {
         externalCallLogService.record(
                 projectId,
                 "agent-engine",
+                correlationId,
                 operation,
                 status,
                 elapsedMillis(startedNanos),
@@ -251,10 +256,12 @@ public class AgentOrchestrationService {
             Project project,
             List<KnowledgeSourceResponse> retrievedSources,
             String idempotencyKey,
-            Long workflowRunId
+            Long workflowRunId,
+            String correlationId
     ) {
         Map<String, Object> context = new LinkedHashMap<>();
         context.put("workflowRunId", workflowRunId);
+        context.put("correlationId", correlationId);
         context.put("idempotencyKey", idempotencyKey);
         context.put("requirementLength", project.getOriginalRequirement() == null ? 0 : project.getOriginalRequirement().length());
         context.put("retrievedSourceCount", retrievedSources == null ? 0 : retrievedSources.size());
@@ -294,6 +301,7 @@ public class AgentOrchestrationService {
         auditEventService.record(
                 projectId,
                 project == null ? null : project.getUserId(),
+                run.getCorrelationId(),
                 eventType,
                 "WORKFLOW_RUN",
                 run.getId(),
@@ -306,6 +314,7 @@ public class AgentOrchestrationService {
         try {
             return objectMapper.writeValueAsString(Map.of(
                     "operation", run.getOperation(),
+                    "correlationId", run.getCorrelationId(),
                     "idempotencyKey", run.getIdempotencyKey(),
                     "status", run.getStatus()
             ));
@@ -440,39 +449,39 @@ public class AgentOrchestrationService {
     }
 
     private void recordTasks(Long projectId, AgentGenerationResult generationResult) {
-        recordTasks(projectId, generationResult, null);
+        recordTasks(projectId, generationResult, null, null);
     }
 
-    private void recordTasks(Long projectId, AgentGenerationResult generationResult, Long workflowRunId) {
+    private void recordTasks(Long projectId, AgentGenerationResult generationResult, Long workflowRunId, String correlationId) {
         if (generationResult.records() != null && !generationResult.records().isEmpty()) {
-            generationResult.records().forEach(record -> recordTask(projectId, record, null, workflowRunId));
+            generationResult.records().forEach(record -> recordTask(projectId, record, null, workflowRunId, correlationId));
             return;
         }
         if (generationResult.prdJson() != null) {
-            recordTask(projectId, new AgentEngineExecutionRecord("product_manager", "ProductManagerAgent_v1", "SUCCEEDED", null, generationResult.prdJson(), null, null, "ProductManagerAgent"), null, workflowRunId);
+            recordTask(projectId, new AgentEngineExecutionRecord("product_manager", "ProductManagerAgent_v1", "SUCCEEDED", null, generationResult.prdJson(), null, null, "ProductManagerAgent"), null, workflowRunId, correlationId);
         }
         if (generationResult.architectureDesignJson() != null) {
-            recordTask(projectId, new AgentEngineExecutionRecord("architect", "ArchitectAgent_v1", "SUCCEEDED", null, generationResult.architectureDesignJson(), null, null, "ArchitectAgent"), null, workflowRunId);
+            recordTask(projectId, new AgentEngineExecutionRecord("architect", "ArchitectAgent_v1", "SUCCEEDED", null, generationResult.architectureDesignJson(), null, null, "ArchitectAgent"), null, workflowRunId, correlationId);
         }
         if (generationResult.backendDesignJson() != null) {
-            recordTask(projectId, new AgentEngineExecutionRecord("backend_engineer", "BackendEngineerAgent_v1", "SUCCEEDED", null, generationResult.backendDesignJson(), null, null, "BackendEngineerAgent"), null, workflowRunId);
+            recordTask(projectId, new AgentEngineExecutionRecord("backend_engineer", "BackendEngineerAgent_v1", "SUCCEEDED", null, generationResult.backendDesignJson(), null, null, "BackendEngineerAgent"), null, workflowRunId, correlationId);
         }
         if (generationResult.frontendSkeletonJson() != null) {
-            recordTask(projectId, new AgentEngineExecutionRecord("frontend_engineer", "FrontendEngineerAgent_v1", "SUCCEEDED", null, generationResult.frontendSkeletonJson(), null, null, "FrontendEngineerAgent"), null, workflowRunId);
+            recordTask(projectId, new AgentEngineExecutionRecord("frontend_engineer", "FrontendEngineerAgent_v1", "SUCCEEDED", null, generationResult.frontendSkeletonJson(), null, null, "FrontendEngineerAgent"), null, workflowRunId, correlationId);
         }
         if (generationResult.reviewReportJson() != null) {
-            recordTask(projectId, new AgentEngineExecutionRecord("reviewer", "ReviewerAgent_v1", "SUCCEEDED", null, generationResult.reviewReportJson(), null, null, "ReviewerAgent"), null, workflowRunId);
+            recordTask(projectId, new AgentEngineExecutionRecord("reviewer", "ReviewerAgent_v1", "SUCCEEDED", null, generationResult.reviewReportJson(), null, null, "ReviewerAgent"), null, workflowRunId, correlationId);
         }
         if (generationResult.evaluationReportJson() != null) {
-            recordTask(projectId, new AgentEngineExecutionRecord("evaluator", "EvaluatorAgent_v1", "SUCCEEDED", null, generationResult.evaluationReportJson(), null, null, "EvaluatorAgent"), null, workflowRunId);
+            recordTask(projectId, new AgentEngineExecutionRecord("evaluator", "EvaluatorAgent_v1", "SUCCEEDED", null, generationResult.evaluationReportJson(), null, null, "EvaluatorAgent"), null, workflowRunId, correlationId);
         }
     }
 
     private AgentTask recordTask(Long projectId, AgentEngineExecutionRecord record, Long retryOfTaskId) {
-        return recordTask(projectId, record, retryOfTaskId, null);
+        return recordTask(projectId, record, retryOfTaskId, null, null);
     }
 
-    private AgentTask recordTask(Long projectId, AgentEngineExecutionRecord record, Long retryOfTaskId, Long workflowRunId) {
+    private AgentTask recordTask(Long projectId, AgentEngineExecutionRecord record, Long retryOfTaskId, Long workflowRunId, String correlationId) {
         AgentTask task = new AgentTask();
         task.setProjectId(projectId);
         task.setAgentName(record.agentName());
@@ -496,15 +505,16 @@ public class AgentOrchestrationService {
                 task.getAgentName() + " " + task.getStatus().toLowerCase(),
                 task.getOutputText()
         );
-        recordModelInvocation(projectId, task, record, workflowRunId);
+        recordModelInvocation(projectId, task, record, workflowRunId, correlationId);
         return task;
     }
 
-    private void recordModelInvocation(Long projectId, AgentTask task, AgentEngineExecutionRecord record, Long workflowRunId) {
+    private void recordModelInvocation(Long projectId, AgentTask task, AgentEngineExecutionRecord record, Long workflowRunId, String correlationId) {
         com.autospec.entity.ModelInvocation invocation = new com.autospec.entity.ModelInvocation();
         invocation.setProjectId(projectId);
         invocation.setTaskId(task.getId());
         invocation.setWorkflowRunId(workflowRunId);
+        invocation.setCorrelationId(correlationId);
         invocation.setProviderKey(record.providerKey() == null ? "local" : record.providerKey());
         invocation.setModelName(record.modelName() == null ? "deterministic-fixture" : record.modelName());
         invocation.setAgentNode(task.getNodeName());
@@ -623,6 +633,10 @@ public class AgentOrchestrationService {
             case "EvaluatorAgent_v1" -> "evaluator";
             default -> agentName;
         };
+    }
+
+    private String newCorrelationId() {
+        return "wf-" + UUID.randomUUID();
     }
 
     private void saveReviewIssues(Long projectId, String reviewJson) {

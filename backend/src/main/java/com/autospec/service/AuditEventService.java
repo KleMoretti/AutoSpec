@@ -17,5 +17,16 @@ public interface AuditEventService extends IService<AuditEvent> {
             String metadata
     );
 
+    void record(
+            Long projectId,
+            Long actorUserId,
+            String correlationId,
+            String eventType,
+            String entityType,
+            Long entityId,
+            String message,
+            String metadata
+    );
+
     List<AuditEvent> listByProjectId(Long projectId, int limit, int offset);
 }

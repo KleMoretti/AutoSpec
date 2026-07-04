@@ -505,6 +505,46 @@ class SchemaInitSqlTest {
         }
     }
 
+    @Test
+    void flywayMigrationsCreateCorrelationIdColumnsAndIndexes() throws Exception {
+        JdbcDataSource dataSource = new JdbcDataSource();
+        dataSource.setURL("jdbc:h2:mem:correlation_id_schema;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1");
+        dataSource.setUser("sa");
+        dataSource.setPassword("");
+
+        Flyway.configure()
+                .dataSource(dataSource)
+                .locations("classpath:db/migration")
+                .load()
+                .migrate();
+
+        try (Connection connection = dataSource.getConnection()) {
+            assertThatCode(() -> execute(connection, "select correlation_id from workflow_run where 1 = 0"))
+                    .doesNotThrowAnyException();
+            assertThatCode(() -> execute(connection, "select correlation_id from audit_event where 1 = 0"))
+                    .doesNotThrowAnyException();
+            assertThatCode(() -> execute(connection, "select correlation_id from external_call_log where 1 = 0"))
+                    .doesNotThrowAnyException();
+            assertThatCode(() -> execute(connection, "select correlation_id from model_invocation where 1 = 0"))
+                    .doesNotThrowAnyException();
+        }
+        try (Connection connection = dataSource.getConnection();
+             Statement statement = connection.createStatement();
+             ResultSet resultSet = statement.executeQuery("""
+                     select count(*) as index_count
+                     from information_schema.indexes
+                     where index_name in (
+                         'idx_workflow_run_correlation_id',
+                         'idx_audit_event_project_correlation_id',
+                         'idx_external_call_log_project_correlation_id',
+                         'idx_model_invocation_project_correlation_id'
+                     )
+                     """)) {
+            resultSet.next();
+            assertThat(resultSet.getInt("index_count")).isEqualTo(4);
+        }
+    }
+
     private void execute(Connection connection, String sql) throws Exception {
         try (Statement statement = connection.createStatement()) {
             assertThat(statement.execute(sql)).isTrue();
