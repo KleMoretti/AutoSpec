@@ -231,6 +231,9 @@ class ProjectControllerTest {
         mockMvc.perform(post("/api/projects/{projectId}/code-generation-jobs/{jobId}/cancel", projectId, runningCodeJob.getId())
                         .header(SESSION_HEADER, otherUserToken))
                 .andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/projects/{projectId}/code-generation-jobs/{jobId}/retry", projectId, runningCodeJob.getId())
+                        .header(SESSION_HEADER, otherUserToken))
+                .andExpect(status().isForbidden());
         mockMvc.perform(post("/api/projects/{projectId}/tasks/{taskId}/retry", projectId, failedTask.getId())
                         .header(SESSION_HEADER, otherUserToken))
                 .andExpect(status().isForbidden());
@@ -666,6 +669,35 @@ class ProjectControllerTest {
         CodeGenerationJob cancelledJob = codeGenerationJobService.getById(runningJob.getId());
         assertThat(cancelledJob.getStatus()).isEqualTo("CANCELLED");
         assertThat(cancelledJob.getCompletedAt()).isNotNull();
+    }
+
+    @Test
+    void failedCodeGenerationJobCanBeRetriedWithLineage() throws Exception {
+        String token = loginToken();
+        long projectId = createProject(token, "Retryable Code Job Project", "Build retryable code export.");
+        artifact(projectId, "PRD", "Retry PRD", "{\"project_name\":\"Retry\"}");
+        artifact(projectId, "BACKEND_DESIGN", "Retry Backend", "{\"apis\":[]}");
+
+        CodeGenerationJob failedJob = new CodeGenerationJob();
+        failedJob.setProjectId(projectId);
+        failedJob.setStatus("FAILED");
+        failedJob.setErrorMessage("Manifest generation failed");
+        failedJob.setCompletedAt(LocalDateTime.now());
+        codeGenerationJobService.save(failedJob);
+
+        mockMvc.perform(post("/api/projects/{projectId}/code-generation-jobs/{jobId}/retry", projectId, failedJob.getId())
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.format").value("ZIP"))
+                .andExpect(jsonPath("$.fileName").value(org.hamcrest.Matchers.endsWith("-skeleton.zip")));
+
+        mockMvc.perform(get("/api/projects/{projectId}/code-generation-jobs", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].status").value("FAILED"))
+                .andExpect(jsonPath("$[1].status").value("SUCCEEDED"))
+                .andExpect(jsonPath("$[1].retryOfJobId").value(failedJob.getId()));
     }
 
     private String loginToken() throws Exception {

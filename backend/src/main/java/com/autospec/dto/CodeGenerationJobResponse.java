@@ -6,6 +6,7 @@ import java.time.LocalDateTime;
 
 public record CodeGenerationJobResponse(
         Long id,
+        Long retryOfJobId,
         String status,
         String manifest,
         String errorMessage,
@@ -17,6 +18,7 @@ public record CodeGenerationJobResponse(
     public static CodeGenerationJobResponse from(CodeGenerationJob job) {
         return new CodeGenerationJobResponse(
                 job.getId(),
+                job.getRetryOfJobId(),
                 job.getStatus(),
                 job.getManifest(),
                 job.getErrorMessage(),

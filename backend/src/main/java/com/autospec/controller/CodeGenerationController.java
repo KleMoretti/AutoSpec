@@ -82,4 +82,19 @@ public class CodeGenerationController {
         );
         return CodeGenerationJobResponse.from(codeGenerationJobService.cancelRunningJob(projectId, jobId));
     }
+
+    @PostMapping("/{projectId}/code-generation-jobs/{jobId}/retry")
+    public CodeGenerationResponse retry(
+            @PathVariable Long projectId,
+            @PathVariable Long jobId,
+            @RequestHeader(value = "X-AutoSpec-Session-Token", required = false) String sessionToken
+    ) {
+        projectAccessService.requireProjectRole(
+                projectId,
+                projectAccessService.resolveUserId(sessionToken),
+                "OWNER",
+                "EDITOR"
+        );
+        return codeSkeletonService.retry(projectId, jobId);
+    }
 }

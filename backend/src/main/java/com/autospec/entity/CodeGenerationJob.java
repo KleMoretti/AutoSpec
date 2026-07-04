@@ -16,6 +16,8 @@ public class CodeGenerationJob {
 
     private Long projectId;
 
+    private Long retryOfJobId;
+
     private String status;
 
     private String manifest;

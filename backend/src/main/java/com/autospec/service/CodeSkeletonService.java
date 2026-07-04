@@ -5,8 +5,10 @@ import com.autospec.entity.Artifact;
 import com.autospec.entity.CodeGenerationJob;
 import com.autospec.entity.ExportFile;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -39,8 +41,25 @@ public class CodeSkeletonService {
 
     @Transactional(noRollbackFor = RuntimeException.class)
     public CodeGenerationResponse generate(Long projectId) {
+        return runJob(projectId, null);
+    }
+
+    @Transactional(noRollbackFor = RuntimeException.class)
+    public CodeGenerationResponse retry(Long projectId, Long jobId) {
+        CodeGenerationJob original = codeGenerationJobService.getById(jobId);
+        if (original == null || !projectId.equals(original.getProjectId())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Code generation job not found");
+        }
+        if (!"FAILED".equals(original.getStatus())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Only failed code generation jobs can be retried");
+        }
+        return runJob(projectId, original.getId());
+    }
+
+    private CodeGenerationResponse runJob(Long projectId, Long retryOfJobId) {
         CodeGenerationJob job = new CodeGenerationJob();
         job.setProjectId(projectId);
+        job.setRetryOfJobId(retryOfJobId);
         job.setStatus("RUNNING");
         codeGenerationJobService.save(job);
 

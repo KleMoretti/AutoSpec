@@ -222,6 +222,25 @@ class SchemaInitSqlTest {
         }
     }
 
+    @Test
+    void flywayMigrationsCreateCodeGenerationRetryColumns() throws Exception {
+        JdbcDataSource dataSource = new JdbcDataSource();
+        dataSource.setURL("jdbc:h2:mem:code_generation_retry_schema;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1");
+        dataSource.setUser("sa");
+        dataSource.setPassword("");
+
+        Flyway.configure()
+                .dataSource(dataSource)
+                .locations("classpath:db/migration")
+                .load()
+                .migrate();
+
+        try (Connection connection = dataSource.getConnection()) {
+            assertThatCode(() -> execute(connection, "select retry_of_job_id from code_generation_job where 1 = 0"))
+                    .doesNotThrowAnyException();
+        }
+    }
+
     private void execute(Connection connection, String sql) throws Exception {
         try (Statement statement = connection.createStatement()) {
             assertThat(statement.execute(sql)).isTrue();
