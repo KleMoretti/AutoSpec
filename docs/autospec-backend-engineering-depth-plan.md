@@ -30,7 +30,7 @@ The target positioning is:
 | BE-05 | Security and Multi-tenant Authorization | P0 | IN_PROGRESS | Harden project access with consistent owner/editor/viewer checks, row-scoped retrieval, and export permission rules. | authorization matrix, negative access tests, security regression suite |
 | BE-06 | API Contract and Error Model | P1 | IN_PROGRESS | Standardize REST DTO validation, error codes, pagination, OpenAPI documentation, and backward-compatible API versioning. | error response schema, validation tests, OpenAPI generation, contract examples |
 | BE-07 | Persistence Performance and Data Lifecycle | P1 | IN_PROGRESS | Improve query paths for project history, artifact versions, Agent traces, review issues, and large export files. | index review, pagination, artifact content lifecycle, query performance tests |
-| BE-08 | Integration Test Depth | P1 | PLANNED | Add Testcontainers, WireMock or equivalent HTTP stubs, Flyway migration checks, and end-to-end backend use-case tests. | Testcontainers profile, Agent Engine stub tests, migration tests, CI-ready test commands |
+| BE-08 | Integration Test Depth | P1 | IN_PROGRESS | Add Testcontainers, WireMock or equivalent HTTP stubs, Flyway migration checks, and end-to-end backend use-case tests. | Testcontainers profile, Agent Engine stub tests, migration tests, CI-ready test commands |
 
 ## Execution Status
 
@@ -45,7 +45,7 @@ Updated on `2026-07-04`.
 | BE-05 | PARTIAL | Cross-project non-member access is denied for artifacts, Markdown export, workflow run history, model invocations, code skeleton generation, and failed task retry in `ProjectControllerTest`. |
 | BE-06 | PARTIAL | `ApiErrorResponse`, `GlobalExceptionHandler`, validation and `ResponseStatusException` regression tests in `ApiErrorResponseTest`. |
 | BE-07 | PARTIAL | Workflow run history is bounded with `limit` and `offset` query parameters, rejects invalid pagination input with the stable error model, and is covered by `ProjectControllerTest`. |
-| BE-08 | PARTIAL | Flyway migration coverage for `workflow_run` in `SchemaInitSqlTest`. |
+| BE-08 | PARTIAL | Flyway migration coverage for `workflow_run` in `SchemaInitSqlTest`; `HttpAgentEngineClientTest` uses a local HTTP server stub to verify V4 Agent Engine request/response mapping without external network access. |
 
 ## Milestones
 
