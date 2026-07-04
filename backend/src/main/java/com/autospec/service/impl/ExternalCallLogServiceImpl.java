@@ -9,9 +9,19 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Service
 public class ExternalCallLogServiceImpl extends ServiceImpl<ExternalCallLogMapper, ExternalCallLog> implements ExternalCallLogService {
+
+    @Override
+    public List<ExternalCallLog> listByProjectId(Long projectId, int limit, int offset) {
+        return lambdaQuery()
+                .eq(ExternalCallLog::getProjectId, projectId)
+                .orderByAsc(ExternalCallLog::getId)
+                .last("limit " + limit + " offset " + offset)
+                .list();
+    }
 
     @Override
     @Transactional(propagation = Propagation.REQUIRES_NEW)

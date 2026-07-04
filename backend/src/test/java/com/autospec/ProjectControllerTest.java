@@ -20,6 +20,7 @@ import com.autospec.service.AgentTaskService;
 import com.autospec.service.ArtifactService;
 import com.autospec.service.AuthService;
 import com.autospec.service.CodeGenerationJobService;
+import com.autospec.service.ExternalCallLogService;
 import com.autospec.service.KnowledgeIndexService;
 import com.autospec.service.ModelInvocationService;
 import com.autospec.service.ProjectMemberService;
@@ -86,6 +87,9 @@ class ProjectControllerTest {
 
     @Autowired
     private CodeGenerationJobService codeGenerationJobService;
+
+    @Autowired
+    private ExternalCallLogService externalCallLogService;
 
     @Autowired
     private ModelInvocationService modelInvocationService;
@@ -590,6 +594,32 @@ class ProjectControllerTest {
     }
 
     @Test
+    void externalCallLogHistorySupportsBoundedPagination() throws Exception {
+        String token = loginToken();
+        long projectId = createProject(token, "External Call Page Project", "Build paged external calls.");
+        externalCall(projectId, "GENERATE_PRD");
+        externalCall(projectId, "GENERATE_ARCHITECTURE");
+        externalCall(projectId, "GENERATE_REVIEW");
+
+        mockMvc.perform(get("/api/projects/{projectId}/external-calls?limit=2&offset=1", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].operation").value("GENERATE_ARCHITECTURE"))
+                .andExpect(jsonPath("$[1].operation").value("GENERATE_REVIEW"));
+
+        mockMvc.perform(get("/api/projects/{projectId}/external-calls?limit=0", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+
+        mockMvc.perform(get("/api/projects/{projectId}/external-calls?offset=-1", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+    }
+
+    @Test
     void workflowRunHistoryReturnsProjectScopedRunsAndRequiresMembership() throws Exception {
         String token = loginToken();
         when(agentEngineClient.generateV4(contains("observable generation"), anyList()))
@@ -767,6 +797,21 @@ class ProjectControllerTest {
         job.setProjectId(projectId);
         job.setStatus(status);
         codeGenerationJobService.save(job);
+    }
+
+    private void externalCall(Long projectId, String operation) {
+        LocalDateTime startedAt = LocalDateTime.now().minusNanos(10_000_000);
+        externalCallLogService.record(
+                projectId,
+                "agent-engine",
+                operation,
+                "SUCCEEDED",
+                10,
+                "{\"source\":\"test\"}",
+                null,
+                startedAt,
+                LocalDateTime.now()
+        );
     }
 
     private long auditEventCount(Long projectId, String eventType) throws Exception {
