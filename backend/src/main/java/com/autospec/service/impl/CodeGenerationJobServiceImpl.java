@@ -42,4 +42,21 @@ public class CodeGenerationJobServiceImpl extends ServiceImpl<CodeGenerationJobM
         updateById(job);
         return job;
     }
+
+    @Override
+    @Transactional
+    public int timeoutRunningJobsBefore(LocalDateTime cutoff) {
+        List<CodeGenerationJob> staleJobs = lambdaQuery()
+                .eq(CodeGenerationJob::getStatus, "RUNNING")
+                .lt(CodeGenerationJob::getCreatedAt, cutoff)
+                .list();
+        LocalDateTime now = LocalDateTime.now();
+        for (CodeGenerationJob job : staleJobs) {
+            job.setStatus("FAILED");
+            job.setErrorMessage("Timed out while running code generation job");
+            job.setCompletedAt(now);
+            updateById(job);
+        }
+        return staleJobs.size();
+    }
 }

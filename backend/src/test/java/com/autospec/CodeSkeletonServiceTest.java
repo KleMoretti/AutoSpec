@@ -22,6 +22,7 @@ import java.io.ByteArrayInputStream;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
+import java.time.LocalDateTime;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -117,6 +118,31 @@ class CodeSkeletonServiceTest {
                 .count()).isZero();
     }
 
+    @Test
+    void staleRunningCodeGenerationJobsCanBeTimedOut() {
+        Project project = new Project();
+        project.setUserId(0L);
+        project.setName("Timeout Recovery Project");
+        project.setOriginalRequirement("Recover stale code generation jobs.");
+        project.setStatus("COMPLETED");
+        projectService.save(project);
+
+        LocalDateTime now = LocalDateTime.now();
+        CodeGenerationJob staleRunning = codeGenerationJob(project.getId(), "RUNNING", now.minusHours(2));
+        CodeGenerationJob recentRunning = codeGenerationJob(project.getId(), "RUNNING", now.minusMinutes(5));
+        CodeGenerationJob alreadyFailed = codeGenerationJob(project.getId(), "FAILED", now.minusHours(3));
+
+        int timedOut = codeGenerationJobService.timeoutRunningJobsBefore(now.minusMinutes(30));
+
+        assertThat(timedOut).isEqualTo(1);
+        CodeGenerationJob timedOutJob = codeGenerationJobService.getById(staleRunning.getId());
+        assertThat(timedOutJob.getStatus()).isEqualTo("FAILED");
+        assertThat(timedOutJob.getErrorMessage()).isEqualTo("Timed out while running code generation job");
+        assertThat(timedOutJob.getCompletedAt()).isNotNull();
+        assertThat(codeGenerationJobService.getById(recentRunning.getId()).getStatus()).isEqualTo("RUNNING");
+        assertThat(codeGenerationJobService.getById(alreadyFailed.getId()).getStatus()).isEqualTo("FAILED");
+    }
+
     private void saveArtifact(Long projectId, String type, String content) {
         Artifact artifact = new Artifact();
         artifact.setProjectId(projectId);
@@ -127,5 +153,14 @@ class CodeSkeletonServiceTest {
         artifact.setVersion(1);
         artifact.setStatus("GENERATED");
         artifactService.save(artifact);
+    }
+
+    private CodeGenerationJob codeGenerationJob(Long projectId, String status, LocalDateTime createdAt) {
+        CodeGenerationJob job = new CodeGenerationJob();
+        job.setProjectId(projectId);
+        job.setStatus(status);
+        job.setCreatedAt(createdAt);
+        codeGenerationJobService.save(job);
+        return job;
     }
 }
