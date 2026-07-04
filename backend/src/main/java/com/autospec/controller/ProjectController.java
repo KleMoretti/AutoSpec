@@ -138,13 +138,18 @@ public class ProjectController {
     @GetMapping("/{projectId}/artifacts")
     public List<ArtifactResponse> artifacts(
             @PathVariable Long projectId,
-            @RequestHeader(value = "X-AutoSpec-Session-Token", required = false) String sessionToken
+            @RequestHeader(value = "X-AutoSpec-Session-Token", required = false) String sessionToken,
+            @RequestParam(defaultValue = "50") Integer limit,
+            @RequestParam(defaultValue = "0") Integer offset
     ) {
+        if (limit == null || limit < 1 || limit > 100) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "limit must be between 1 and 100");
+        }
+        if (offset == null || offset < 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "offset must be greater than or equal to 0");
+        }
         requireViewer(projectId, sessionToken);
-        return artifactService.lambdaQuery()
-                .eq(Artifact::getProjectId, projectId)
-                .orderByAsc(Artifact::getId)
-                .list()
+        return artifactService.listByProjectId(projectId, limit, offset)
                 .stream()
                 .map(ArtifactResponse::from)
                 .toList();

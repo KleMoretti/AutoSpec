@@ -6,6 +6,17 @@ import com.autospec.service.ArtifactService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
+
 @Service
 public class ArtifactServiceImpl extends ServiceImpl<ArtifactMapper, Artifact> implements ArtifactService {
+
+    @Override
+    public List<Artifact> listByProjectId(Long projectId, int limit, int offset) {
+        return lambdaQuery()
+                .eq(Artifact::getProjectId, projectId)
+                .orderByAsc(Artifact::getId)
+                .last("limit " + limit + " offset " + offset)
+                .list();
+    }
 }

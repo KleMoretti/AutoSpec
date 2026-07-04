@@ -517,6 +517,32 @@ class ProjectControllerTest {
     }
 
     @Test
+    void artifactHistorySupportsBoundedPagination() throws Exception {
+        String token = loginToken();
+        long projectId = createProject(token, "Artifact Page Project", "Build paged artifact history.");
+        artifact(projectId, "PRD", "First Artifact", "{\"project_name\":\"first\"}");
+        artifact(projectId, "BACKEND_DESIGN", "Second Artifact", "{\"tables\":[]}");
+        artifact(projectId, "REVIEW_REPORT", "Third Artifact", "{\"score\":100,\"issues\":[]}");
+
+        mockMvc.perform(get("/api/projects/{projectId}/artifacts?limit=2&offset=1", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].title").value("Second Artifact"))
+                .andExpect(jsonPath("$[1].title").value("Third Artifact"));
+
+        mockMvc.perform(get("/api/projects/{projectId}/artifacts?limit=0", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+
+        mockMvc.perform(get("/api/projects/{projectId}/artifacts?offset=-1", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+    }
+
+    @Test
     void projectGenerationFlowPersistsProgressArtifactsAndReview() throws Exception {
         String token = loginToken();
         when(agentEngineClient.generate(contains("campus second-hand marketplace")))
