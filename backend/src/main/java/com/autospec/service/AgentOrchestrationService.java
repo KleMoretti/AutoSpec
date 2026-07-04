@@ -1,6 +1,7 @@
 package com.autospec.service;
 
 import com.autospec.dto.AgentStepStatus;
+import com.autospec.dto.KnowledgeSourceResponse;
 import com.autospec.dto.ProjectProgressResponse;
 import com.autospec.entity.AgentTask;
 import com.autospec.entity.Artifact;
@@ -16,6 +17,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -58,6 +60,7 @@ public class AgentOrchestrationService {
     private final WorkflowSnapshotService workflowSnapshotService;
     private final WorkflowRunService workflowRunService;
     private final AuditEventService auditEventService;
+    private final ExternalCallLogService externalCallLogService;
     private final ObjectMapper objectMapper;
 
     public AgentOrchestrationService(
@@ -74,6 +77,7 @@ public class AgentOrchestrationService {
             WorkflowSnapshotService workflowSnapshotService,
             WorkflowRunService workflowRunService,
             AuditEventService auditEventService,
+            ExternalCallLogService externalCallLogService,
             ObjectMapper objectMapper
     ) {
         this.projectService = projectService;
@@ -89,6 +93,7 @@ public class AgentOrchestrationService {
         this.workflowSnapshotService = workflowSnapshotService;
         this.workflowRunService = workflowRunService;
         this.auditEventService = auditEventService;
+        this.externalCallLogService = externalCallLogService;
         this.objectMapper = objectMapper;
     }
 
@@ -147,7 +152,7 @@ public class AgentOrchestrationService {
         auditWorkflowRun(projectId, run, "WORKFLOW_RUN_STARTED", "V4 workflow run started");
 
         try {
-            ProjectProgressResponse response = generateV4(projectId);
+            ProjectProgressResponse response = generateV4Internal(projectId, normalizedKey, run.getId());
             run.setStatus("COMPLETED");
             run.setResponseStatus(response.status());
             run.setResponsePercent(response.percent());
@@ -166,6 +171,10 @@ public class AgentOrchestrationService {
 
     @Transactional
     public ProjectProgressResponse generateV4(Long projectId) {
+        return generateV4Internal(projectId, null, null);
+    }
+
+    private ProjectProgressResponse generateV4Internal(Long projectId, String idempotencyKey, Long workflowRunId) {
         Project project = getProjectOrThrow(projectId);
         workflowSnapshotService.ensureDefaultSnapshot(projectId);
         project.setStatus("GENERATING");
@@ -173,10 +182,8 @@ public class AgentOrchestrationService {
 
         clearGeneratedData(projectId);
 
-        AgentGenerationResult generationResult = agentEngineClient.generateV4(
-                project.getOriginalRequirement(),
-                knowledgeIndexService.retrieve(project.getOriginalRequirement(), 5, project.getUserId())
-        );
+        List<KnowledgeSourceResponse> retrievedSources = knowledgeIndexService.retrieve(project.getOriginalRequirement(), 5, project.getUserId());
+        AgentGenerationResult generationResult = callGenerateV4AgentEngine(project, retrievedSources, idempotencyKey, workflowRunId);
         recordTasks(projectId, generationResult);
         saveArtifact(projectId, "PRD", project.getName() + " PRD", generationResult.prdJson(), "ProductManagerAgent_v1", "GENERATED");
         saveArtifact(projectId, "ARCHITECTURE_DESIGN", project.getName() + " Architecture Design", generationResult.architectureDesignJson(), "ArchitectAgent_v1", "GENERATED");
@@ -189,6 +196,77 @@ public class AgentOrchestrationService {
         project.setStatus("COMPLETED");
         projectService.updateById(project);
         return progress(projectId);
+    }
+
+    private AgentGenerationResult callGenerateV4AgentEngine(
+            Project project,
+            List<KnowledgeSourceResponse> retrievedSources,
+            String idempotencyKey,
+            Long workflowRunId
+    ) {
+        LocalDateTime startedAt = LocalDateTime.now();
+        long startedNanos = System.nanoTime();
+        String requestContext = agentEngineRequestContext(project, retrievedSources, idempotencyKey, workflowRunId);
+        try {
+            AgentGenerationResult result = agentEngineClient.generateV4(project.getOriginalRequirement(), retrievedSources);
+            recordExternalCall(project.getId(), "GENERATE_V4", "SUCCEEDED", startedAt, startedNanos, requestContext, null);
+            return result;
+        } catch (ResponseStatusException ex) {
+            recordExternalCall(project.getId(), "GENERATE_V4", "FAILED", startedAt, startedNanos, requestContext, responseStatusMessage(ex));
+            throw ex;
+        } catch (RuntimeException ex) {
+            recordExternalCall(project.getId(), "GENERATE_V4", "FAILED", startedAt, startedNanos, requestContext, ex.getMessage());
+            throw ex;
+        }
+    }
+
+    private void recordExternalCall(
+            Long projectId,
+            String operation,
+            String status,
+            LocalDateTime startedAt,
+            long startedNanos,
+            String requestContext,
+            String errorMessage
+    ) {
+        externalCallLogService.record(
+                projectId,
+                "agent-engine",
+                operation,
+                status,
+                elapsedMillis(startedNanos),
+                requestContext,
+                errorMessage,
+                startedAt,
+                LocalDateTime.now()
+        );
+    }
+
+    private int elapsedMillis(long startedNanos) {
+        long elapsed = Math.max(0, (System.nanoTime() - startedNanos) / 1_000_000);
+        return elapsed > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) elapsed;
+    }
+
+    private String agentEngineRequestContext(
+            Project project,
+            List<KnowledgeSourceResponse> retrievedSources,
+            String idempotencyKey,
+            Long workflowRunId
+    ) {
+        Map<String, Object> context = new LinkedHashMap<>();
+        context.put("workflowRunId", workflowRunId);
+        context.put("idempotencyKey", idempotencyKey);
+        context.put("requirementLength", project.getOriginalRequirement() == null ? 0 : project.getOriginalRequirement().length());
+        context.put("retrievedSourceCount", retrievedSources == null ? 0 : retrievedSources.size());
+        try {
+            return objectMapper.writeValueAsString(context);
+        } catch (Exception ex) {
+            return "{}";
+        }
+    }
+
+    private String responseStatusMessage(ResponseStatusException ex) {
+        return ex.getReason() == null ? ex.getMessage() : ex.getReason();
     }
 
     private String normalizeIdempotencyKey(String idempotencyKey) {

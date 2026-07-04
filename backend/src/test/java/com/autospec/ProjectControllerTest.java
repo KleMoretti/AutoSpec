@@ -212,6 +212,9 @@ class ProjectControllerTest {
         mockMvc.perform(get("/api/projects/{projectId}/model-invocations", projectId)
                         .header(SESSION_HEADER, otherUserToken))
                 .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/projects/{projectId}/external-calls", projectId)
+                        .header(SESSION_HEADER, otherUserToken))
+                .andExpect(status().isForbidden());
         mockMvc.perform(post("/api/projects/{projectId}/code-skeleton", projectId)
                         .header(SESSION_HEADER, otherUserToken))
                 .andExpect(status().isForbidden());
@@ -494,6 +497,15 @@ class ProjectControllerTest {
                 .eq(Artifact::getType, "EVALUATION_REPORT")
                 .count()).isEqualTo(1);
         assertThat(auditEventCount(projectId, "WORKFLOW_RUN_COMPLETED")).isEqualTo(1);
+
+        mockMvc.perform(get("/api/projects/{projectId}/external-calls", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].targetService").value("agent-engine"))
+                .andExpect(jsonPath("$[0].operation").value("GENERATE_V4"))
+                .andExpect(jsonPath("$[0].status").value("SUCCEEDED"))
+                .andExpect(jsonPath("$[0].durationMs").isNumber())
+                .andExpect(jsonPath("$[0].requestContext").value(org.hamcrest.Matchers.containsString("retrievedSourceCount")));
     }
 
     @Test
@@ -551,6 +563,14 @@ class ProjectControllerTest {
         assertThat(workflowRun.getCompletedAt()).isNotNull();
         assertThat(projectService.getById(projectId).getStatus()).isEqualTo("FAILED");
         assertThat(auditEventCount(projectId, "WORKFLOW_RUN_FAILED")).isEqualTo(1);
+
+        mockMvc.perform(get("/api/projects/{projectId}/external-calls", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].targetService").value("agent-engine"))
+                .andExpect(jsonPath("$[0].operation").value("GENERATE_V4"))
+                .andExpect(jsonPath("$[0].status").value("FAILED"))
+                .andExpect(jsonPath("$[0].errorMessage").value("Agent Engine unavailable"));
     }
 
     @Test
