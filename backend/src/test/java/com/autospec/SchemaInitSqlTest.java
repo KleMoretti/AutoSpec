@@ -241,6 +241,32 @@ class SchemaInitSqlTest {
         }
     }
 
+    @Test
+    void flywayMigrationsCreateCodeGenerationJobHistoryIndex() throws Exception {
+        JdbcDataSource dataSource = new JdbcDataSource();
+        dataSource.setURL("jdbc:h2:mem:code_generation_job_history_index_schema;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1");
+        dataSource.setUser("sa");
+        dataSource.setPassword("");
+
+        Flyway.configure()
+                .dataSource(dataSource)
+                .locations("classpath:db/migration")
+                .load()
+                .migrate();
+
+        try (Connection connection = dataSource.getConnection();
+             Statement statement = connection.createStatement();
+             ResultSet resultSet = statement.executeQuery("""
+                     select index_name
+                     from information_schema.indexes
+                     where table_name = 'code_generation_job'
+                       and index_name = 'idx_code_generation_job_project_id_id'
+                     """)) {
+            assertThat(resultSet.next()).isTrue();
+            assertThat(resultSet.next()).isFalse();
+        }
+    }
+
     private void execute(Connection connection, String sql) throws Exception {
         try (Statement statement = connection.createStatement()) {
             assertThat(statement.execute(sql)).isTrue();

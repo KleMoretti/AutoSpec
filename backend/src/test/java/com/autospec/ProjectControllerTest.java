@@ -672,6 +672,32 @@ class ProjectControllerTest {
     }
 
     @Test
+    void codeGenerationJobHistorySupportsBoundedPagination() throws Exception {
+        String token = loginToken();
+        long projectId = createProject(token, "Paged Code Job Project", "Build paged code job history.");
+        codeGenerationJob(projectId, "FAILED");
+        codeGenerationJob(projectId, "CANCELLED");
+        codeGenerationJob(projectId, "SUCCEEDED");
+
+        mockMvc.perform(get("/api/projects/{projectId}/code-generation-jobs?limit=2&offset=1", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].status").value("CANCELLED"))
+                .andExpect(jsonPath("$[1].status").value("SUCCEEDED"));
+
+        mockMvc.perform(get("/api/projects/{projectId}/code-generation-jobs?limit=0", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+
+        mockMvc.perform(get("/api/projects/{projectId}/code-generation-jobs?offset=-1", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+    }
+
+    @Test
     void failedCodeGenerationJobCanBeRetriedWithLineage() throws Exception {
         String token = loginToken();
         long projectId = createProject(token, "Retryable Code Job Project", "Build retryable code export.");
@@ -734,6 +760,13 @@ class ProjectControllerTest {
         run.setStartedAt(LocalDateTime.now().minusSeconds(1));
         run.setCompletedAt(LocalDateTime.now());
         workflowRunService.save(run);
+    }
+
+    private void codeGenerationJob(Long projectId, String status) {
+        CodeGenerationJob job = new CodeGenerationJob();
+        job.setProjectId(projectId);
+        job.setStatus(status);
+        codeGenerationJobService.save(job);
     }
 
     private long auditEventCount(Long projectId, String eventType) throws Exception {

@@ -10,9 +10,19 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Service
 public class CodeGenerationJobServiceImpl extends ServiceImpl<CodeGenerationJobMapper, CodeGenerationJob> implements CodeGenerationJobService {
+
+    @Override
+    public List<CodeGenerationJob> listByProjectId(Long projectId, int limit, int offset) {
+        return lambdaQuery()
+                .eq(CodeGenerationJob::getProjectId, projectId)
+                .orderByAsc(CodeGenerationJob::getId)
+                .last("limit " + limit + " offset " + offset)
+                .list();
+    }
 
     @Override
     @Transactional
