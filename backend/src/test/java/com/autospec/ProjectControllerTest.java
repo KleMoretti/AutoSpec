@@ -27,6 +27,7 @@ import com.autospec.service.KnowledgeIndexService;
 import com.autospec.service.ModelInvocationService;
 import com.autospec.service.ProjectMemberService;
 import com.autospec.service.ProjectService;
+import com.autospec.service.ReviewIssueService;
 import com.autospec.service.UserAccountService;
 import com.autospec.service.WorkflowRunService;
 import com.autospec.service.WorkflowSnapshotService;
@@ -36,6 +37,7 @@ import com.autospec.entity.CodeGenerationJob;
 import com.autospec.entity.ModelInvocation;
 import com.autospec.entity.Project;
 import com.autospec.entity.ProjectMember;
+import com.autospec.entity.ReviewIssue;
 import com.autospec.entity.UserAccount;
 import com.autospec.entity.WorkflowRun;
 import com.autospec.entity.WorkflowSnapshot;
@@ -107,6 +109,9 @@ class ProjectControllerTest {
 
     @Autowired
     private ProjectMemberService projectMemberService;
+
+    @Autowired
+    private ReviewIssueService reviewIssueService;
 
     @Autowired
     private UserAccountService userAccountService;
@@ -239,6 +244,9 @@ class ProjectControllerTest {
                         .header(SESSION_HEADER, otherUserToken))
                 .andExpect(status().isForbidden());
         mockMvc.perform(get("/api/projects/{projectId}/audit-events", projectId)
+                        .header(SESSION_HEADER, otherUserToken))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/projects/{projectId}/review", projectId)
                         .header(SESSION_HEADER, otherUserToken))
                 .andExpect(status().isForbidden());
         mockMvc.perform(post("/api/projects/{projectId}/code-skeleton", projectId)
@@ -473,6 +481,36 @@ class ProjectControllerTest {
                 .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
 
         mockMvc.perform(get("/api/projects/{projectId}/audit-events?offset=-1", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+    }
+
+    @Test
+    void reviewIssueHistorySupportsBoundedPagination() throws Exception {
+        String token = loginToken();
+        long projectId = createProject(token, "Review Issue Page Project", "Build paged review issues.");
+        artifact(projectId, "REVIEW_REPORT", "Review Report", "{\"score\":91,\"issues\":[]}");
+        reviewIssue(projectId, "LOW", "FIRST_RULE", "first issue");
+        reviewIssue(projectId, "MEDIUM", "SECOND_RULE", "second issue");
+        reviewIssue(projectId, "HIGH", "THIRD_RULE", "third issue");
+
+        mockMvc.perform(get("/api/projects/{projectId}/review?limit=2&offset=1", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.score").value(91))
+                .andExpect(jsonPath("$.issues.length()").value(2))
+                .andExpect(jsonPath("$.issues[0].issueType").value("SECOND_RULE"))
+                .andExpect(jsonPath("$.issues[0].description").value("second issue"))
+                .andExpect(jsonPath("$.issues[1].issueType").value("THIRD_RULE"))
+                .andExpect(jsonPath("$.issues[1].description").value("third issue"));
+
+        mockMvc.perform(get("/api/projects/{projectId}/review?limit=0", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+
+        mockMvc.perform(get("/api/projects/{projectId}/review?offset=-1", projectId)
                         .header(SESSION_HEADER, token))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
@@ -938,6 +976,17 @@ class ProjectControllerTest {
                 eventType + " audit event",
                 "{\"source\":\"test\"}"
         );
+    }
+
+    private void reviewIssue(Long projectId, String severity, String issueType, String description) {
+        ReviewIssue issue = new ReviewIssue();
+        issue.setProjectId(projectId);
+        issue.setSeverity(severity);
+        issue.setIssueType(issueType);
+        issue.setDescription(description);
+        issue.setSuggestion("Review generated artifacts for consistency.");
+        issue.setStatus("OPEN");
+        reviewIssueService.save(issue);
     }
 
     private void modelInvocation(Long projectId, String agentNode) {

@@ -175,13 +175,18 @@ public class ProjectController {
     @GetMapping("/{projectId}/review")
     public ReviewResponse review(
             @PathVariable Long projectId,
-            @RequestHeader(value = "X-AutoSpec-Session-Token", required = false) String sessionToken
+            @RequestHeader(value = "X-AutoSpec-Session-Token", required = false) String sessionToken,
+            @RequestParam(defaultValue = "50") Integer limit,
+            @RequestParam(defaultValue = "0") Integer offset
     ) {
+        if (limit == null || limit < 1 || limit > 100) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "limit must be between 1 and 100");
+        }
+        if (offset == null || offset < 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "offset must be greater than or equal to 0");
+        }
         requireViewer(projectId, sessionToken);
-        List<ReviewIssueResponse> issues = reviewIssueService.lambdaQuery()
-                .eq(com.autospec.entity.ReviewIssue::getProjectId, projectId)
-                .orderByAsc(com.autospec.entity.ReviewIssue::getId)
-                .list()
+        List<ReviewIssueResponse> issues = reviewIssueService.listByProjectId(projectId, limit, offset)
                 .stream()
                 .map(issue -> new ReviewIssueResponse(
                         issue.getSeverity(),
