@@ -15,6 +15,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import com.autospec.service.AgentEngineClient;
 import com.autospec.service.AgentEngineExecutionRecord;
+import com.autospec.service.AgentEventService;
 import com.autospec.service.AgentGenerationResult;
 import com.autospec.service.AgentTaskService;
 import com.autospec.service.ArtifactService;
@@ -81,6 +82,9 @@ class ProjectControllerTest {
 
     @Autowired
     private AgentTaskService agentTaskService;
+
+    @Autowired
+    private AgentEventService agentEventService;
 
     @Autowired
     private ArtifactService artifactService;
@@ -412,6 +416,32 @@ class ProjectControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.workflowKey").value("autospec-v3"))
                 .andExpect(jsonPath("$.nodes[0].id").value("product_manager"));
+    }
+
+    @Test
+    void agentEventHistorySupportsBoundedPagination() throws Exception {
+        String token = loginToken();
+        long projectId = createProject(token, "Agent Event Page Project", "Build paged agent events.");
+        agentEvent(projectId, "product_manager");
+        agentEvent(projectId, "architect");
+        agentEvent(projectId, "reviewer");
+
+        mockMvc.perform(get("/api/projects/{projectId}/events/history?limit=2&offset=1", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].nodeName").value("architect"))
+                .andExpect(jsonPath("$[1].nodeName").value("reviewer"));
+
+        mockMvc.perform(get("/api/projects/{projectId}/events/history?limit=0", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+
+        mockMvc.perform(get("/api/projects/{projectId}/events/history?offset=-1", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
     }
 
     @Test
@@ -850,6 +880,17 @@ class ProjectControllerTest {
                 null,
                 startedAt,
                 LocalDateTime.now()
+        );
+    }
+
+    private void agentEvent(Long projectId, String nodeName) {
+        agentEventService.record(
+                projectId,
+                null,
+                "NODE_SUCCEEDED",
+                nodeName,
+                nodeName + " succeeded",
+                "{\"source\":\"test\"}"
         );
     }
 
