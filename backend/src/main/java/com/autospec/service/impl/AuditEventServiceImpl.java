@@ -6,6 +6,8 @@ import com.autospec.service.AuditEventService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
+
 @Service
 public class AuditEventServiceImpl extends ServiceImpl<AuditEventMapper, AuditEvent> implements AuditEventService {
 
@@ -28,5 +30,14 @@ public class AuditEventServiceImpl extends ServiceImpl<AuditEventMapper, AuditEv
         event.setMessage(message);
         event.setMetadata(metadata);
         save(event);
+    }
+
+    @Override
+    public List<AuditEvent> listByProjectId(Long projectId, int limit, int offset) {
+        return lambdaQuery()
+                .eq(AuditEvent::getProjectId, projectId)
+                .orderByAsc(AuditEvent::getId)
+                .last("limit " + limit + " offset " + offset)
+                .list();
     }
 }

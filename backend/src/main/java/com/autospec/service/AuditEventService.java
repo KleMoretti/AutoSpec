@@ -3,6 +3,8 @@ package com.autospec.service;
 import com.autospec.entity.AuditEvent;
 import com.baomidou.mybatisplus.extension.service.IService;
 
+import java.util.List;
+
 public interface AuditEventService extends IService<AuditEvent> {
 
     void record(
@@ -14,4 +16,6 @@ public interface AuditEventService extends IService<AuditEvent> {
             String message,
             String metadata
     );
+
+    List<AuditEvent> listByProjectId(Long projectId, int limit, int offset);
 }

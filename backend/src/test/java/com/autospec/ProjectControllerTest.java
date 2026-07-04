@@ -19,6 +19,7 @@ import com.autospec.service.AgentEventService;
 import com.autospec.service.AgentGenerationResult;
 import com.autospec.service.AgentTaskService;
 import com.autospec.service.ArtifactService;
+import com.autospec.service.AuditEventService;
 import com.autospec.service.AuthService;
 import com.autospec.service.CodeGenerationJobService;
 import com.autospec.service.ExternalCallLogService;
@@ -88,6 +89,9 @@ class ProjectControllerTest {
 
     @Autowired
     private ArtifactService artifactService;
+
+    @Autowired
+    private AuditEventService auditEventService;
 
     @Autowired
     private CodeGenerationJobService codeGenerationJobService;
@@ -181,6 +185,7 @@ class ProjectControllerTest {
         artifact(projectId, "PRD", "Tenant PRD", "{\"project_name\":\"Tenant\"}");
         artifact(projectId, "BACKEND_DESIGN", "Tenant Backend", "{\"tables\":[],\"apis\":[]}");
         artifact(projectId, "REVIEW_REPORT", "Tenant Review", "{\"score\":100,\"issues\":[]}");
+        auditEvent(projectId, "PROJECT_VIEWED");
 
         WorkflowRun run = new WorkflowRun();
         run.setProjectId(projectId);
@@ -231,6 +236,9 @@ class ProjectControllerTest {
                         .header(SESSION_HEADER, otherUserToken))
                 .andExpect(status().isForbidden());
         mockMvc.perform(get("/api/projects/{projectId}/external-calls", projectId)
+                        .header(SESSION_HEADER, otherUserToken))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/projects/{projectId}/audit-events", projectId)
                         .header(SESSION_HEADER, otherUserToken))
                 .andExpect(status().isForbidden());
         mockMvc.perform(post("/api/projects/{projectId}/code-skeleton", projectId)
@@ -439,6 +447,32 @@ class ProjectControllerTest {
                 .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
 
         mockMvc.perform(get("/api/projects/{projectId}/events/history?offset=-1", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+    }
+
+    @Test
+    void auditEventHistorySupportsBoundedPagination() throws Exception {
+        String token = loginToken();
+        long projectId = createProject(token, "Audit Event Page Project", "Build paged audit events.");
+        auditEvent(projectId, "PROJECT_CREATED");
+        auditEvent(projectId, "WORKFLOW_RUN_STARTED");
+        auditEvent(projectId, "WORKFLOW_RUN_COMPLETED");
+
+        mockMvc.perform(get("/api/projects/{projectId}/audit-events?limit=2&offset=1", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].eventType").value("WORKFLOW_RUN_STARTED"))
+                .andExpect(jsonPath("$[1].eventType").value("WORKFLOW_RUN_COMPLETED"));
+
+        mockMvc.perform(get("/api/projects/{projectId}/audit-events?limit=0", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+
+        mockMvc.perform(get("/api/projects/{projectId}/audit-events?offset=-1", projectId)
                         .header(SESSION_HEADER, token))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
@@ -890,6 +924,18 @@ class ProjectControllerTest {
                 "NODE_SUCCEEDED",
                 nodeName,
                 nodeName + " succeeded",
+                "{\"source\":\"test\"}"
+        );
+    }
+
+    private void auditEvent(Long projectId, String eventType) {
+        auditEventService.record(
+                projectId,
+                null,
+                eventType,
+                "PROJECT",
+                projectId,
+                eventType + " audit event",
                 "{\"source\":\"test\"}"
         );
     }
