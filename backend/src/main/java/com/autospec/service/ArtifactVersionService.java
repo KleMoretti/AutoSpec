@@ -8,6 +8,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Service
 public class ArtifactVersionService {
@@ -67,6 +68,11 @@ public class ArtifactVersionService {
                 .last("limit 1")
                 .oneOpt()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "Approved artifact not found: " + type));
+    }
+
+    public List<Artifact> listVersions(Long projectId, Long artifactId, int limit, int offset) {
+        Artifact artifact = requireProjectArtifact(projectId, artifactId);
+        return artifactService.listVersionsByProjectIdAndType(projectId, artifact.getType(), limit, offset);
     }
 
     public Artifact requireProjectArtifact(Long projectId, Long artifactId) {

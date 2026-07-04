@@ -166,6 +166,27 @@ public class ProjectController {
         return ArtifactResponse.from(artifactVersionService.updateDraft(projectId, artifactId, request.content()));
     }
 
+    @GetMapping("/{projectId}/artifacts/{artifactId}/versions")
+    public List<ArtifactResponse> artifactVersions(
+            @PathVariable Long projectId,
+            @PathVariable Long artifactId,
+            @RequestHeader(value = "X-AutoSpec-Session-Token", required = false) String sessionToken,
+            @RequestParam(defaultValue = "50") Integer limit,
+            @RequestParam(defaultValue = "0") Integer offset
+    ) {
+        if (limit == null || limit < 1 || limit > 100) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "limit must be between 1 and 100");
+        }
+        if (offset == null || offset < 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "offset must be greater than or equal to 0");
+        }
+        requireViewer(projectId, sessionToken);
+        return artifactVersionService.listVersions(projectId, artifactId, limit, offset)
+                .stream()
+                .map(ArtifactResponse::from)
+                .toList();
+    }
+
     @PostMapping("/{projectId}/artifacts/{artifactId}/approve")
     public ApproveArtifactResponse approveArtifact(
             @PathVariable Long projectId,

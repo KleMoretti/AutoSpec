@@ -58,6 +58,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -187,7 +188,7 @@ class ProjectControllerTest {
         long projectId = createProject(ownerToken, "Tenant Project", "Build tenant isolation.");
         String otherUserToken = sessionTokenForNewUser("tenant-user-" + System.nanoTime());
 
-        artifact(projectId, "PRD", "Tenant PRD", "{\"project_name\":\"Tenant\"}");
+        Artifact tenantArtifact = artifact(projectId, "PRD", "Tenant PRD", "{\"project_name\":\"Tenant\"}");
         artifact(projectId, "BACKEND_DESIGN", "Tenant Backend", "{\"tables\":[],\"apis\":[]}");
         artifact(projectId, "REVIEW_REPORT", "Tenant Review", "{\"score\":100,\"issues\":[]}");
         auditEvent(projectId, "PROJECT_VIEWED");
@@ -229,6 +230,9 @@ class ProjectControllerTest {
         codeGenerationJobService.save(runningCodeJob);
 
         mockMvc.perform(get("/api/projects/{projectId}/artifacts", projectId)
+                        .header(SESSION_HEADER, otherUserToken))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/projects/{projectId}/artifacts/{artifactId}/versions", projectId, tenantArtifact.getId())
                         .header(SESSION_HEADER, otherUserToken))
                 .andExpect(status().isForbidden());
         mockMvc.perform(post("/api/projects/{projectId}/export?format=MARKDOWN", projectId)
@@ -537,6 +541,60 @@ class ProjectControllerTest {
                 .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
 
         mockMvc.perform(get("/api/projects/{projectId}/artifacts?offset=-1", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+    }
+
+    @Test
+    void artifactVersionHistorySupportsBoundedPagination() throws Exception {
+        String token = loginToken();
+        long projectId = createProject(token, "Artifact Version Project", "Track artifact versions.");
+        Artifact first = artifact(projectId, "PRD", "Versioned PRD", "{\"project_name\":\"first\"}");
+
+        String secondResponse = mockMvc.perform(put("/api/projects/{projectId}/artifacts/{artifactId}", projectId, first.getId())
+                        .header(SESSION_HEADER, token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(java.util.Map.of(
+                                "content", "{\"project_name\":\"second\"}"
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.version").value(2))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        long secondId = objectMapper.readTree(secondResponse).get("id").asLong();
+
+        String thirdResponse = mockMvc.perform(put("/api/projects/{projectId}/artifacts/{artifactId}", projectId, secondId)
+                        .header(SESSION_HEADER, token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(java.util.Map.of(
+                                "content", "{\"project_name\":\"third\"}"
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.version").value(3))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        long thirdId = objectMapper.readTree(thirdResponse).get("id").asLong();
+
+        mockMvc.perform(get("/api/projects/{projectId}/artifacts/{artifactId}/versions?limit=2&offset=1", projectId, first.getId())
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].id").value(secondId))
+                .andExpect(jsonPath("$[0].version").value(2))
+                .andExpect(jsonPath("$[0].parentArtifactId").value(first.getId()))
+                .andExpect(jsonPath("$[1].id").value(thirdId))
+                .andExpect(jsonPath("$[1].version").value(3))
+                .andExpect(jsonPath("$[1].parentArtifactId").value(secondId));
+
+        mockMvc.perform(get("/api/projects/{projectId}/artifacts/{artifactId}/versions?limit=0", projectId, first.getId())
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+
+        mockMvc.perform(get("/api/projects/{projectId}/artifacts/{artifactId}/versions?offset=-1", projectId, first.getId())
                         .header(SESSION_HEADER, token))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("BAD_REQUEST"));

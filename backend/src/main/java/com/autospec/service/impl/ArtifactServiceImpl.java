@@ -19,4 +19,15 @@ public class ArtifactServiceImpl extends ServiceImpl<ArtifactMapper, Artifact> i
                 .last("limit " + limit + " offset " + offset)
                 .list();
     }
+
+    @Override
+    public List<Artifact> listVersionsByProjectIdAndType(Long projectId, String type, int limit, int offset) {
+        return lambdaQuery()
+                .eq(Artifact::getProjectId, projectId)
+                .eq(Artifact::getType, type)
+                .orderByAsc(Artifact::getVersion)
+                .orderByAsc(Artifact::getId)
+                .last("limit " + limit + " offset " + offset)
+                .list();
+    }
 }
