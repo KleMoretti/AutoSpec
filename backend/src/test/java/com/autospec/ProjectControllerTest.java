@@ -318,6 +318,32 @@ class ProjectControllerTest {
     }
 
     @Test
+    void modelInvocationHistorySupportsBoundedPagination() throws Exception {
+        String token = loginToken();
+        long projectId = createProject(token, "Model Invocation Page Project", "Build paged model invocations.");
+        modelInvocation(projectId, "product_manager");
+        modelInvocation(projectId, "architect");
+        modelInvocation(projectId, "reviewer");
+
+        mockMvc.perform(get("/api/projects/{projectId}/model-invocations?limit=2&offset=1", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].agentNode").value("architect"))
+                .andExpect(jsonPath("$[1].agentNode").value("reviewer"));
+
+        mockMvc.perform(get("/api/projects/{projectId}/model-invocations?limit=0", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+
+        mockMvc.perform(get("/api/projects/{projectId}/model-invocations?offset=-1", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+    }
+
+    @Test
     void generationRetrievesOnlySourcesVisibleToProjectOwner() throws Exception {
         String token = loginToken();
         long ownerSourceProjectId = createProject(token, "Owner Source", "Build model routing marketplace.");
@@ -812,6 +838,19 @@ class ProjectControllerTest {
                 startedAt,
                 LocalDateTime.now()
         );
+    }
+
+    private void modelInvocation(Long projectId, String agentNode) {
+        ModelInvocation invocation = new ModelInvocation();
+        invocation.setProjectId(projectId);
+        invocation.setProviderKey("local");
+        invocation.setModelName("deterministic-fixture");
+        invocation.setAgentNode(agentNode);
+        invocation.setStatus("SUCCEEDED");
+        invocation.setDurationMs(10);
+        invocation.setInputTokens(1);
+        invocation.setOutputTokens(1);
+        modelInvocationService.save(invocation);
     }
 
     private long auditEventCount(Long projectId, String eventType) throws Exception {
