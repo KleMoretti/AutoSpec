@@ -37,6 +37,7 @@ import com.autospec.entity.WorkflowSnapshot;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import javax.sql.DataSource;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyList;
@@ -65,6 +66,9 @@ class ProjectControllerTest {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private DataSource dataSource;
 
     @MockBean
     private AgentEngineClient agentEngineClient;
@@ -478,7 +482,8 @@ class ProjectControllerTest {
         long projectId = createProject(token, "Evaluation V4 Project", "Build agent evaluation.");
 
         mockMvc.perform(post("/api/projects/{projectId}/generate-v4", projectId)
-                        .header(SESSION_HEADER, token))
+                        .header(SESSION_HEADER, token)
+                        .header("Idempotency-Key", "audited-v4-run"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("COMPLETED"))
                 .andExpect(jsonPath("$.percent").value(100));
@@ -488,6 +493,7 @@ class ProjectControllerTest {
                 .eq(Artifact::getProjectId, projectId)
                 .eq(Artifact::getType, "EVALUATION_REPORT")
                 .count()).isEqualTo(1);
+        assertThat(auditEventCount(projectId, "WORKFLOW_RUN_COMPLETED")).isEqualTo(1);
     }
 
     @Test
@@ -544,6 +550,7 @@ class ProjectControllerTest {
         assertThat(workflowRun.getErrorMessage()).contains("Agent Engine unavailable");
         assertThat(workflowRun.getCompletedAt()).isNotNull();
         assertThat(projectService.getById(projectId).getStatus()).isEqualTo("FAILED");
+        assertThat(auditEventCount(projectId, "WORKFLOW_RUN_FAILED")).isEqualTo(1);
     }
 
     @Test
@@ -633,6 +640,23 @@ class ProjectControllerTest {
         run.setStartedAt(LocalDateTime.now().minusSeconds(1));
         run.setCompletedAt(LocalDateTime.now());
         workflowRunService.save(run);
+    }
+
+    private long auditEventCount(Long projectId, String eventType) throws Exception {
+        try (var connection = dataSource.getConnection();
+             var statement = connection.prepareStatement("""
+                     select count(*) as event_count
+                     from audit_event
+                     where project_id = ?
+                       and event_type = ?
+                     """)) {
+            statement.setLong(1, projectId);
+            statement.setString(2, eventType);
+            try (var resultSet = statement.executeQuery()) {
+                resultSet.next();
+                return resultSet.getLong("event_count");
+            }
+        }
     }
 
     private long createProject(String token, String name, String requirement) throws Exception {

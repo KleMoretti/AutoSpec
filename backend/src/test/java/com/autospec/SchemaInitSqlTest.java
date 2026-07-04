@@ -165,6 +165,25 @@ class SchemaInitSqlTest {
         }
     }
 
+    @Test
+    void flywayMigrationsCreateAuditEventTable() throws Exception {
+        JdbcDataSource dataSource = new JdbcDataSource();
+        dataSource.setURL("jdbc:h2:mem:audit_event_schema;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1");
+        dataSource.setUser("sa");
+        dataSource.setPassword("");
+
+        Flyway.configure()
+                .dataSource(dataSource)
+                .locations("classpath:db/migration")
+                .load()
+                .migrate();
+
+        try (Connection connection = dataSource.getConnection()) {
+            assertThatCode(() -> execute(connection, "select project_id, actor_user_id, event_type, entity_type, entity_id, message, metadata from audit_event where 1 = 0"))
+                    .doesNotThrowAnyException();
+        }
+    }
+
     private void execute(Connection connection, String sql) throws Exception {
         try (Statement statement = connection.createStatement()) {
             assertThat(statement.execute(sql)).isTrue();

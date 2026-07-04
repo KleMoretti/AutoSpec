@@ -41,11 +41,11 @@ Updated on `2026-07-04`.
 | BE-01 | PARTIAL | Backend bounded contexts, service contracts, layer ownership, transaction rules, and DTO ownership rules are documented in `docs/backend-service-contracts.md`. |
 | BE-02 | PARTIAL | `workflow_run` table in `V6__workflow_run_idempotency.sql`, V4 generation `Idempotency-Key` handling, duplicate request and failed-run regressions in `ProjectControllerTest`. |
 | BE-03 | PARTIAL | Code skeleton generation persists `code_generation_job.status = FAILED`, `error_message`, and `completed_at` when generation fails, and avoids writing an `export_file`; covered by `CodeSkeletonServiceTest`. |
-| BE-04 | PARTIAL | Failed V4 Agent Engine calls persist `workflow_run.status = FAILED`, `error_message`, and `completed_at`; project status is moved to `FAILED`; project members can query run history through `GET /api/projects/{projectId}/workflow-runs`. |
+| BE-04 | PARTIAL | Failed V4 Agent Engine calls persist `workflow_run.status = FAILED`, `error_message`, and `completed_at`; project status is moved to `FAILED`; project members can query run history through `GET /api/projects/{projectId}/workflow-runs`; `audit_event` records V4 workflow run started, completed, and failed transitions. |
 | BE-05 | PARTIAL | Cross-project non-member access is denied for artifacts, Markdown export, workflow run history, model invocations, code skeleton generation, and failed task retry in `ProjectControllerTest`. |
 | BE-06 | PARTIAL | `ApiErrorResponse`, `GlobalExceptionHandler`, validation and `ResponseStatusException` regression tests in `ApiErrorResponseTest`. |
 | BE-07 | PARTIAL | Workflow run history is bounded with `limit` and `offset` query parameters, rejects invalid pagination input with the stable error model, and is covered by `ProjectControllerTest`. |
-| BE-08 | PARTIAL | Flyway migration coverage for `workflow_run` in `SchemaInitSqlTest`; `HttpAgentEngineClientTest` uses a local HTTP server stub to verify V4 Agent Engine request/response mapping without external network access. |
+| BE-08 | PARTIAL | Flyway migration coverage for `workflow_run` and `audit_event` in `SchemaInitSqlTest`; `HttpAgentEngineClientTest` uses a local HTTP server stub to verify V4 Agent Engine request/response mapping without external network access. |
 
 ## Milestones
 

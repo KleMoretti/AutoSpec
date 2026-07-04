@@ -17,6 +17,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class AgentOrchestrationService {
@@ -56,6 +57,7 @@ public class AgentOrchestrationService {
     private final ModelInvocationService modelInvocationService;
     private final WorkflowSnapshotService workflowSnapshotService;
     private final WorkflowRunService workflowRunService;
+    private final AuditEventService auditEventService;
     private final ObjectMapper objectMapper;
 
     public AgentOrchestrationService(
@@ -71,6 +73,7 @@ public class AgentOrchestrationService {
             ModelInvocationService modelInvocationService,
             WorkflowSnapshotService workflowSnapshotService,
             WorkflowRunService workflowRunService,
+            AuditEventService auditEventService,
             ObjectMapper objectMapper
     ) {
         this.projectService = projectService;
@@ -85,6 +88,7 @@ public class AgentOrchestrationService {
         this.modelInvocationService = modelInvocationService;
         this.workflowSnapshotService = workflowSnapshotService;
         this.workflowRunService = workflowRunService;
+        this.auditEventService = auditEventService;
         this.objectMapper = objectMapper;
     }
 
@@ -140,6 +144,7 @@ public class AgentOrchestrationService {
         run.setStatus("RUNNING");
         run.setStartedAt(LocalDateTime.now());
         workflowRunService.save(run);
+        auditWorkflowRun(projectId, run, "WORKFLOW_RUN_STARTED", "V4 workflow run started");
 
         try {
             ProjectProgressResponse response = generateV4(projectId);
@@ -148,6 +153,7 @@ public class AgentOrchestrationService {
             run.setResponsePercent(response.percent());
             run.setCompletedAt(LocalDateTime.now());
             workflowRunService.updateById(run);
+            auditWorkflowRun(projectId, run, "WORKFLOW_RUN_COMPLETED", "V4 workflow run completed");
             return response;
         } catch (ResponseStatusException ex) {
             markWorkflowRunFailed(projectId, run, ex.getReason() == null ? ex.getMessage() : ex.getReason());
@@ -201,6 +207,32 @@ public class AgentOrchestrationService {
         if (project != null) {
             project.setStatus("FAILED");
             projectService.updateById(project);
+        }
+        auditWorkflowRun(projectId, run, "WORKFLOW_RUN_FAILED", "V4 workflow run failed");
+    }
+
+    private void auditWorkflowRun(Long projectId, WorkflowRun run, String eventType, String message) {
+        Project project = projectService.getById(projectId);
+        auditEventService.record(
+                projectId,
+                project == null ? null : project.getUserId(),
+                eventType,
+                "WORKFLOW_RUN",
+                run.getId(),
+                message,
+                workflowRunMetadata(run)
+        );
+    }
+
+    private String workflowRunMetadata(WorkflowRun run) {
+        try {
+            return objectMapper.writeValueAsString(Map.of(
+                    "operation", run.getOperation(),
+                    "idempotencyKey", run.getIdempotencyKey(),
+                    "status", run.getStatus()
+            ));
+        } catch (Exception ex) {
+            return "{}";
         }
     }
 
