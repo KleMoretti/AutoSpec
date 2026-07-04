@@ -543,6 +543,11 @@ class ProjectControllerTest {
                 .eq(Artifact::getType, "EVALUATION_REPORT")
                 .count()).isEqualTo(1);
         assertThat(auditEventCount(projectId, "WORKFLOW_RUN_COMPLETED")).isEqualTo(1);
+        WorkflowRun workflowRun = workflowRunService.lambdaQuery()
+                .eq(WorkflowRun::getProjectId, projectId)
+                .eq(WorkflowRun::getOperation, "GENERATE_V4")
+                .eq(WorkflowRun::getIdempotencyKey, "audited-v4-run")
+                .one();
 
         mockMvc.perform(get("/api/projects/{projectId}/external-calls", projectId)
                         .header(SESSION_HEADER, token))
@@ -552,6 +557,14 @@ class ProjectControllerTest {
                 .andExpect(jsonPath("$[0].status").value("SUCCEEDED"))
                 .andExpect(jsonPath("$[0].durationMs").isNumber())
                 .andExpect(jsonPath("$[0].requestContext").value(org.hamcrest.Matchers.containsString("retrievedSourceCount")));
+
+        mockMvc.perform(get("/api/projects/{projectId}/model-invocations", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].workflowRunId").value(workflowRun.getId()))
+                .andExpect(jsonPath("$[0].taskId").isNumber())
+                .andExpect(jsonPath("$[0].agentNode").value("evaluator"));
     }
 
     @Test

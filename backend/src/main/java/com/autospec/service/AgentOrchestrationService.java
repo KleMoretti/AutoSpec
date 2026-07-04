@@ -184,7 +184,7 @@ public class AgentOrchestrationService {
 
         List<KnowledgeSourceResponse> retrievedSources = knowledgeIndexService.retrieve(project.getOriginalRequirement(), 5, project.getUserId());
         AgentGenerationResult generationResult = callGenerateV4AgentEngine(project, retrievedSources, idempotencyKey, workflowRunId);
-        recordTasks(projectId, generationResult);
+        recordTasks(projectId, generationResult, workflowRunId);
         saveArtifact(projectId, "PRD", project.getName() + " PRD", generationResult.prdJson(), "ProductManagerAgent_v1", "GENERATED");
         saveArtifact(projectId, "ARCHITECTURE_DESIGN", project.getName() + " Architecture Design", generationResult.architectureDesignJson(), "ArchitectAgent_v1", "GENERATED");
         saveArtifact(projectId, "BACKEND_DESIGN", project.getName() + " Backend Design", generationResult.backendDesignJson(), "BackendEngineerAgent_v1", "GENERATED");
@@ -440,31 +440,39 @@ public class AgentOrchestrationService {
     }
 
     private void recordTasks(Long projectId, AgentGenerationResult generationResult) {
+        recordTasks(projectId, generationResult, null);
+    }
+
+    private void recordTasks(Long projectId, AgentGenerationResult generationResult, Long workflowRunId) {
         if (generationResult.records() != null && !generationResult.records().isEmpty()) {
-            generationResult.records().forEach(record -> recordTask(projectId, record, null));
+            generationResult.records().forEach(record -> recordTask(projectId, record, null, workflowRunId));
             return;
         }
         if (generationResult.prdJson() != null) {
-            recordTask(projectId, new AgentEngineExecutionRecord("product_manager", "ProductManagerAgent_v1", "SUCCEEDED", null, generationResult.prdJson(), null, null, "ProductManagerAgent"), null);
+            recordTask(projectId, new AgentEngineExecutionRecord("product_manager", "ProductManagerAgent_v1", "SUCCEEDED", null, generationResult.prdJson(), null, null, "ProductManagerAgent"), null, workflowRunId);
         }
         if (generationResult.architectureDesignJson() != null) {
-            recordTask(projectId, new AgentEngineExecutionRecord("architect", "ArchitectAgent_v1", "SUCCEEDED", null, generationResult.architectureDesignJson(), null, null, "ArchitectAgent"), null);
+            recordTask(projectId, new AgentEngineExecutionRecord("architect", "ArchitectAgent_v1", "SUCCEEDED", null, generationResult.architectureDesignJson(), null, null, "ArchitectAgent"), null, workflowRunId);
         }
         if (generationResult.backendDesignJson() != null) {
-            recordTask(projectId, new AgentEngineExecutionRecord("backend_engineer", "BackendEngineerAgent_v1", "SUCCEEDED", null, generationResult.backendDesignJson(), null, null, "BackendEngineerAgent"), null);
+            recordTask(projectId, new AgentEngineExecutionRecord("backend_engineer", "BackendEngineerAgent_v1", "SUCCEEDED", null, generationResult.backendDesignJson(), null, null, "BackendEngineerAgent"), null, workflowRunId);
         }
         if (generationResult.frontendSkeletonJson() != null) {
-            recordTask(projectId, new AgentEngineExecutionRecord("frontend_engineer", "FrontendEngineerAgent_v1", "SUCCEEDED", null, generationResult.frontendSkeletonJson(), null, null, "FrontendEngineerAgent"), null);
+            recordTask(projectId, new AgentEngineExecutionRecord("frontend_engineer", "FrontendEngineerAgent_v1", "SUCCEEDED", null, generationResult.frontendSkeletonJson(), null, null, "FrontendEngineerAgent"), null, workflowRunId);
         }
         if (generationResult.reviewReportJson() != null) {
-            recordTask(projectId, new AgentEngineExecutionRecord("reviewer", "ReviewerAgent_v1", "SUCCEEDED", null, generationResult.reviewReportJson(), null, null, "ReviewerAgent"), null);
+            recordTask(projectId, new AgentEngineExecutionRecord("reviewer", "ReviewerAgent_v1", "SUCCEEDED", null, generationResult.reviewReportJson(), null, null, "ReviewerAgent"), null, workflowRunId);
         }
         if (generationResult.evaluationReportJson() != null) {
-            recordTask(projectId, new AgentEngineExecutionRecord("evaluator", "EvaluatorAgent_v1", "SUCCEEDED", null, generationResult.evaluationReportJson(), null, null, "EvaluatorAgent"), null);
+            recordTask(projectId, new AgentEngineExecutionRecord("evaluator", "EvaluatorAgent_v1", "SUCCEEDED", null, generationResult.evaluationReportJson(), null, null, "EvaluatorAgent"), null, workflowRunId);
         }
     }
 
     private AgentTask recordTask(Long projectId, AgentEngineExecutionRecord record, Long retryOfTaskId) {
+        return recordTask(projectId, record, retryOfTaskId, null);
+    }
+
+    private AgentTask recordTask(Long projectId, AgentEngineExecutionRecord record, Long retryOfTaskId, Long workflowRunId) {
         AgentTask task = new AgentTask();
         task.setProjectId(projectId);
         task.setAgentName(record.agentName());
@@ -488,14 +496,15 @@ public class AgentOrchestrationService {
                 task.getAgentName() + " " + task.getStatus().toLowerCase(),
                 task.getOutputText()
         );
-        recordModelInvocation(projectId, task, record);
+        recordModelInvocation(projectId, task, record, workflowRunId);
         return task;
     }
 
-    private void recordModelInvocation(Long projectId, AgentTask task, AgentEngineExecutionRecord record) {
+    private void recordModelInvocation(Long projectId, AgentTask task, AgentEngineExecutionRecord record, Long workflowRunId) {
         com.autospec.entity.ModelInvocation invocation = new com.autospec.entity.ModelInvocation();
         invocation.setProjectId(projectId);
         invocation.setTaskId(task.getId());
+        invocation.setWorkflowRunId(workflowRunId);
         invocation.setProviderKey(record.providerKey() == null ? "local" : record.providerKey());
         invocation.setModelName(record.modelName() == null ? "deterministic-fixture" : record.modelName());
         invocation.setAgentNode(task.getNodeName());

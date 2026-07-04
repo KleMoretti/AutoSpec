@@ -7,6 +7,7 @@ import java.math.BigDecimal;
 public record ModelInvocationResponse(
         Long id,
         Long taskId,
+        Long workflowRunId,
         String providerKey,
         String modelName,
         String agentNode,
@@ -20,6 +21,7 @@ public record ModelInvocationResponse(
         return new ModelInvocationResponse(
                 invocation.getId(),
                 invocation.getTaskId(),
+                invocation.getWorkflowRunId(),
                 invocation.getProviderKey(),
                 invocation.getModelName(),
                 invocation.getAgentNode(),

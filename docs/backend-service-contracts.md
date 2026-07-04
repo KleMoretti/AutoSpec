@@ -25,7 +25,7 @@ This document defines backend ownership boundaries for AutoSpec. The backend is 
 | Artifact lifecycle | `artifact`, `knowledge_document`, `knowledge_chunk` | `ArtifactService`, `ArtifactVersionService`, `KnowledgeIndexService` | Artifact approval, versioning, and knowledge indexing are coupled through service methods, not controller-side updates. |
 | Workflow orchestration | `workflow_run`, `workflow_snapshot` | `AgentOrchestrationService`, `WorkflowRunService`, `WorkflowSnapshotService` | Generation APIs must create durable workflow state for idempotency, failure inspection, and run history. |
 | Agent execution trace | `agent_task`, `agent_event` | `AgentTaskService`, `AgentEventService`, `AgentEventStreamService` | Node status, retry lineage, event history, and SSE output all come from persisted task/event records. |
-| Model governance | `model_provider`, `model_config`, `model_invocation`, `prompt_version` | `ModelInvocationService`, `PromptRegistryService`, `PromptVersionService` | Prompt/model metadata is recorded per Agent task so runs are explainable after generation. |
+| Model governance | `model_provider`, `model_config`, `model_invocation`, `prompt_version` | `ModelInvocationService`, `PromptRegistryService`, `PromptVersionService` | Prompt/model metadata is recorded per workflow run and Agent task so runs are explainable after generation. |
 | Review and evaluation | `review_issue`, `artifact` | `ReviewIssueService`, `AgentOrchestrationService` | Reviewer and evaluator outputs are stored as structured artifacts plus queryable issue records. |
 | Export and code generation | `code_generation_job`, `export_file` | `MarkdownExportService`, `PdfExportService`, `CodeSkeletonService` | Export endpoints return DTOs, while generated files and job metadata are persisted for audit and repeatability. |
 
@@ -38,7 +38,7 @@ This document defines backend ownership boundaries for AutoSpec. The backend is 
 | `WorkflowRunService` | Persist and list workflow runs scoped by project. | Query methods must stay project-scoped and ordered deterministically for audit views. |
 | `ArtifactVersionService` | Update draft artifacts, approve artifacts, and resolve latest approved artifacts. | Approval triggers knowledge indexing through service coordination. |
 | `KnowledgeIndexService` | Index approved artifacts and retrieve project-owner-visible context for Agent Engine calls. | Retrieval must be scoped to the project owner or project membership model; cross-tenant context leakage is forbidden. |
-| `ModelInvocationService` | Store model invocation records linked to project/task/prompt metadata. | Read APIs must be project-role guarded before returning invocation telemetry. |
+| `ModelInvocationService` | Store model invocation records linked to project, workflow run, task, and prompt metadata. | Read APIs must be project-role guarded before returning invocation telemetry. |
 | `MarkdownExportService` and `PdfExportService` | Render persisted artifacts into exportable user-facing documents. | Export controllers must authorize project access before invoking render services. |
 | `CodeSkeletonService` | Persist a code generation job, create a skeleton ZIP, and persist the generated export file. | Job state starts as `RUNNING` and must end in a terminal state when async reliability work is completed. |
 | `HttpAgentEngineClient` | Translate backend workflow requests into Agent Engine HTTP calls. | The backend treats this as an unreliable external boundary; failures must be captured in workflow or task state. |
@@ -56,7 +56,7 @@ This document defines backend ownership boundaries for AutoSpec. The backend is 
 
 - Multi-table workflow operations belong in services with explicit transaction boundaries.
 - Idempotent operations must persist a durable key before invoking external work.
-- External Agent Engine calls must record status, latency or duration, prompt/model metadata where available, and failure reason.
+- External Agent Engine calls must record status, latency or duration, prompt/model metadata where available, workflow run correlation where available, and failure reason.
 - Retry operations must preserve lineage through `retry_of_task_id`.
 - Long-running or generated-file operations should persist job records before creating or returning binary payloads.
 

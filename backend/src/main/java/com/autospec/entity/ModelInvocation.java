@@ -19,6 +19,8 @@ public class ModelInvocation {
 
     private Long taskId;
 
+    private Long workflowRunId;
+
     private String providerKey;
 
     private String modelName;
