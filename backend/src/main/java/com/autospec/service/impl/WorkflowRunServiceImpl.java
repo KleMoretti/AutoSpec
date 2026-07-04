@@ -18,4 +18,13 @@ public class WorkflowRunServiceImpl extends ServiceImpl<WorkflowRunMapper, Workf
                 .orderByAsc(WorkflowRun::getId)
                 .list();
     }
+
+    @Override
+    public List<WorkflowRun> listByProjectId(Long projectId, int limit, int offset) {
+        return lambdaQuery()
+                .eq(WorkflowRun::getProjectId, projectId)
+                .orderByAsc(WorkflowRun::getId)
+                .last("limit " + limit + " offset " + offset)
+                .list();
+    }
 }

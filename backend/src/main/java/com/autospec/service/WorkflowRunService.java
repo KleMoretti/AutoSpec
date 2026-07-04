@@ -8,4 +8,6 @@ import java.util.List;
 public interface WorkflowRunService extends IService<WorkflowRun> {
 
     List<WorkflowRun> listByProjectId(Long projectId);
+
+    List<WorkflowRun> listByProjectId(Long projectId, int limit, int offset);
 }

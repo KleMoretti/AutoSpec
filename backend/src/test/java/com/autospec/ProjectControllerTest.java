@@ -573,6 +573,32 @@ class ProjectControllerTest {
                 .andExpect(jsonPath("$[0].completedAt").isString());
     }
 
+    @Test
+    void workflowRunHistorySupportsBoundedPagination() throws Exception {
+        String token = loginToken();
+        long projectId = createProject(token, "Workflow Run Page Project", "Build paged workflow history.");
+        workflowRun(projectId, "run-1");
+        workflowRun(projectId, "run-2");
+        workflowRun(projectId, "run-3");
+
+        mockMvc.perform(get("/api/projects/{projectId}/workflow-runs?limit=2&offset=1", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].idempotencyKey").value("run-2"))
+                .andExpect(jsonPath("$[1].idempotencyKey").value("run-3"));
+
+        mockMvc.perform(get("/api/projects/{projectId}/workflow-runs?limit=0", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+
+        mockMvc.perform(get("/api/projects/{projectId}/workflow-runs?offset=-1", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+    }
+
     private String loginToken() throws Exception {
         String response = mockMvc.perform(post("/api/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -594,6 +620,19 @@ class ProjectControllerTest {
         user.setEnabled(true);
         userAccountService.save(user);
         return authService.issueSession(user);
+    }
+
+    private void workflowRun(Long projectId, String idempotencyKey) {
+        WorkflowRun run = new WorkflowRun();
+        run.setProjectId(projectId);
+        run.setOperation("GENERATE_V4");
+        run.setIdempotencyKey(idempotencyKey);
+        run.setStatus("COMPLETED");
+        run.setResponseStatus("COMPLETED");
+        run.setResponsePercent(100);
+        run.setStartedAt(LocalDateTime.now().minusSeconds(1));
+        run.setCompletedAt(LocalDateTime.now());
+        workflowRunService.save(run);
     }
 
     private long createProject(String token, String name, String requirement) throws Exception {
