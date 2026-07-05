@@ -141,7 +141,27 @@ class SchemaInitSqlTest {
             assertThat(resultSet.getString("content"))
                     .contains("transactional orchestration")
                     .contains("observability")
-                    .contains("Testcontainers");
+                    .contains("Testcontainers")
+                    .contains("GET /api/projects/{projectId}/exports/{exportFileId}")
+                    .contains("ExportTransactionTest")
+                    .contains("PROJECT_EXPORTED")
+                    .contains("PaginationRequestTest")
+                    .contains("PaginationRequest")
+                    .contains("BackendApiContractTest")
+                    .contains("OpenAPI")
+                    .contains("BackendApiContractEndpointTest")
+                    .contains("/api/contracts/openapi")
+                    .contains("BackendDiagnosticsControllerTest")
+                    .contains("/api/projects/{projectId}/diagnostics")
+                    .contains("ProjectDiagnosticsResponse")
+                    .contains("agent_task")
+                    .contains("failedAgentTaskCount")
+                    .contains("latestFailedExternalCallDurationMs")
+                    .contains("latestFailedAgentTaskErrorMessage")
+                    .contains("failedModelInvocationCount")
+                    .contains("latestFailedModelInvocationErrorMessage")
+                    .contains("codeGenerationJobCount")
+                    .contains("latestFailedCodeGenerationJobErrorMessage");
             assertThat(resultSet.next()).isFalse();
         }
     }
@@ -327,6 +347,32 @@ class SchemaInitSqlTest {
                      from information_schema.indexes
                      where table_name = 'external_call_log'
                        and index_name = 'idx_external_call_log_project_id_id'
+                     """)) {
+            assertThat(resultSet.next()).isTrue();
+            assertThat(resultSet.next()).isFalse();
+        }
+    }
+
+    @Test
+    void flywayMigrationsCreateExportFileHistoryIndex() throws Exception {
+        JdbcDataSource dataSource = new JdbcDataSource();
+        dataSource.setURL("jdbc:h2:mem:export_file_history_index_schema;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1");
+        dataSource.setUser("sa");
+        dataSource.setPassword("");
+
+        Flyway.configure()
+                .dataSource(dataSource)
+                .locations("classpath:db/migration")
+                .load()
+                .migrate();
+
+        try (Connection connection = dataSource.getConnection();
+             Statement statement = connection.createStatement();
+             ResultSet resultSet = statement.executeQuery("""
+                     select index_name
+                     from information_schema.indexes
+                     where table_name = 'export_file'
+                       and index_name = 'idx_export_file_project_id_id'
                      """)) {
             assertThat(resultSet.next()).isTrue();
             assertThat(resultSet.next()).isFalse();
