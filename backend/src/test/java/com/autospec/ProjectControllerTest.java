@@ -22,6 +22,7 @@ import com.autospec.service.ArtifactService;
 import com.autospec.service.AuditEventService;
 import com.autospec.service.AuthService;
 import com.autospec.service.CodeGenerationJobService;
+import com.autospec.service.ExportFileService;
 import com.autospec.service.ExternalCallLogService;
 import com.autospec.service.KnowledgeIndexService;
 import com.autospec.service.ModelInvocationService;
@@ -34,6 +35,7 @@ import com.autospec.service.WorkflowSnapshotService;
 import com.autospec.entity.AgentTask;
 import com.autospec.entity.Artifact;
 import com.autospec.entity.CodeGenerationJob;
+import com.autospec.entity.ExportFile;
 import com.autospec.entity.ModelInvocation;
 import com.autospec.entity.Project;
 import com.autospec.entity.ProjectMember;
@@ -98,6 +100,9 @@ class ProjectControllerTest {
 
     @Autowired
     private CodeGenerationJobService codeGenerationJobService;
+
+    @Autowired
+    private ExportFileService exportFileService;
 
     @Autowired
     private ExternalCallLogService externalCallLogService;
@@ -178,6 +183,140 @@ class ProjectControllerTest {
 
         mockMvc.perform(post("/api/projects/{projectId}/export?format=MARKDOWN", projectId)
                         .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.format").value("MARKDOWN"));
+
+        ExportFile exportFile = exportFileService.lambdaQuery()
+                .eq(ExportFile::getProjectId, projectId)
+                .eq(ExportFile::getFileName, "autospec-project-" + projectId + ".md")
+                .one();
+        assertThat(exportFile).isNotNull();
+        assertThat(exportFile.getMediaType()).isEqualTo("text/markdown;charset=utf-8");
+        assertThat(exportFile.getEncoding()).isEqualTo("text");
+        assertThat(exportFile.getContent()).contains("# Export");
+
+        mockMvc.perform(get("/api/projects/{projectId}/audit-events", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].eventType").value("PROJECT_EXPORTED"))
+                .andExpect(jsonPath("$[0].entityType").value("EXPORT_FILE"))
+                .andExpect(jsonPath("$[0].entityId").value(exportFile.getId()))
+                .andExpect(jsonPath("$[0].message").value("Project exported as MARKDOWN"))
+                .andExpect(jsonPath("$[0].metadata").value("{\"format\":\"MARKDOWN\",\"fileName\":\"autospec-project-" + projectId + ".md\"}"));
+    }
+
+    @Test
+    void exportHistorySupportsViewerReadAndBoundedPagination() throws Exception {
+        String ownerToken = loginToken();
+        long projectId = createProject(ownerToken, "Export History Project", "Track export files.");
+        exportFile(projectId, "first.md", "text/markdown;charset=utf-8", "text", "# First");
+        exportFile(projectId, "second.pdf", "application/pdf", "base64", "c2Vjb25k");
+        exportFile(projectId, "third.md", "text/markdown;charset=utf-8", "text", "# Third");
+        String viewerToken = sessionTokenForProjectMember(projectId, "export-viewer-" + System.nanoTime(), "VIEWER");
+
+        mockMvc.perform(get("/api/projects/{projectId}/exports", projectId))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(get("/api/projects/{projectId}/exports?limit=2&offset=1", projectId)
+                        .header(SESSION_HEADER, viewerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].fileName").value("second.pdf"))
+                .andExpect(jsonPath("$[0].mediaType").value("application/pdf"))
+                .andExpect(jsonPath("$[0].encoding").value("base64"))
+                .andExpect(jsonPath("$[0].createdAt").isString())
+                .andExpect(jsonPath("$[0].content").doesNotExist())
+                .andExpect(jsonPath("$[1].fileName").value("third.md"));
+
+        mockMvc.perform(get("/api/projects/{projectId}/exports?limit=0", projectId)
+                        .header(SESSION_HEADER, viewerToken))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+
+        mockMvc.perform(get("/api/projects/{projectId}/exports?offset=-1", projectId)
+                        .header(SESSION_HEADER, viewerToken))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+    }
+
+    @Test
+    void exportFileDetailReturnsContentAndStaysProjectScoped() throws Exception {
+        String ownerToken = loginToken();
+        long projectId = createProject(ownerToken, "Export Detail Project", "Retrieve stored export content.");
+        long otherProjectId = createProject(ownerToken, "Other Export Detail Project", "Keep export files scoped.");
+        ExportFile textExport = exportFile(projectId, "detail.md", "text/markdown;charset=utf-8", "text", "# Detail Export");
+        ExportFile otherExport = exportFile(otherProjectId, "other.md", "text/markdown;charset=utf-8", "text", "# Other Export");
+        String viewerToken = sessionTokenForProjectMember(projectId, "export-detail-viewer-" + System.nanoTime(), "VIEWER");
+
+        mockMvc.perform(get("/api/projects/{projectId}/exports/{exportFileId}", projectId, textExport.getId()))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(get("/api/projects/{projectId}/exports/{exportFileId}", projectId, textExport.getId())
+                        .header(SESSION_HEADER, viewerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(textExport.getId()))
+                .andExpect(jsonPath("$.jobId").doesNotExist())
+                .andExpect(jsonPath("$.fileName").value("detail.md"))
+                .andExpect(jsonPath("$.mediaType").value("text/markdown;charset=utf-8"))
+                .andExpect(jsonPath("$.encoding").value("text"))
+                .andExpect(jsonPath("$.content").value("# Detail Export"))
+                .andExpect(jsonPath("$.createdAt").isString());
+
+        mockMvc.perform(get("/api/projects/{projectId}/exports/{exportFileId}", projectId, otherExport.getId())
+                        .header(SESSION_HEADER, viewerToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("NOT_FOUND"));
+
+        mockMvc.perform(get("/api/projects/{projectId}/exports/{exportFileId}", otherProjectId, otherExport.getId())
+                        .header(SESSION_HEADER, viewerToken))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+    }
+
+    @Test
+    void projectRolesKeepViewersReadOnlyAndAllowEditorsToExport() throws Exception {
+        String ownerToken = loginToken();
+        long projectId = createProject(ownerToken, "Role Matrix Project", "Build role-scoped access.");
+        Artifact prd = artifact(projectId, "PRD", "Role PRD", """
+                {
+                  "project_name": "Role Matrix",
+                  "target_users": [],
+                  "core_features": [],
+                  "user_stories": [],
+                  "business_boundaries": [],
+                  "non_functional_requirements": [],
+                  "risks": []
+                }
+                """);
+        artifact(projectId, "BACKEND_DESIGN", "Role Backend", "{\"tables\":[],\"apis\":[]}");
+        artifact(projectId, "REVIEW_REPORT", "Role Review", "{\"score\":100,\"issues\":[]}");
+
+        String viewerToken = sessionTokenForProjectMember(projectId, "viewer-user-" + System.nanoTime(), "VIEWER");
+        String editorToken = sessionTokenForProjectMember(projectId, "editor-user-" + System.nanoTime(), "EDITOR");
+
+        mockMvc.perform(get("/api/projects/{projectId}/artifacts", projectId)
+                        .header(SESSION_HEADER, viewerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].type").value("PRD"));
+
+        mockMvc.perform(post("/api/projects/{projectId}/export?format=MARKDOWN", projectId)
+                        .header(SESSION_HEADER, viewerToken))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(put("/api/projects/{projectId}/artifacts/{artifactId}", projectId, prd.getId())
+                        .header(SESSION_HEADER, viewerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"content\":\"{\\\"project_name\\\":\\\"Viewer Edit\\\"}\"}"))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(post("/api/projects/{projectId}/generate-v4", projectId)
+                        .header(SESSION_HEADER, viewerToken)
+                        .header("Idempotency-Key", "viewer-run-key"))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(post("/api/projects/{projectId}/export?format=MARKDOWN", projectId)
+                        .header(SESSION_HEADER, editorToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.format").value("MARKDOWN"));
     }
@@ -1052,6 +1191,22 @@ class ProjectControllerTest {
         return authService.issueSession(user);
     }
 
+    private String sessionTokenForProjectMember(Long projectId, String username, String role) {
+        UserAccount user = new UserAccount();
+        user.setUsername(username);
+        user.setDisplayName(username);
+        user.setPasswordHash("test-only-hash");
+        user.setEnabled(true);
+        userAccountService.save(user);
+
+        ProjectMember member = new ProjectMember();
+        member.setProjectId(projectId);
+        member.setUserId(user.getId());
+        member.setRole(role);
+        projectMemberService.save(member);
+        return authService.issueSession(user);
+    }
+
     private void workflowRun(Long projectId, String idempotencyKey) {
         WorkflowRun run = new WorkflowRun();
         run.setProjectId(projectId);
@@ -1185,6 +1340,18 @@ class ProjectControllerTest {
         artifact.setStatus(status);
         artifactService.save(artifact);
         return artifact;
+    }
+
+    private ExportFile exportFile(Long projectId, String fileName, String mediaType, String encoding, String content) {
+        ExportFile file = new ExportFile();
+        file.setProjectId(projectId);
+        file.setFileName(fileName);
+        file.setMediaType(mediaType);
+        file.setEncoding(encoding);
+        file.setContent(content);
+        file.setCreatedAt(LocalDateTime.now());
+        exportFileService.save(file);
+        return file;
     }
 
     private AgentGenerationResult agentResultFromAgentService() {
