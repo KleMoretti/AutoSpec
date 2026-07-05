@@ -1,0 +1,495 @@
+openapi: 3.0.3
+info:
+  title: AutoSpec Backend API
+  version: v1
+  description: Spring Boot API contract for AutoSpec project orchestration, artifacts, exports, and observability.
+servers:
+  - url: /
+security:
+  - SessionToken: []
+paths:
+  /api/contracts/openapi:
+    get:
+      summary: Fetch the packaged OpenAPI contract for tooling and review.
+      security: []
+      responses:
+        '200':
+          description: OpenAPI YAML document.
+          content:
+            application/yaml:
+              schema:
+                type: string
+  /api/auth/login:
+    post:
+      summary: Create a demo session token.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Session token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/projects:
+    post:
+      summary: Create a project from a natural-language requirement.
+      parameters:
+        - $ref: '#/components/parameters/SessionToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateProjectRequest'
+      responses:
+        '200':
+          description: Created project.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateProjectResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/projects/{projectId}/generate-v4:
+    post:
+      summary: Run the V4 multi-agent workflow with idempotency.
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/SessionToken'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: Generation progress snapshot.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenerateProjectResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '502':
+          $ref: '#/components/responses/BadGateway'
+  /api/projects/{projectId}/diagnostics:
+    get:
+      summary: Summarize project workflow, Agent task, audit, external call, and model telemetry.
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/SessionToken'
+      responses:
+        '200':
+          description: Project diagnostics summary.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProjectDiagnosticsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/projects/{projectId}/artifacts:
+    get:
+      summary: List project artifacts.
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/SessionToken'
+        - $ref: '#/components/parameters/PaginationLimit'
+        - $ref: '#/components/parameters/PaginationOffset'
+      responses:
+        '200':
+          description: Artifact list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ArtifactResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/projects/{projectId}/exports:
+    get:
+      summary: List durable export files without large content payloads.
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/SessionToken'
+        - $ref: '#/components/parameters/PaginationLimit'
+        - $ref: '#/components/parameters/PaginationOffset'
+      responses:
+        '200':
+          description: Export metadata list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ExportFileResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/projects/{projectId}/exports/{exportFileId}:
+    get:
+      summary: Fetch a stored export file with content.
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/ExportFileId'
+        - $ref: '#/components/parameters/SessionToken'
+      responses:
+        '200':
+          description: Export file detail.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExportFileDetailResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/projects/{projectId}/export:
+    post:
+      summary: Render and persist a Markdown or PDF export.
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/SessionToken'
+        - name: format
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [MARKDOWN, PDF]
+            default: MARKDOWN
+      responses:
+        '200':
+          description: Generated export payload.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExportResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+components:
+  securitySchemes:
+    SessionToken:
+      type: apiKey
+      in: header
+      name: X-AutoSpec-Session-Token
+  parameters:
+    SessionToken:
+      name: X-AutoSpec-Session-Token
+      in: header
+      required: true
+      schema:
+        type: string
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      schema:
+        type: string
+    ProjectId:
+      name: projectId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    ExportFileId:
+      name: exportFileId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    PaginationLimit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 50
+    PaginationOffset:
+      name: offset
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+  responses:
+    BadRequest:
+      description: Invalid request.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiErrorResponse'
+    Unauthorized:
+      description: Missing or invalid session token.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiErrorResponse'
+    Forbidden:
+      description: Session user lacks the required project role.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiErrorResponse'
+    NotFound:
+      description: Project-scoped resource was not found.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiErrorResponse'
+    Conflict:
+      description: Operation conflicts with current durable workflow state.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiErrorResponse'
+    BadGateway:
+      description: External Agent Engine failed or returned invalid output.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiErrorResponse'
+  schemas:
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+    LoginResponse:
+      type: object
+      required: [token, userId, username, displayName]
+      properties:
+        token:
+          type: string
+        userId:
+          type: integer
+          format: int64
+        username:
+          type: string
+        displayName:
+          type: string
+    CreateProjectRequest:
+      type: object
+      required: [name, requirement]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        requirement:
+          type: string
+          minLength: 1
+    CreateProjectResponse:
+      type: object
+      required: [projectId, status]
+      properties:
+        projectId:
+          type: integer
+          format: int64
+        status:
+          type: string
+    GenerateProjectResponse:
+      type: object
+      required: [projectId, status, percent]
+      properties:
+        projectId:
+          type: integer
+          format: int64
+        status:
+          type: string
+        percent:
+          type: integer
+    ProjectDiagnosticsResponse:
+      type: object
+      required:
+        - projectId
+        - latestWorkflowRunId
+        - latestCorrelationId
+        - workflowRunCount
+        - failedWorkflowRunCount
+        - agentTaskCount
+        - failedAgentTaskCount
+        - latestFailedAgentTaskNodeName
+        - latestFailedAgentTaskErrorMessage
+        - auditEventCount
+        - externalCallCount
+        - failedExternalCallCount
+        - latestFailedExternalCallErrorMessage
+        - latestFailedExternalCallDurationMs
+        - modelInvocationCount
+        - failedModelInvocationCount
+        - latestFailedModelInvocationAgentNode
+        - latestFailedModelInvocationModelName
+        - latestFailedModelInvocationDurationMs
+        - latestFailedModelInvocationErrorMessage
+      properties:
+        projectId:
+          type: integer
+          format: int64
+        latestWorkflowRunId:
+          type: integer
+          format: int64
+          nullable: true
+        latestCorrelationId:
+          type: string
+          nullable: true
+        workflowRunCount:
+          type: integer
+          format: int64
+        failedWorkflowRunCount:
+          type: integer
+          format: int64
+        agentTaskCount:
+          type: integer
+          format: int64
+        failedAgentTaskCount:
+          type: integer
+          format: int64
+        latestFailedAgentTaskNodeName:
+          type: string
+          nullable: true
+        latestFailedAgentTaskErrorMessage:
+          type: string
+          nullable: true
+        auditEventCount:
+          type: integer
+          format: int64
+        externalCallCount:
+          type: integer
+          format: int64
+        failedExternalCallCount:
+          type: integer
+          format: int64
+        latestFailedExternalCallErrorMessage:
+          type: string
+          nullable: true
+        latestFailedExternalCallDurationMs:
+          type: integer
+          nullable: true
+        modelInvocationCount:
+          type: integer
+          format: int64
+        failedModelInvocationCount:
+          type: integer
+          format: int64
+        latestFailedModelInvocationAgentNode:
+          type: string
+          nullable: true
+        latestFailedModelInvocationModelName:
+          type: string
+          nullable: true
+        latestFailedModelInvocationDurationMs:
+          type: integer
+          nullable: true
+        latestFailedModelInvocationErrorMessage:
+          type: string
+          nullable: true
+    ArtifactResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+        type:
+          type: string
+        title:
+          type: string
+        content:
+          type: string
+        version:
+          type: integer
+        status:
+          type: string
+    ExportResponse:
+      type: object
+      required: [format, content, fileName, mediaType, encoding]
+      properties:
+        format:
+          type: string
+        content:
+          type: string
+        fileName:
+          type: string
+        mediaType:
+          type: string
+        encoding:
+          type: string
+    ExportFileResponse:
+      type: object
+      required: [id, projectId, fileName, mediaType, encoding, createdAt]
+      properties:
+        id:
+          type: integer
+          format: int64
+        projectId:
+          type: integer
+          format: int64
+        fileName:
+          type: string
+        mediaType:
+          type: string
+        encoding:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    ExportFileDetailResponse:
+      allOf:
+        - $ref: '#/components/schemas/ExportFileResponse'
+        - type: object
+          required: [content]
+          properties:
+            content:
+              type: string
+    ApiErrorResponse:
+      type: object
+      required: [code, status, message, path, timestamp, fieldErrors]
+      properties:
+        code:
+          type: string
+        status:
+          type: integer
+        message:
+          type: string
+        path:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        fieldErrors:
+          type: object
+          additionalProperties:
+            type: string
