@@ -6,6 +6,7 @@ import com.autospec.dto.ArtifactResponse;
 import com.autospec.dto.CreateProjectRequest;
 import com.autospec.dto.CreateProjectResponse;
 import com.autospec.dto.GenerateProjectResponse;
+import com.autospec.dto.PaginationRequest;
 import com.autospec.dto.ProjectProgressResponse;
 import com.autospec.dto.RetryTaskResponse;
 import com.autospec.dto.ReviewIssueResponse;
@@ -23,7 +24,6 @@ import com.autospec.service.ProjectAccessService;
 import com.autospec.service.ProjectService;
 import com.autospec.service.ReviewIssueService;
 import jakarta.validation.Valid;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -34,7 +34,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.List;
@@ -142,14 +141,9 @@ public class ProjectController {
             @RequestParam(defaultValue = "50") Integer limit,
             @RequestParam(defaultValue = "0") Integer offset
     ) {
-        if (limit == null || limit < 1 || limit > 100) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "limit must be between 1 and 100");
-        }
-        if (offset == null || offset < 0) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "offset must be greater than or equal to 0");
-        }
+        PaginationRequest pagination = PaginationRequest.of(limit, offset);
         requireViewer(projectId, sessionToken);
-        return artifactService.listByProjectId(projectId, limit, offset)
+        return artifactService.listByProjectId(projectId, pagination.limit(), pagination.offset())
                 .stream()
                 .map(ArtifactResponse::from)
                 .toList();
@@ -174,14 +168,9 @@ public class ProjectController {
             @RequestParam(defaultValue = "50") Integer limit,
             @RequestParam(defaultValue = "0") Integer offset
     ) {
-        if (limit == null || limit < 1 || limit > 100) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "limit must be between 1 and 100");
-        }
-        if (offset == null || offset < 0) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "offset must be greater than or equal to 0");
-        }
+        PaginationRequest pagination = PaginationRequest.of(limit, offset);
         requireViewer(projectId, sessionToken);
-        return artifactVersionService.listVersions(projectId, artifactId, limit, offset)
+        return artifactVersionService.listVersions(projectId, artifactId, pagination.limit(), pagination.offset())
                 .stream()
                 .map(ArtifactResponse::from)
                 .toList();
@@ -205,14 +194,9 @@ public class ProjectController {
             @RequestParam(defaultValue = "50") Integer limit,
             @RequestParam(defaultValue = "0") Integer offset
     ) {
-        if (limit == null || limit < 1 || limit > 100) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "limit must be between 1 and 100");
-        }
-        if (offset == null || offset < 0) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "offset must be greater than or equal to 0");
-        }
+        PaginationRequest pagination = PaginationRequest.of(limit, offset);
         requireViewer(projectId, sessionToken);
-        List<ReviewIssueResponse> issues = reviewIssueService.listByProjectId(projectId, limit, offset)
+        List<ReviewIssueResponse> issues = reviewIssueService.listByProjectId(projectId, pagination.limit(), pagination.offset())
                 .stream()
                 .map(issue -> new ReviewIssueResponse(
                         issue.getSeverity(),
@@ -232,14 +216,9 @@ public class ProjectController {
             @RequestParam(defaultValue = "50") Integer limit,
             @RequestParam(defaultValue = "0") Integer offset
     ) {
-        if (limit == null || limit < 1 || limit > 100) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "limit must be between 1 and 100");
-        }
-        if (offset == null || offset < 0) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "offset must be greater than or equal to 0");
-        }
+        PaginationRequest pagination = PaginationRequest.of(limit, offset);
         requireViewer(projectId, sessionToken);
-        return agentEventService.listByProjectId(projectId, limit, offset)
+        return agentEventService.listByProjectId(projectId, pagination.limit(), pagination.offset())
                 .stream()
                 .map(AgentEventResponse::from)
                 .toList();
