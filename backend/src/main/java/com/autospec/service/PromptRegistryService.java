@@ -50,6 +50,8 @@ public class PromptRegistryService {
         return promptVersionService.lambdaQuery()
                 .eq(PromptVersion::getPromptKey, promptKey)
                 .eq(PromptVersion::getActive, true)
+                .orderByDesc(PromptVersion::getId)
+                .last("limit 1")
                 .oneOpt()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Active prompt not found"));
     }
@@ -58,6 +60,8 @@ public class PromptRegistryService {
         return promptVersionService.lambdaQuery()
                 .eq(PromptVersion::getPromptKey, promptKey)
                 .eq(PromptVersion::getActive, true)
+                .orderByDesc(PromptVersion::getId)
+                .last("limit 1")
                 .oneOpt()
                 .map(PromptVersion::getId)
                 .orElse(null);

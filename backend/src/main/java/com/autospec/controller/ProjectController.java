@@ -6,12 +6,13 @@ import com.autospec.dto.ArtifactResponse;
 import com.autospec.dto.CreateProjectRequest;
 import com.autospec.dto.CreateProjectResponse;
 import com.autospec.dto.GenerateProjectResponse;
+import com.autospec.dto.PaginationRequest;
 import com.autospec.dto.ProjectProgressResponse;
+import com.autospec.dto.ProjectResponse;
 import com.autospec.dto.RetryTaskResponse;
 import com.autospec.dto.ReviewIssueResponse;
 import com.autospec.dto.ReviewResponse;
 import com.autospec.dto.UpdateArtifactRequest;
-import com.autospec.entity.AgentEvent;
 import com.autospec.entity.AgentTask;
 import com.autospec.entity.Artifact;
 import com.autospec.entity.Project;
@@ -71,6 +72,20 @@ public class ProjectController {
         this.projectAccessService = projectAccessService;
     }
 
+    @GetMapping
+    public List<ProjectResponse> projects(
+            @RequestHeader(value = "X-AutoSpec-Session-Token", required = false) String sessionToken,
+            @RequestParam(defaultValue = "50") Integer limit,
+            @RequestParam(defaultValue = "0") Integer offset
+    ) {
+        PaginationRequest pagination = PaginationRequest.of(limit, offset);
+        Long userId = projectAccessService.resolveUserId(sessionToken);
+        return projectAccessService.listVisibleProjects(userId, pagination.limit(), pagination.offset())
+                .stream()
+                .map(ProjectResponse::from)
+                .toList();
+    }
+
     @PostMapping
     public CreateProjectResponse createProject(
             @Valid @RequestBody CreateProjectRequest request,
@@ -82,6 +97,15 @@ public class ProjectController {
         projectService.updateById(project);
         projectAccessService.addOwner(project.getId(), userId);
         return new CreateProjectResponse(project.getId(), project.getStatus());
+    }
+
+    @GetMapping("/{projectId}")
+    public ProjectResponse project(
+            @PathVariable Long projectId,
+            @RequestHeader(value = "X-AutoSpec-Session-Token", required = false) String sessionToken
+    ) {
+        Long userId = projectAccessService.resolveUserId(sessionToken);
+        return ProjectResponse.from(projectAccessService.requireVisibleProject(projectId, userId));
     }
 
     @PostMapping("/{projectId}/generate")
@@ -107,10 +131,11 @@ public class ProjectController {
     @PostMapping("/{projectId}/generate-v4")
     public GenerateProjectResponse generateV4(
             @PathVariable Long projectId,
-            @RequestHeader(value = "X-AutoSpec-Session-Token", required = false) String sessionToken
+            @RequestHeader(value = "X-AutoSpec-Session-Token", required = false) String sessionToken,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey
     ) {
         requireEditor(projectId, sessionToken);
-        ProjectProgressResponse progress = agentOrchestrationService.generateV4(projectId);
+        ProjectProgressResponse progress = agentOrchestrationService.generateV4(projectId, idempotencyKey);
         return new GenerateProjectResponse(projectId, progress.status(), progress.percent());
     }
 
@@ -136,13 +161,13 @@ public class ProjectController {
     @GetMapping("/{projectId}/artifacts")
     public List<ArtifactResponse> artifacts(
             @PathVariable Long projectId,
-            @RequestHeader(value = "X-AutoSpec-Session-Token", required = false) String sessionToken
+            @RequestHeader(value = "X-AutoSpec-Session-Token", required = false) String sessionToken,
+            @RequestParam(defaultValue = "50") Integer limit,
+            @RequestParam(defaultValue = "0") Integer offset
     ) {
+        PaginationRequest pagination = PaginationRequest.of(limit, offset);
         requireViewer(projectId, sessionToken);
-        return artifactService.lambdaQuery()
-                .eq(Artifact::getProjectId, projectId)
-                .orderByAsc(Artifact::getId)
-                .list()
+        return artifactService.listByProjectId(projectId, pagination.limit(), pagination.offset())
                 .stream()
                 .map(ArtifactResponse::from)
                 .toList();
@@ -159,6 +184,22 @@ public class ProjectController {
         return ArtifactResponse.from(artifactVersionService.updateDraft(projectId, artifactId, request.content()));
     }
 
+    @GetMapping("/{projectId}/artifacts/{artifactId}/versions")
+    public List<ArtifactResponse> artifactVersions(
+            @PathVariable Long projectId,
+            @PathVariable Long artifactId,
+            @RequestHeader(value = "X-AutoSpec-Session-Token", required = false) String sessionToken,
+            @RequestParam(defaultValue = "50") Integer limit,
+            @RequestParam(defaultValue = "0") Integer offset
+    ) {
+        PaginationRequest pagination = PaginationRequest.of(limit, offset);
+        requireViewer(projectId, sessionToken);
+        return artifactVersionService.listVersions(projectId, artifactId, pagination.limit(), pagination.offset())
+                .stream()
+                .map(ArtifactResponse::from)
+                .toList();
+    }
+
     @PostMapping("/{projectId}/artifacts/{artifactId}/approve")
     public ApproveArtifactResponse approveArtifact(
             @PathVariable Long projectId,
@@ -173,13 +214,13 @@ public class ProjectController {
     @GetMapping("/{projectId}/review")
     public ReviewResponse review(
             @PathVariable Long projectId,
-            @RequestHeader(value = "X-AutoSpec-Session-Token", required = false) String sessionToken
+            @RequestHeader(value = "X-AutoSpec-Session-Token", required = false) String sessionToken,
+            @RequestParam(defaultValue = "50") Integer limit,
+            @RequestParam(defaultValue = "0") Integer offset
     ) {
+        PaginationRequest pagination = PaginationRequest.of(limit, offset);
         requireViewer(projectId, sessionToken);
-        List<ReviewIssueResponse> issues = reviewIssueService.lambdaQuery()
-                .eq(com.autospec.entity.ReviewIssue::getProjectId, projectId)
-                .orderByAsc(com.autospec.entity.ReviewIssue::getId)
-                .list()
+        List<ReviewIssueResponse> issues = reviewIssueService.listByProjectId(projectId, pagination.limit(), pagination.offset())
                 .stream()
                 .map(issue -> new ReviewIssueResponse(
                         issue.getSeverity(),
@@ -195,13 +236,13 @@ public class ProjectController {
     @GetMapping("/{projectId}/events/history")
     public List<AgentEventResponse> eventHistory(
             @PathVariable Long projectId,
-            @RequestHeader(value = "X-AutoSpec-Session-Token", required = false) String sessionToken
+            @RequestHeader(value = "X-AutoSpec-Session-Token", required = false) String sessionToken,
+            @RequestParam(defaultValue = "50") Integer limit,
+            @RequestParam(defaultValue = "0") Integer offset
     ) {
+        PaginationRequest pagination = PaginationRequest.of(limit, offset);
         requireViewer(projectId, sessionToken);
-        return agentEventService.lambdaQuery()
-                .eq(AgentEvent::getProjectId, projectId)
-                .orderByAsc(AgentEvent::getId)
-                .list()
+        return agentEventService.listByProjectId(projectId, pagination.limit(), pagination.offset())
                 .stream()
                 .map(AgentEventResponse::from)
                 .toList();

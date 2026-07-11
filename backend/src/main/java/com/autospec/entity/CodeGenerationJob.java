@@ -16,6 +16,8 @@ public class CodeGenerationJob {
 
     private Long projectId;
 
+    private Long retryOfJobId;
+
     private String status;
 
     private String manifest;
@@ -25,4 +27,6 @@ public class CodeGenerationJob {
     private LocalDateTime createdAt;
 
     private LocalDateTime completedAt;
+
+    private LocalDateTime cancelledAt;
 }

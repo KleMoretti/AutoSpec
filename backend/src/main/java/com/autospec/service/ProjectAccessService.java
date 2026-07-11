@@ -6,6 +6,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.List;
 import java.util.Set;
 
 @Service
@@ -60,6 +61,22 @@ public class ProjectAccessService {
             addOwner(projectId, userId);
             return;
         }
+        if (project == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Project not found");
+        }
         throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Project access denied");
+    }
+
+    public Project requireVisibleProject(Long projectId, Long userId) {
+        requireProjectRole(projectId, userId, "OWNER", "EDITOR", "VIEWER");
+        Project project = projectService.getById(projectId);
+        if (project == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Project not found");
+        }
+        return project;
+    }
+
+    public List<Project> listVisibleProjects(Long userId, int limit, int offset) {
+        return projectService.listVisibleProjects(userId, limit, offset);
     }
 }

@@ -7,6 +7,8 @@ import com.autospec.service.AgentEventService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
+
 @Service
 public class AgentEventServiceImpl extends ServiceImpl<AgentEventMapper, AgentEvent>
         implements AgentEventService {
@@ -29,5 +31,14 @@ public class AgentEventServiceImpl extends ServiceImpl<AgentEventMapper, AgentEv
         save(event);
         streamService.publish(event);
         return event;
+    }
+
+    @Override
+    public List<AgentEvent> listByProjectId(Long projectId, int limit, int offset) {
+        return lambdaQuery()
+                .eq(AgentEvent::getProjectId, projectId)
+                .orderByAsc(AgentEvent::getId)
+                .last("limit " + limit + " offset " + offset)
+                .list();
     }
 }

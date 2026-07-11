@@ -7,36 +7,60 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.web.server.ResponseStatusException;
 
 import com.autospec.service.AgentEngineClient;
 import com.autospec.service.AgentEngineExecutionRecord;
+import com.autospec.service.AgentEventService;
 import com.autospec.service.AgentGenerationResult;
+import com.autospec.service.AgentTaskService;
 import com.autospec.service.ArtifactService;
+import com.autospec.service.AuditEventService;
+import com.autospec.service.AuthService;
+import com.autospec.service.CodeGenerationJobService;
+import com.autospec.service.ExportFileService;
+import com.autospec.service.ExternalCallLogService;
 import com.autospec.service.KnowledgeIndexService;
+import com.autospec.service.ModelInvocationService;
 import com.autospec.service.ProjectMemberService;
 import com.autospec.service.ProjectService;
+import com.autospec.service.ReviewIssueService;
 import com.autospec.service.UserAccountService;
+import com.autospec.service.WorkflowRunService;
 import com.autospec.service.WorkflowSnapshotService;
+import com.autospec.entity.AgentTask;
 import com.autospec.entity.Artifact;
+import com.autospec.entity.CodeGenerationJob;
+import com.autospec.entity.ExportFile;
+import com.autospec.entity.ModelInvocation;
 import com.autospec.entity.Project;
 import com.autospec.entity.ProjectMember;
+import com.autospec.entity.ReviewIssue;
 import com.autospec.entity.UserAccount;
+import com.autospec.entity.WorkflowRun;
 import com.autospec.entity.WorkflowSnapshot;
 
+import java.time.LocalDateTime;
 import java.util.List;
+import javax.sql.DataSource;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
 import org.mockito.ArgumentCaptor;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -53,17 +77,47 @@ class ProjectControllerTest {
     @Autowired
     private ObjectMapper objectMapper;
 
+    @Autowired
+    private DataSource dataSource;
+
     @MockBean
     private AgentEngineClient agentEngineClient;
 
     @Autowired
+    private AuthService authService;
+
+    @Autowired
+    private AgentTaskService agentTaskService;
+
+    @Autowired
+    private AgentEventService agentEventService;
+
+    @Autowired
     private ArtifactService artifactService;
+
+    @Autowired
+    private AuditEventService auditEventService;
+
+    @Autowired
+    private CodeGenerationJobService codeGenerationJobService;
+
+    @Autowired
+    private ExportFileService exportFileService;
+
+    @Autowired
+    private ExternalCallLogService externalCallLogService;
+
+    @Autowired
+    private ModelInvocationService modelInvocationService;
 
     @Autowired
     private ProjectService projectService;
 
     @Autowired
     private ProjectMemberService projectMemberService;
+
+    @Autowired
+    private ReviewIssueService reviewIssueService;
 
     @Autowired
     private UserAccountService userAccountService;
@@ -73,6 +127,9 @@ class ProjectControllerTest {
 
     @Autowired
     private WorkflowSnapshotService workflowSnapshotService;
+
+    @Autowired
+    private WorkflowRunService workflowRunService;
 
     @Test
     void loginReturnsDemoSessionUser() throws Exception {
@@ -96,6 +153,54 @@ class ProjectControllerTest {
         mockMvc.perform(get("/api/projects/{projectId}/artifacts", projectId)
                         .header("X-AutoSpec-User-Id", "99999"))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void projectHistoryListsOnlyVisibleProjectsAndDetailRequiresMembership() throws Exception {
+        String ownerToken = sessionTokenForNewUser("project-history-owner-" + System.nanoTime());
+        long firstProjectId = createProject(ownerToken, "Project History First", "First visible requirement.");
+        long secondProjectId = createProject(ownerToken, "Project History Second", "Second visible requirement.");
+        long thirdProjectId = createProject(ownerToken, "Project History Third", "Third visible requirement.");
+        String otherToken = sessionTokenForNewUser("project-history-other-" + System.nanoTime());
+        long otherProjectId = createProject(otherToken, "Project History Other", "Other tenant requirement.");
+        String viewerToken = sessionTokenForProjectMember(secondProjectId, "project-history-viewer-" + System.nanoTime(), "VIEWER");
+
+        mockMvc.perform(get("/api/projects?limit=2&offset=1")
+                        .header(SESSION_HEADER, ownerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].projectId").value(secondProjectId))
+                .andExpect(jsonPath("$[0].name").value("Project History Second"))
+                .andExpect(jsonPath("$[0].status").value("CREATED"))
+                .andExpect(jsonPath("$[0].originalRequirement").value("Second visible requirement."))
+                .andExpect(jsonPath("$[0].createdAt").isString())
+                .andExpect(jsonPath("$[0].updatedAt").isString())
+                .andExpect(jsonPath("$[1].projectId").value(firstProjectId));
+
+        mockMvc.perform(get("/api/projects/{projectId}", secondProjectId)
+                        .header(SESSION_HEADER, viewerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.projectId").value(secondProjectId))
+                .andExpect(jsonPath("$.name").value("Project History Second"))
+                .andExpect(jsonPath("$.originalRequirement").value("Second visible requirement."));
+
+        mockMvc.perform(get("/api/projects/{projectId}", firstProjectId)
+                        .header(SESSION_HEADER, otherToken))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(get("/api/projects/{projectId}", otherProjectId)
+                        .header(SESSION_HEADER, ownerToken))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(get("/api/projects")
+                        .header(SESSION_HEADER, ownerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.projectId == " + otherProjectId + ")]").isEmpty());
+
+        mockMvc.perform(get("/api/projects?limit=0")
+                        .header(SESSION_HEADER, ownerToken))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
     }
 
     @Test
@@ -128,6 +233,244 @@ class ProjectControllerTest {
                         .header(SESSION_HEADER, token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.format").value("MARKDOWN"));
+
+        ExportFile exportFile = exportFileService.lambdaQuery()
+                .eq(ExportFile::getProjectId, projectId)
+                .eq(ExportFile::getFileName, "autospec-project-" + projectId + ".md")
+                .one();
+        assertThat(exportFile).isNotNull();
+        assertThat(exportFile.getMediaType()).isEqualTo("text/markdown;charset=utf-8");
+        assertThat(exportFile.getEncoding()).isEqualTo("text");
+        assertThat(exportFile.getContent()).contains("# Export");
+
+        mockMvc.perform(get("/api/projects/{projectId}/audit-events", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].eventType").value("PROJECT_EXPORTED"))
+                .andExpect(jsonPath("$[0].entityType").value("EXPORT_FILE"))
+                .andExpect(jsonPath("$[0].entityId").value(exportFile.getId()))
+                .andExpect(jsonPath("$[0].message").value("Project exported as MARKDOWN"))
+                .andExpect(jsonPath("$[0].metadata").value("{\"format\":\"MARKDOWN\",\"fileName\":\"autospec-project-" + projectId + ".md\"}"));
+    }
+
+    @Test
+    void exportHistorySupportsViewerReadAndBoundedPagination() throws Exception {
+        String ownerToken = loginToken();
+        long projectId = createProject(ownerToken, "Export History Project", "Track export files.");
+        exportFile(projectId, "first.md", "text/markdown;charset=utf-8", "text", "# First");
+        exportFile(projectId, "second.pdf", "application/pdf", "base64", "c2Vjb25k");
+        exportFile(projectId, "third.md", "text/markdown;charset=utf-8", "text", "# Third");
+        String viewerToken = sessionTokenForProjectMember(projectId, "export-viewer-" + System.nanoTime(), "VIEWER");
+
+        mockMvc.perform(get("/api/projects/{projectId}/exports", projectId))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(get("/api/projects/{projectId}/exports?limit=2&offset=1", projectId)
+                        .header(SESSION_HEADER, viewerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].fileName").value("second.pdf"))
+                .andExpect(jsonPath("$[0].mediaType").value("application/pdf"))
+                .andExpect(jsonPath("$[0].encoding").value("base64"))
+                .andExpect(jsonPath("$[0].createdAt").isString())
+                .andExpect(jsonPath("$[0].content").doesNotExist())
+                .andExpect(jsonPath("$[1].fileName").value("third.md"));
+
+        mockMvc.perform(get("/api/projects/{projectId}/exports?limit=0", projectId)
+                        .header(SESSION_HEADER, viewerToken))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+
+        mockMvc.perform(get("/api/projects/{projectId}/exports?offset=-1", projectId)
+                        .header(SESSION_HEADER, viewerToken))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+    }
+
+    @Test
+    void exportFileDetailReturnsContentAndStaysProjectScoped() throws Exception {
+        String ownerToken = loginToken();
+        long projectId = createProject(ownerToken, "Export Detail Project", "Retrieve stored export content.");
+        long otherProjectId = createProject(ownerToken, "Other Export Detail Project", "Keep export files scoped.");
+        ExportFile textExport = exportFile(projectId, "detail.md", "text/markdown;charset=utf-8", "text", "# Detail Export");
+        ExportFile otherExport = exportFile(otherProjectId, "other.md", "text/markdown;charset=utf-8", "text", "# Other Export");
+        String viewerToken = sessionTokenForProjectMember(projectId, "export-detail-viewer-" + System.nanoTime(), "VIEWER");
+
+        mockMvc.perform(get("/api/projects/{projectId}/exports/{exportFileId}", projectId, textExport.getId()))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(get("/api/projects/{projectId}/exports/{exportFileId}", projectId, textExport.getId())
+                        .header(SESSION_HEADER, viewerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(textExport.getId()))
+                .andExpect(jsonPath("$.jobId").doesNotExist())
+                .andExpect(jsonPath("$.fileName").value("detail.md"))
+                .andExpect(jsonPath("$.mediaType").value("text/markdown;charset=utf-8"))
+                .andExpect(jsonPath("$.encoding").value("text"))
+                .andExpect(jsonPath("$.content").value("# Detail Export"))
+                .andExpect(jsonPath("$.createdAt").isString());
+
+        mockMvc.perform(get("/api/projects/{projectId}/exports/{exportFileId}", projectId, otherExport.getId())
+                        .header(SESSION_HEADER, viewerToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("NOT_FOUND"));
+
+        mockMvc.perform(get("/api/projects/{projectId}/exports/{exportFileId}", otherProjectId, otherExport.getId())
+                        .header(SESSION_HEADER, viewerToken))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+    }
+
+    @Test
+    void projectRolesKeepViewersReadOnlyAndAllowEditorsToExport() throws Exception {
+        String ownerToken = loginToken();
+        long projectId = createProject(ownerToken, "Role Matrix Project", "Build role-scoped access.");
+        Artifact prd = artifact(projectId, "PRD", "Role PRD", """
+                {
+                  "project_name": "Role Matrix",
+                  "target_users": [],
+                  "core_features": [],
+                  "user_stories": [],
+                  "business_boundaries": [],
+                  "non_functional_requirements": [],
+                  "risks": []
+                }
+                """);
+        artifact(projectId, "BACKEND_DESIGN", "Role Backend", "{\"tables\":[],\"apis\":[]}");
+        artifact(projectId, "REVIEW_REPORT", "Role Review", "{\"score\":100,\"issues\":[]}");
+
+        WorkflowRun runningRun = new WorkflowRun();
+        runningRun.setProjectId(projectId);
+        runningRun.setOperation("GENERATE_V4");
+        runningRun.setIdempotencyKey("viewer-cancel-denied-key");
+        runningRun.setStatus("RUNNING");
+        workflowRunService.save(runningRun);
+
+        String viewerToken = sessionTokenForProjectMember(projectId, "viewer-user-" + System.nanoTime(), "VIEWER");
+        String editorToken = sessionTokenForProjectMember(projectId, "editor-user-" + System.nanoTime(), "EDITOR");
+
+        mockMvc.perform(get("/api/projects/{projectId}/artifacts", projectId)
+                        .header(SESSION_HEADER, viewerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].type").value("PRD"));
+
+        mockMvc.perform(post("/api/projects/{projectId}/export?format=MARKDOWN", projectId)
+                        .header(SESSION_HEADER, viewerToken))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(put("/api/projects/{projectId}/artifacts/{artifactId}", projectId, prd.getId())
+                        .header(SESSION_HEADER, viewerToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"content\":\"{\\\"project_name\\\":\\\"Viewer Edit\\\"}\"}"))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(post("/api/projects/{projectId}/generate-v4", projectId)
+                        .header(SESSION_HEADER, viewerToken)
+                        .header("Idempotency-Key", "viewer-run-key"))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(post("/api/projects/{projectId}/workflow-runs/{runId}/cancel", projectId, runningRun.getId())
+                        .header(SESSION_HEADER, viewerToken))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(post("/api/projects/{projectId}/export?format=MARKDOWN", projectId)
+                        .header(SESSION_HEADER, editorToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.format").value("MARKDOWN"));
+    }
+
+    @Test
+    void crossProjectRequestsAreForbiddenForNonMembers() throws Exception {
+        String ownerToken = loginToken();
+        long projectId = createProject(ownerToken, "Tenant Project", "Build tenant isolation.");
+        String otherUserToken = sessionTokenForNewUser("tenant-user-" + System.nanoTime());
+
+        Artifact tenantArtifact = artifact(projectId, "PRD", "Tenant PRD", "{\"project_name\":\"Tenant\"}");
+        artifact(projectId, "BACKEND_DESIGN", "Tenant Backend", "{\"tables\":[],\"apis\":[]}");
+        artifact(projectId, "REVIEW_REPORT", "Tenant Review", "{\"score\":100,\"issues\":[]}");
+        auditEvent(projectId, "PROJECT_VIEWED");
+
+        WorkflowRun run = new WorkflowRun();
+        run.setProjectId(projectId);
+        run.setOperation("GENERATE_V4");
+        run.setIdempotencyKey("tenant-run-key");
+        run.setStatus("COMPLETED");
+        run.setResponseStatus("COMPLETED");
+        run.setResponsePercent(100);
+        run.setStartedAt(LocalDateTime.now().minusSeconds(1));
+        run.setCompletedAt(LocalDateTime.now());
+        workflowRunService.save(run);
+
+        ModelInvocation invocation = new ModelInvocation();
+        invocation.setProjectId(projectId);
+        invocation.setProviderKey("local");
+        invocation.setModelName("deterministic-fixture");
+        invocation.setAgentNode("product_manager");
+        invocation.setStatus("SUCCEEDED");
+        invocation.setDurationMs(10);
+        invocation.setInputTokens(1);
+        invocation.setOutputTokens(1);
+        modelInvocationService.save(invocation);
+
+        AgentTask failedTask = new AgentTask();
+        failedTask.setProjectId(projectId);
+        failedTask.setAgentName("ProductManagerAgent_v1");
+        failedTask.setNodeName("product_manager");
+        failedTask.setStatus("FAILED");
+        failedTask.setInputText("{\"requirement\":\"tenant isolation\"}");
+        failedTask.setErrorMessage("failed before retry");
+        agentTaskService.save(failedTask);
+
+        CodeGenerationJob runningCodeJob = new CodeGenerationJob();
+        runningCodeJob.setProjectId(projectId);
+        runningCodeJob.setStatus("RUNNING");
+        codeGenerationJobService.save(runningCodeJob);
+
+        mockMvc.perform(get("/api/projects/{projectId}/artifacts", projectId)
+                        .header(SESSION_HEADER, otherUserToken))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/projects/{projectId}/artifacts/{artifactId}/versions", projectId, tenantArtifact.getId())
+                        .header(SESSION_HEADER, otherUserToken))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/projects/{projectId}/export?format=MARKDOWN", projectId)
+                        .header(SESSION_HEADER, otherUserToken))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/projects/{projectId}/workflow-runs", projectId)
+                        .header(SESSION_HEADER, otherUserToken))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/projects/{projectId}/workflow-runs/{runId}/cancel", projectId, run.getId())
+                        .header(SESSION_HEADER, otherUserToken))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/projects/{projectId}/model-invocations", projectId)
+                        .header(SESSION_HEADER, otherUserToken))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/projects/{projectId}/external-calls", projectId)
+                        .header(SESSION_HEADER, otherUserToken))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/projects/{projectId}/diagnostics", projectId)
+                        .header(SESSION_HEADER, otherUserToken))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/projects/{projectId}/audit-events", projectId)
+                        .header(SESSION_HEADER, otherUserToken))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/projects/{projectId}/review", projectId)
+                        .header(SESSION_HEADER, otherUserToken))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/projects/{projectId}/code-skeleton", projectId)
+                        .header(SESSION_HEADER, otherUserToken))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/projects/{projectId}/code-generation-jobs/{jobId}/cancel", projectId, runningCodeJob.getId())
+                        .header(SESSION_HEADER, otherUserToken))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/projects/{projectId}/code-generation-jobs/{jobId}/retry", projectId, runningCodeJob.getId())
+                        .header(SESSION_HEADER, otherUserToken))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/projects/{projectId}/tasks/{taskId}/retry", projectId, failedTask.getId())
+                        .header(SESSION_HEADER, otherUserToken))
+                .andExpect(status().isForbidden());
+
+        verify(agentEngineClient, never()).runNode(anyString(), anyString());
     }
 
     @Test
@@ -197,9 +540,36 @@ class ProjectControllerTest {
                         .header(SESSION_HEADER, token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].agentNode").value("product_manager"))
+                .andExpect(jsonPath("$[0].promptVersionId").isNumber())
                 .andExpect(jsonPath("$[0].providerKey").value("local"))
                 .andExpect(jsonPath("$[0].modelName").value("deterministic-fixture"))
                 .andExpect(jsonPath("$[0].status").value("SUCCEEDED"));
+    }
+
+    @Test
+    void modelInvocationHistorySupportsBoundedPagination() throws Exception {
+        String token = loginToken();
+        long projectId = createProject(token, "Model Invocation Page Project", "Build paged model invocations.");
+        modelInvocation(projectId, "product_manager");
+        modelInvocation(projectId, "architect");
+        modelInvocation(projectId, "reviewer");
+
+        mockMvc.perform(get("/api/projects/{projectId}/model-invocations?limit=2&offset=1", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].agentNode").value("architect"))
+                .andExpect(jsonPath("$[1].agentNode").value("reviewer"));
+
+        mockMvc.perform(get("/api/projects/{projectId}/model-invocations?limit=0", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+
+        mockMvc.perform(get("/api/projects/{projectId}/model-invocations?offset=-1", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
     }
 
     @Test
@@ -271,6 +641,168 @@ class ProjectControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.workflowKey").value("autospec-v3"))
                 .andExpect(jsonPath("$.nodes[0].id").value("product_manager"));
+    }
+
+    @Test
+    void agentEventHistorySupportsBoundedPagination() throws Exception {
+        String token = loginToken();
+        long projectId = createProject(token, "Agent Event Page Project", "Build paged agent events.");
+        agentEvent(projectId, "product_manager");
+        agentEvent(projectId, "architect");
+        agentEvent(projectId, "reviewer");
+
+        mockMvc.perform(get("/api/projects/{projectId}/events/history?limit=2&offset=1", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].nodeName").value("architect"))
+                .andExpect(jsonPath("$[1].nodeName").value("reviewer"));
+
+        mockMvc.perform(get("/api/projects/{projectId}/events/history?limit=0", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+
+        mockMvc.perform(get("/api/projects/{projectId}/events/history?offset=-1", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+    }
+
+    @Test
+    void auditEventHistorySupportsBoundedPagination() throws Exception {
+        String token = loginToken();
+        long projectId = createProject(token, "Audit Event Page Project", "Build paged audit events.");
+        auditEvent(projectId, "PROJECT_CREATED");
+        auditEvent(projectId, "WORKFLOW_RUN_STARTED");
+        auditEvent(projectId, "WORKFLOW_RUN_COMPLETED");
+
+        mockMvc.perform(get("/api/projects/{projectId}/audit-events?limit=2&offset=1", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].eventType").value("WORKFLOW_RUN_STARTED"))
+                .andExpect(jsonPath("$[1].eventType").value("WORKFLOW_RUN_COMPLETED"));
+
+        mockMvc.perform(get("/api/projects/{projectId}/audit-events?limit=0", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+
+        mockMvc.perform(get("/api/projects/{projectId}/audit-events?offset=-1", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+    }
+
+    @Test
+    void reviewIssueHistorySupportsBoundedPagination() throws Exception {
+        String token = loginToken();
+        long projectId = createProject(token, "Review Issue Page Project", "Build paged review issues.");
+        artifact(projectId, "REVIEW_REPORT", "Review Report", "{\"score\":91,\"issues\":[]}");
+        reviewIssue(projectId, "LOW", "FIRST_RULE", "first issue");
+        reviewIssue(projectId, "MEDIUM", "SECOND_RULE", "second issue");
+        reviewIssue(projectId, "HIGH", "THIRD_RULE", "third issue");
+
+        mockMvc.perform(get("/api/projects/{projectId}/review?limit=2&offset=1", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.score").value(91))
+                .andExpect(jsonPath("$.issues.length()").value(2))
+                .andExpect(jsonPath("$.issues[0].issueType").value("SECOND_RULE"))
+                .andExpect(jsonPath("$.issues[0].description").value("second issue"))
+                .andExpect(jsonPath("$.issues[1].issueType").value("THIRD_RULE"))
+                .andExpect(jsonPath("$.issues[1].description").value("third issue"));
+
+        mockMvc.perform(get("/api/projects/{projectId}/review?limit=0", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+
+        mockMvc.perform(get("/api/projects/{projectId}/review?offset=-1", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+    }
+
+    @Test
+    void artifactHistorySupportsBoundedPagination() throws Exception {
+        String token = loginToken();
+        long projectId = createProject(token, "Artifact Page Project", "Build paged artifact history.");
+        artifact(projectId, "PRD", "First Artifact", "{\"project_name\":\"first\"}");
+        artifact(projectId, "BACKEND_DESIGN", "Second Artifact", "{\"tables\":[]}");
+        artifact(projectId, "REVIEW_REPORT", "Third Artifact", "{\"score\":100,\"issues\":[]}");
+
+        mockMvc.perform(get("/api/projects/{projectId}/artifacts?limit=2&offset=1", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].title").value("Second Artifact"))
+                .andExpect(jsonPath("$[1].title").value("Third Artifact"));
+
+        mockMvc.perform(get("/api/projects/{projectId}/artifacts?limit=0", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+
+        mockMvc.perform(get("/api/projects/{projectId}/artifacts?offset=-1", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+    }
+
+    @Test
+    void artifactVersionHistorySupportsBoundedPagination() throws Exception {
+        String token = loginToken();
+        long projectId = createProject(token, "Artifact Version Project", "Track artifact versions.");
+        Artifact first = artifact(projectId, "PRD", "Versioned PRD", "{\"project_name\":\"first\"}");
+
+        String secondResponse = mockMvc.perform(put("/api/projects/{projectId}/artifacts/{artifactId}", projectId, first.getId())
+                        .header(SESSION_HEADER, token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(java.util.Map.of(
+                                "content", "{\"project_name\":\"second\"}"
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.version").value(2))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        long secondId = objectMapper.readTree(secondResponse).get("id").asLong();
+
+        String thirdResponse = mockMvc.perform(put("/api/projects/{projectId}/artifacts/{artifactId}", projectId, secondId)
+                        .header(SESSION_HEADER, token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(java.util.Map.of(
+                                "content", "{\"project_name\":\"third\"}"
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.version").value(3))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        long thirdId = objectMapper.readTree(thirdResponse).get("id").asLong();
+
+        mockMvc.perform(get("/api/projects/{projectId}/artifacts/{artifactId}/versions?limit=2&offset=1", projectId, first.getId())
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].id").value(secondId))
+                .andExpect(jsonPath("$[0].version").value(2))
+                .andExpect(jsonPath("$[0].parentArtifactId").value(first.getId()))
+                .andExpect(jsonPath("$[1].id").value(thirdId))
+                .andExpect(jsonPath("$[1].version").value(3))
+                .andExpect(jsonPath("$[1].parentArtifactId").value(secondId));
+
+        mockMvc.perform(get("/api/projects/{projectId}/artifacts/{artifactId}/versions?limit=0", projectId, first.getId())
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+
+        mockMvc.perform(get("/api/projects/{projectId}/artifacts/{artifactId}/versions?offset=-1", projectId, first.getId())
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
     }
 
     @Test
@@ -390,7 +922,8 @@ class ProjectControllerTest {
         long projectId = createProject(token, "Evaluation V4 Project", "Build agent evaluation.");
 
         mockMvc.perform(post("/api/projects/{projectId}/generate-v4", projectId)
-                        .header(SESSION_HEADER, token))
+                        .header(SESSION_HEADER, token)
+                        .header("Idempotency-Key", "audited-v4-run"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("COMPLETED"))
                 .andExpect(jsonPath("$.percent").value(100));
@@ -400,6 +933,347 @@ class ProjectControllerTest {
                 .eq(Artifact::getProjectId, projectId)
                 .eq(Artifact::getType, "EVALUATION_REPORT")
                 .count()).isEqualTo(1);
+        assertThat(auditEventCount(projectId, "WORKFLOW_RUN_COMPLETED")).isEqualTo(1);
+        WorkflowRun workflowRun = workflowRunService.lambdaQuery()
+                .eq(WorkflowRun::getProjectId, projectId)
+                .eq(WorkflowRun::getOperation, "GENERATE_V4")
+                .eq(WorkflowRun::getIdempotencyKey, "audited-v4-run")
+                .one();
+
+        mockMvc.perform(get("/api/projects/{projectId}/external-calls", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].targetService").value("agent-engine"))
+                .andExpect(jsonPath("$[0].operation").value("GENERATE_V4"))
+                .andExpect(jsonPath("$[0].status").value("SUCCEEDED"))
+                .andExpect(jsonPath("$[0].durationMs").isNumber())
+                .andExpect(jsonPath("$[0].requestContext").value(org.hamcrest.Matchers.containsString("retrievedSourceCount")));
+
+        mockMvc.perform(get("/api/projects/{projectId}/model-invocations", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].workflowRunId").value(workflowRun.getId()))
+                .andExpect(jsonPath("$[0].taskId").isNumber())
+                .andExpect(jsonPath("$[0].agentNode").value("evaluator"));
+    }
+
+    @Test
+    void generateV4EndpointCorrelatesWorkflowAuditExternalCallAndModelInvocationHistory() throws Exception {
+        String token = loginToken();
+        when(agentEngineClient.generateV4(contains("trace correlation"), anyList()))
+                .thenReturn(agentResultWithEvaluationReport());
+
+        long projectId = createProject(token, "Traceable V4 Project", "Build trace correlation.");
+
+        mockMvc.perform(post("/api/projects/{projectId}/generate-v4", projectId)
+                        .header(SESSION_HEADER, token)
+                        .header("Idempotency-Key", "trace-run-key"))
+                .andExpect(status().isOk());
+
+        JsonNode workflowRuns = objectMapper.readTree(mockMvc.perform(get("/api/projects/{projectId}/workflow-runs", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString());
+        String correlationId = workflowRuns.get(0).path("correlationId").asText();
+        assertThat(correlationId).startsWith("wf-");
+
+        JsonNode auditEvents = objectMapper.readTree(mockMvc.perform(get("/api/projects/{projectId}/audit-events", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString());
+        assertThat(auditEvents.findValuesAsText("correlationId")).contains(correlationId);
+
+        JsonNode externalCalls = objectMapper.readTree(mockMvc.perform(get("/api/projects/{projectId}/external-calls", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString());
+        assertThat(externalCalls.get(0).path("correlationId").asText()).isEqualTo(correlationId);
+        assertThat(externalCalls.get(0).path("requestContext").asText()).contains(correlationId);
+
+        JsonNode modelInvocations = objectMapper.readTree(mockMvc.perform(get("/api/projects/{projectId}/model-invocations", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString());
+        assertThat(modelInvocations.get(0).path("correlationId").asText()).isEqualTo(correlationId);
+    }
+
+    @Test
+    void generateV4EndpointUsesIdempotencyKeyToAvoidDuplicateAgentRuns() throws Exception {
+        String token = loginToken();
+        when(agentEngineClient.generateV4(contains("duplicate generation"), anyList()))
+                .thenReturn(agentResultWithEvaluationReport());
+
+        long projectId = createProject(token, "Idempotent V4 Project", "Build duplicate generation.");
+
+        mockMvc.perform(post("/api/projects/{projectId}/generate-v4", projectId)
+                        .header(SESSION_HEADER, token)
+                        .header("Idempotency-Key", "same-run-key"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("COMPLETED"))
+                .andExpect(jsonPath("$.percent").value(100));
+
+        mockMvc.perform(post("/api/projects/{projectId}/generate-v4", projectId)
+                        .header(SESSION_HEADER, token)
+                        .header("Idempotency-Key", "same-run-key"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("COMPLETED"))
+                .andExpect(jsonPath("$.percent").value(100));
+
+        verify(agentEngineClient, times(1)).generateV4(eq("Build duplicate generation."), anyList());
+        assertThat(artifactService.lambdaQuery()
+                .eq(Artifact::getProjectId, projectId)
+                .eq(Artifact::getType, "EVALUATION_REPORT")
+                .count()).isEqualTo(1);
+    }
+
+    @Test
+    void generateV4EndpointMarksWorkflowRunFailedWhenAgentEngineFails() throws Exception {
+        String token = loginToken();
+        when(agentEngineClient.generateV4(contains("failing generation"), anyList()))
+                .thenThrow(new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Agent Engine unavailable"));
+
+        long projectId = createProject(token, "Failing V4 Project", "Build failing generation.");
+
+        mockMvc.perform(post("/api/projects/{projectId}/generate-v4", projectId)
+                        .header(SESSION_HEADER, token)
+                        .header("Idempotency-Key", "failed-run-key"))
+                .andExpect(status().isBadGateway())
+                .andExpect(jsonPath("$.code").value("BAD_GATEWAY"))
+                .andExpect(jsonPath("$.message").value("Agent Engine unavailable"));
+
+        WorkflowRun workflowRun = workflowRunService.lambdaQuery()
+                .eq(WorkflowRun::getProjectId, projectId)
+                .eq(WorkflowRun::getOperation, "GENERATE_V4")
+                .eq(WorkflowRun::getIdempotencyKey, "failed-run-key")
+                .one();
+
+        assertThat(workflowRun.getStatus()).isEqualTo("FAILED");
+        assertThat(workflowRun.getErrorMessage()).contains("Agent Engine unavailable");
+        assertThat(workflowRun.getCompletedAt()).isNotNull();
+        assertThat(projectService.getById(projectId).getStatus()).isEqualTo("FAILED");
+        assertThat(auditEventCount(projectId, "WORKFLOW_RUN_FAILED")).isEqualTo(1);
+
+        mockMvc.perform(get("/api/projects/{projectId}/external-calls", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].targetService").value("agent-engine"))
+                .andExpect(jsonPath("$[0].operation").value("GENERATE_V4"))
+                .andExpect(jsonPath("$[0].status").value("FAILED"))
+                .andExpect(jsonPath("$[0].errorMessage").value("Agent Engine unavailable"));
+    }
+
+    @Test
+    void externalCallLogHistorySupportsBoundedPagination() throws Exception {
+        String token = loginToken();
+        long projectId = createProject(token, "External Call Page Project", "Build paged external calls.");
+        externalCall(projectId, "GENERATE_PRD");
+        externalCall(projectId, "GENERATE_ARCHITECTURE");
+        externalCall(projectId, "GENERATE_REVIEW");
+
+        mockMvc.perform(get("/api/projects/{projectId}/external-calls?limit=2&offset=1", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].operation").value("GENERATE_ARCHITECTURE"))
+                .andExpect(jsonPath("$[1].operation").value("GENERATE_REVIEW"));
+
+        mockMvc.perform(get("/api/projects/{projectId}/external-calls?limit=0", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+
+        mockMvc.perform(get("/api/projects/{projectId}/external-calls?offset=-1", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+    }
+
+    @Test
+    void workflowRunHistoryReturnsProjectScopedRunsAndRequiresMembership() throws Exception {
+        String token = loginToken();
+        when(agentEngineClient.generateV4(contains("observable generation"), anyList()))
+                .thenReturn(agentResultWithEvaluationReport());
+
+        long projectId = createProject(token, "Observable V4 Project", "Build observable generation.");
+        mockMvc.perform(post("/api/projects/{projectId}/generate-v4", projectId)
+                        .header(SESSION_HEADER, token)
+                        .header("Idempotency-Key", "observable-run-key"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/api/projects/{projectId}/workflow-runs", projectId))
+                .andExpect(status().isUnauthorized());
+
+        mockMvc.perform(get("/api/projects/{projectId}/workflow-runs", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].operation").value("GENERATE_V4"))
+                .andExpect(jsonPath("$[0].idempotencyKey").value("observable-run-key"))
+                .andExpect(jsonPath("$[0].status").value("COMPLETED"))
+                .andExpect(jsonPath("$[0].responseStatus").value("COMPLETED"))
+                .andExpect(jsonPath("$[0].responsePercent").value(100))
+                .andExpect(jsonPath("$[0].startedAt").isString())
+                .andExpect(jsonPath("$[0].completedAt").isString());
+    }
+
+    @Test
+    void workflowRunHistorySupportsBoundedPagination() throws Exception {
+        String token = loginToken();
+        long projectId = createProject(token, "Workflow Run Page Project", "Build paged workflow history.");
+        workflowRun(projectId, "run-1");
+        workflowRun(projectId, "run-2");
+        workflowRun(projectId, "run-3");
+
+        mockMvc.perform(get("/api/projects/{projectId}/workflow-runs?limit=2&offset=1", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].idempotencyKey").value("run-2"))
+                .andExpect(jsonPath("$[1].idempotencyKey").value("run-3"));
+
+        mockMvc.perform(get("/api/projects/{projectId}/workflow-runs?limit=0", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+
+        mockMvc.perform(get("/api/projects/{projectId}/workflow-runs?offset=-1", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+    }
+
+    @Test
+    void runningWorkflowRunCanBeCancelled() throws Exception {
+        String token = loginToken();
+        long projectId = createProject(token, "Cancelable Workflow Project", "Build cancellable workflow orchestration.");
+
+        WorkflowRun runningRun = new WorkflowRun();
+        runningRun.setProjectId(projectId);
+        runningRun.setOperation("GENERATE_V4");
+        runningRun.setIdempotencyKey("cancel-workflow-key");
+        runningRun.setStatus("RUNNING");
+        runningRun.setStartedAt(LocalDateTime.now().minusMinutes(5));
+        workflowRunService.save(runningRun);
+
+        mockMvc.perform(post("/api/projects/{projectId}/workflow-runs/{runId}/cancel", projectId, runningRun.getId())
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(runningRun.getId()))
+                .andExpect(jsonPath("$.status").value("CANCELLED"))
+                .andExpect(jsonPath("$.errorMessage").value("Cancelled by user request"))
+                .andExpect(jsonPath("$.completedAt").isString());
+
+        WorkflowRun cancelledRun = workflowRunService.getById(runningRun.getId());
+        assertThat(cancelledRun.getStatus()).isEqualTo("CANCELLED");
+        assertThat(cancelledRun.getCompletedAt()).isNotNull();
+
+        mockMvc.perform(get("/api/projects/{projectId}/audit-events", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].eventType").value("WORKFLOW_RUN_CANCELLED"))
+                .andExpect(jsonPath("$[0].entityType").value("WORKFLOW_RUN"))
+                .andExpect(jsonPath("$[0].entityId").value(runningRun.getId()))
+                .andExpect(jsonPath("$[0].message").value("Workflow run cancelled by user request"));
+    }
+
+    @Test
+    void codeGenerationJobsCanBeListedAndRunningJobCanBeCancelled() throws Exception {
+        String token = loginToken();
+        long projectId = createProject(token, "Cancelable Code Job Project", "Build cancellable code export.");
+
+        CodeGenerationJob runningJob = new CodeGenerationJob();
+        runningJob.setProjectId(projectId);
+        runningJob.setStatus("RUNNING");
+        codeGenerationJobService.save(runningJob);
+
+        mockMvc.perform(get("/api/projects/{projectId}/code-generation-jobs", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].id").value(runningJob.getId()))
+                .andExpect(jsonPath("$[0].status").value("RUNNING"));
+
+        mockMvc.perform(post("/api/projects/{projectId}/code-generation-jobs/{jobId}/cancel", projectId, runningJob.getId())
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(runningJob.getId()))
+                .andExpect(jsonPath("$.status").value("CANCELLED"))
+                .andExpect(jsonPath("$.cancelledAt").isString())
+                .andExpect(jsonPath("$.completedAt").isString());
+
+        CodeGenerationJob cancelledJob = codeGenerationJobService.getById(runningJob.getId());
+        assertThat(cancelledJob.getStatus()).isEqualTo("CANCELLED");
+        assertThat(cancelledJob.getCompletedAt()).isNotNull();
+
+        mockMvc.perform(get("/api/projects/{projectId}/audit-events", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].eventType").value("CODE_GENERATION_JOB_CANCELLED"))
+                .andExpect(jsonPath("$[0].entityType").value("CODE_GENERATION_JOB"))
+                .andExpect(jsonPath("$[0].entityId").value(runningJob.getId()))
+                .andExpect(jsonPath("$[0].message").value("Code generation job cancelled by user request"));
+    }
+
+    @Test
+    void codeGenerationJobHistorySupportsBoundedPagination() throws Exception {
+        String token = loginToken();
+        long projectId = createProject(token, "Paged Code Job Project", "Build paged code job history.");
+        codeGenerationJob(projectId, "FAILED");
+        codeGenerationJob(projectId, "CANCELLED");
+        codeGenerationJob(projectId, "SUCCEEDED");
+
+        mockMvc.perform(get("/api/projects/{projectId}/code-generation-jobs?limit=2&offset=1", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].status").value("CANCELLED"))
+                .andExpect(jsonPath("$[1].status").value("SUCCEEDED"));
+
+        mockMvc.perform(get("/api/projects/{projectId}/code-generation-jobs?limit=0", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+
+        mockMvc.perform(get("/api/projects/{projectId}/code-generation-jobs?offset=-1", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+    }
+
+    @Test
+    void failedCodeGenerationJobCanBeRetriedWithLineage() throws Exception {
+        String token = loginToken();
+        long projectId = createProject(token, "Retryable Code Job Project", "Build retryable code export.");
+        artifact(projectId, "PRD", "Retry PRD", "{\"project_name\":\"Retry\"}");
+        artifact(projectId, "BACKEND_DESIGN", "Retry Backend", "{\"apis\":[]}");
+
+        CodeGenerationJob failedJob = new CodeGenerationJob();
+        failedJob.setProjectId(projectId);
+        failedJob.setStatus("FAILED");
+        failedJob.setErrorMessage("Manifest generation failed");
+        failedJob.setCompletedAt(LocalDateTime.now());
+        codeGenerationJobService.save(failedJob);
+
+        mockMvc.perform(post("/api/projects/{projectId}/code-generation-jobs/{jobId}/retry", projectId, failedJob.getId())
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.format").value("ZIP"))
+                .andExpect(jsonPath("$.fileName").value(org.hamcrest.Matchers.endsWith("-skeleton.zip")));
+
+        mockMvc.perform(get("/api/projects/{projectId}/code-generation-jobs", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].status").value("FAILED"))
+                .andExpect(jsonPath("$[1].status").value("SUCCEEDED"))
+                .andExpect(jsonPath("$[1].retryOfJobId").value(failedJob.getId()));
     }
 
     private String loginToken() throws Exception {
@@ -413,6 +1287,131 @@ class ProjectControllerTest {
                 .getResponse()
                 .getContentAsString();
         return objectMapper.readTree(response).get("sessionToken").asText();
+    }
+
+    private String sessionTokenForNewUser(String username) {
+        UserAccount user = new UserAccount();
+        user.setUsername(username);
+        user.setDisplayName(username);
+        user.setPasswordHash("test-only-hash");
+        user.setEnabled(true);
+        userAccountService.save(user);
+        return authService.issueSession(user);
+    }
+
+    private String sessionTokenForProjectMember(Long projectId, String username, String role) {
+        UserAccount user = new UserAccount();
+        user.setUsername(username);
+        user.setDisplayName(username);
+        user.setPasswordHash("test-only-hash");
+        user.setEnabled(true);
+        userAccountService.save(user);
+
+        ProjectMember member = new ProjectMember();
+        member.setProjectId(projectId);
+        member.setUserId(user.getId());
+        member.setRole(role);
+        projectMemberService.save(member);
+        return authService.issueSession(user);
+    }
+
+    private void workflowRun(Long projectId, String idempotencyKey) {
+        WorkflowRun run = new WorkflowRun();
+        run.setProjectId(projectId);
+        run.setOperation("GENERATE_V4");
+        run.setIdempotencyKey(idempotencyKey);
+        run.setStatus("COMPLETED");
+        run.setResponseStatus("COMPLETED");
+        run.setResponsePercent(100);
+        run.setStartedAt(LocalDateTime.now().minusSeconds(1));
+        run.setCompletedAt(LocalDateTime.now());
+        workflowRunService.save(run);
+    }
+
+    private void codeGenerationJob(Long projectId, String status) {
+        CodeGenerationJob job = new CodeGenerationJob();
+        job.setProjectId(projectId);
+        job.setStatus(status);
+        codeGenerationJobService.save(job);
+    }
+
+    private void externalCall(Long projectId, String operation) {
+        LocalDateTime startedAt = LocalDateTime.now().minusNanos(10_000_000);
+        externalCallLogService.record(
+                projectId,
+                "agent-engine",
+                operation,
+                "SUCCEEDED",
+                10,
+                "{\"source\":\"test\"}",
+                null,
+                startedAt,
+                LocalDateTime.now()
+        );
+    }
+
+    private void agentEvent(Long projectId, String nodeName) {
+        agentEventService.record(
+                projectId,
+                null,
+                "NODE_SUCCEEDED",
+                nodeName,
+                nodeName + " succeeded",
+                "{\"source\":\"test\"}"
+        );
+    }
+
+    private void auditEvent(Long projectId, String eventType) {
+        auditEventService.record(
+                projectId,
+                null,
+                eventType,
+                "PROJECT",
+                projectId,
+                eventType + " audit event",
+                "{\"source\":\"test\"}"
+        );
+    }
+
+    private void reviewIssue(Long projectId, String severity, String issueType, String description) {
+        ReviewIssue issue = new ReviewIssue();
+        issue.setProjectId(projectId);
+        issue.setSeverity(severity);
+        issue.setIssueType(issueType);
+        issue.setDescription(description);
+        issue.setSuggestion("Review generated artifacts for consistency.");
+        issue.setStatus("OPEN");
+        reviewIssueService.save(issue);
+    }
+
+    private void modelInvocation(Long projectId, String agentNode) {
+        ModelInvocation invocation = new ModelInvocation();
+        invocation.setProjectId(projectId);
+        invocation.setProviderKey("local");
+        invocation.setModelName("deterministic-fixture");
+        invocation.setAgentNode(agentNode);
+        invocation.setStatus("SUCCEEDED");
+        invocation.setDurationMs(10);
+        invocation.setInputTokens(1);
+        invocation.setOutputTokens(1);
+        modelInvocationService.save(invocation);
+    }
+
+    private long auditEventCount(Long projectId, String eventType) throws Exception {
+        try (var connection = dataSource.getConnection();
+             var statement = connection.prepareStatement("""
+                     select count(*) as event_count
+                     from audit_event
+                     where project_id = ?
+                       and event_type = ?
+                     """)) {
+            statement.setLong(1, projectId);
+            statement.setString(2, eventType);
+            try (var resultSet = statement.executeQuery()) {
+                resultSet.next();
+                return resultSet.getLong("event_count");
+            }
+        }
     }
 
     private long createProject(String token, String name, String requirement) throws Exception {
@@ -449,6 +1448,18 @@ class ProjectControllerTest {
         artifact.setStatus(status);
         artifactService.save(artifact);
         return artifact;
+    }
+
+    private ExportFile exportFile(Long projectId, String fileName, String mediaType, String encoding, String content) {
+        ExportFile file = new ExportFile();
+        file.setProjectId(projectId);
+        file.setFileName(fileName);
+        file.setMediaType(mediaType);
+        file.setEncoding(encoding);
+        file.setContent(content);
+        file.setCreatedAt(LocalDateTime.now());
+        exportFileService.save(file);
+        return file;
     }
 
     private AgentGenerationResult agentResultFromAgentService() {

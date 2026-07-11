@@ -41,4 +41,27 @@ class PromptRegistryServiceTest {
         assertThat(active.getVersion()).isEqualTo("v1");
         assertThat(active.getContent()).isEqualTo("architecture prompt");
     }
+
+    @Test
+    void activePromptLookupUsesLatestVersionWhenDirtyDataHasMultipleActiveRows() {
+        PromptVersion older = prompt("DuplicatePromptAgent", "v1", "older prompt");
+        PromptVersion newer = prompt("DuplicatePromptAgent", "v2", "newer prompt");
+        promptVersionService.save(older);
+        promptVersionService.save(newer);
+
+        PromptVersion active = promptRegistryService.activePrompt("DuplicatePromptAgent");
+
+        assertThat(active.getId()).isEqualTo(newer.getId());
+        assertThat(promptRegistryService.activePromptIdOrNull("DuplicatePromptAgent")).isEqualTo(newer.getId());
+    }
+
+    private PromptVersion prompt(String promptKey, String version, String content) {
+        PromptVersion prompt = new PromptVersion();
+        prompt.setPromptKey(promptKey);
+        prompt.setVersion(version);
+        prompt.setContent(content);
+        prompt.setChecksum("sha256:" + version);
+        prompt.setActive(true);
+        return prompt;
+    }
 }
