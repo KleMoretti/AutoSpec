@@ -101,23 +101,23 @@ Expected: all tests pass.
 - Create: `backend/src/main/java/com/autospec/entity/ProcessedWorkflowEvent.java`
 - Modify: `backend/src/main/java/com/autospec/entity/WorkflowRun.java`
 
-- [ ] **Step 1: Write a failing migration contract test**
+- [x] **Step 1: Write a failing migration contract test**
 
 Assert all seven new tables, V5 columns on `workflow_run`, unique `execution_id`, unique `(workflow_run_id,node_id,revision,attempt)`, and recovery indexes exist after Flyway migration.
 
-- [ ] **Step 2: Verify the migration test is red**
+- [x] **Step 2: Verify the migration test is red**
 
 Run the focused `SchemaInitSqlTest` method and confirm missing-table or missing-column failure.
 
-- [ ] **Step 3: Add the V68 migration**
+- [x] **Step 3: Add the V68 migration**
 
 Create the tables and indexes described in the design. Use portable MySQL/H2-compatible types already established by V1-V66. Add nullable foreign-key reference columns to existing `agent_task`, `agent_event`, `artifact`, and `model_invocation` without breaking V1-V4 data.
 
-- [ ] **Step 4: Map persistence entities**
+- [x] **Step 4: Map persistence entities**
 
 Add MyBatis-Plus entities with Java time types, `@TableName`, identifier annotations, JSON stored as `String`, and `lockVersion` fields where conditional transitions require optimistic locking.
 
-- [ ] **Step 5: Verify migration and backend tests**
+- [x] **Step 5: Verify migration and backend tests**
 
 ```powershell
 & 'D:\apache-maven-3.8.9\bin\mvn.cmd' -f backend\pom.xml -Dtest=SchemaInitSqlTest test

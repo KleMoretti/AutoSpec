@@ -22,6 +22,20 @@ public class WorkflowRun {
 
     private String correlationId;
 
+    private Long workflowVersionId;
+
+    private String workflowSnapshotJson;
+
+    private Long replayOfRunId;
+
+    private Integer reviewRound;
+
+    private Integer maxReviewRounds;
+
+    private Integer lockVersion;
+
+    private LocalDateTime lastHeartbeatAt;
+
     private String status;
 
     private String responseStatus;

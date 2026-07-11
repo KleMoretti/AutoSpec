@@ -176,6 +176,66 @@ class SchemaInitSqlTest {
     }
 
     @Test
+    void flywayMigrationsCreateDynamicWorkflowRuntimeTables() throws Exception {
+        JdbcDataSource dataSource = new JdbcDataSource();
+        dataSource.setURL("jdbc:h2:mem:v5_dynamic_workflow_runtime;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1");
+        dataSource.setUser("sa");
+        dataSource.setPassword("");
+
+        Flyway.configure()
+                .dataSource(dataSource)
+                .locations("classpath:db/migration")
+                .load()
+                .migrate();
+
+        try (Connection connection = dataSource.getConnection()) {
+            assertThatCode(() -> execute(connection, "select workflow_key, status from workflow_definition where 1 = 0"))
+                    .doesNotThrowAnyException();
+            assertThatCode(() -> execute(connection, "select definition_id, version, spec_json, content_hash from workflow_version where 1 = 0"))
+                    .doesNotThrowAnyException();
+            assertThatCode(() -> execute(connection, "select workflow_version_id, workflow_snapshot_json, replay_of_run_id, review_round, max_review_rounds, lock_version, last_heartbeat_at from workflow_run where 1 = 0"))
+                    .doesNotThrowAnyException();
+            assertThatCode(() -> execute(connection, "select workflow_run_id, node_id, revision, attempt, execution_id, status, input_json, output_json, error_code, lock_version from workflow_node_run where 1 = 0"))
+                    .doesNotThrowAnyException();
+            assertThatCode(() -> execute(connection, "select workflow_run_id, node_run_id, mode, status, decision, idempotency_key from workflow_approval where 1 = 0"))
+                    .doesNotThrowAnyException();
+            assertThatCode(() -> execute(connection, "select workflow_run_id, node_run_id, from_status, to_status from workflow_transition where 1 = 0"))
+                    .doesNotThrowAnyException();
+            assertThatCode(() -> execute(connection, "select event_id, aggregate_id, event_type, payload_json, status from workflow_outbox where 1 = 0"))
+                    .doesNotThrowAnyException();
+            assertThatCode(() -> execute(connection, "select event_id, processed_at from processed_workflow_event where 1 = 0"))
+                    .doesNotThrowAnyException();
+        }
+
+        try (Connection connection = dataSource.getConnection();
+             Statement statement = connection.createStatement();
+             ResultSet resultSet = statement.executeQuery("""
+                     select count(*) as constraint_count
+                     from information_schema.table_constraints
+                     where constraint_name in (
+                         'uk_workflow_node_run_revision_attempt',
+                         'uk_workflow_node_run_execution_id'
+                     )
+                     """)) {
+            resultSet.next();
+            assertThat(resultSet.getInt("constraint_count")).isEqualTo(2);
+        }
+        try (Connection connection = dataSource.getConnection();
+             Statement statement = connection.createStatement();
+             ResultSet resultSet = statement.executeQuery("""
+                     select count(*) as index_count
+                     from information_schema.indexes
+                     where index_name in (
+                         'idx_workflow_node_run_recovery',
+                         'idx_workflow_outbox_publish'
+                     )
+                     """)) {
+            resultSet.next();
+            assertThat(resultSet.getInt("index_count")).isEqualTo(2);
+        }
+    }
+
+    @Test
     void flywayMigrationsSeedBackendEngineeringDepthPlan() throws Exception {
         JdbcDataSource dataSource = new JdbcDataSource();
         dataSource.setURL("jdbc:h2:mem:backend_depth_plan;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1");
