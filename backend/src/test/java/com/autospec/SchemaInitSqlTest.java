@@ -78,6 +78,34 @@ class SchemaInitSqlTest {
     }
 
     @Test
+    void flywayMigrationsCreateProjectHistoryVisibilityIndexes() throws Exception {
+        JdbcDataSource dataSource = new JdbcDataSource();
+        dataSource.setURL("jdbc:h2:mem:project_history_visibility_index_schema;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1");
+        dataSource.setUser("sa");
+        dataSource.setPassword("");
+
+        Flyway.configure()
+                .dataSource(dataSource)
+                .locations("classpath:db/migration")
+                .load()
+                .migrate();
+
+        try (Connection connection = dataSource.getConnection();
+             Statement statement = connection.createStatement();
+             ResultSet resultSet = statement.executeQuery("""
+                     select count(*) as index_count
+                     from information_schema.indexes
+                     where index_name in (
+                         'idx_project_user_id_id',
+                         'idx_project_member_user_id_project_id'
+                     )
+                     """)) {
+            resultSet.next();
+            assertThat(resultSet.getInt("index_count")).isEqualTo(2);
+        }
+    }
+
+    @Test
     void flywayMigrationsSeedV4RoadmapPlan() throws Exception {
         JdbcDataSource dataSource = new JdbcDataSource();
         dataSource.setURL("jdbc:h2:mem:v4_plan;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1");
@@ -160,8 +188,72 @@ class SchemaInitSqlTest {
                     .contains("latestFailedAgentTaskErrorMessage")
                     .contains("failedModelInvocationCount")
                     .contains("latestFailedModelInvocationErrorMessage")
+                    .contains("promptVersionId")
+                    .contains("GET /api/projects")
+                    .contains("GET /api/projects/{projectId}")
+                    .contains("ProjectResponse")
+                    .contains("project history indexes")
+                    .contains("idx_project_user_id_id")
+                    .contains("idx_project_member_user_id_project_id")
+                    .contains("workflow run history index")
+                    .contains("idx_workflow_run_project_id_id")
+                    .contains("workflow run diagnostics index")
+                    .contains("idx_workflow_run_project_status_id")
+                    .contains("workflow run recovery index")
+                    .contains("idx_workflow_run_status_created_at")
+                    .contains("workflow timeout recovery")
+                    .contains("WorkflowRunServiceTest")
+                    .contains("timeoutRunningRunsBefore")
+                    .contains("workflow diagnostics")
+                    .contains("runningWorkflowRunCount")
+                    .contains("cancelledWorkflowRunCount")
+                    .contains("reviewIssueCount")
+                    .contains("blockingReviewIssueCount")
+                    .contains("latestFailedWorkflowRunErrorMessage")
+                    .contains("diagnostics authorization")
+                    .contains("diagnostics tenant isolation")
+                    .contains("workflow run cancellation")
+                    .contains("WorkflowRunService.cancelRunningRun")
+                    .contains("/api/projects/{projectId}/workflow-runs/{runId}/cancel")
+                    .contains("workflow cancellation audit")
+                    .contains("WORKFLOW_RUN_CANCELLED")
+                    .contains("cancelled workflow diagnostics")
+                    .contains("review issue diagnostics")
+                    .contains("review issue diagnostics index")
+                    .contains("idx_review_issue_project_status_severity_id")
+                    .contains("agent task diagnostics index")
+                    .contains("idx_agent_task_project_status_id")
+                    .contains("model invocation diagnostics index")
+                    .contains("idx_model_invocation_project_status_id")
+                    .contains("external call log diagnostics index")
+                    .contains("idx_external_call_log_project_status_id")
+                    .contains("code generation job diagnostics index")
+                    .contains("idx_code_generation_job_project_status_id")
                     .contains("codeGenerationJobCount")
-                    .contains("latestFailedCodeGenerationJobErrorMessage");
+                    .contains("latestFailedCodeGenerationJobErrorMessage")
+                    .contains("evaluation diagnostics")
+                    .contains("latestEvaluationOverallScore")
+                    .contains("latestEvaluationGrade")
+                    .contains("latestEvaluationIssueCount")
+                    .contains("idx_artifact_project_type_id")
+                    .contains("/api/projects/{projectId}/code-generation-jobs/{jobId}/cancel")
+                    .contains("code generation cancellation audit")
+                    .contains("CODE_GENERATION_JOB_CANCELLED")
+                    .contains("CodeGenerationJobResponse")
+                    .contains("/api/projects/{projectId}/workflow-runs")
+                    .contains("/api/projects/{projectId}/external-calls")
+                    .contains("WorkflowRunResponse")
+                    .contains("RetryTaskResponse")
+                    .contains("/api/projects/{projectId}/artifacts/{artifactId}/versions")
+                    .contains("ApproveArtifactResponse")
+                    .contains("/api/projects/{projectId}/progress")
+                    .contains("/api/projects/{projectId}/workflow")
+                    .contains("/api/projects/{projectId}/knowledge/sources")
+                    .contains("ProjectProgressResponse")
+                    .contains("WorkflowSnapshotResponse")
+                    .contains("KnowledgeSourceResponse")
+                    .contains("/api/prompts/active")
+                    .contains("PromptVersionResponse");
             assertThat(resultSet.next()).isFalse();
         }
     }
@@ -182,6 +274,84 @@ class SchemaInitSqlTest {
         try (Connection connection = dataSource.getConnection()) {
             assertThatCode(() -> execute(connection, "select project_id, operation, idempotency_key, status, response_status, response_percent, completed_at from workflow_run where 1 = 0"))
                     .doesNotThrowAnyException();
+        }
+    }
+
+    @Test
+    void flywayMigrationsCreateWorkflowRunHistoryIndex() throws Exception {
+        JdbcDataSource dataSource = new JdbcDataSource();
+        dataSource.setURL("jdbc:h2:mem:workflow_run_history_index_schema;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1");
+        dataSource.setUser("sa");
+        dataSource.setPassword("");
+
+        Flyway.configure()
+                .dataSource(dataSource)
+                .locations("classpath:db/migration")
+                .load()
+                .migrate();
+
+        try (Connection connection = dataSource.getConnection();
+             Statement statement = connection.createStatement();
+             ResultSet resultSet = statement.executeQuery("""
+                     select index_name
+                     from information_schema.indexes
+                     where table_name = 'workflow_run'
+                       and index_name = 'idx_workflow_run_project_id_id'
+                     """)) {
+            assertThat(resultSet.next()).isTrue();
+            assertThat(resultSet.next()).isFalse();
+        }
+    }
+
+    @Test
+    void flywayMigrationsCreateWorkflowRunDiagnosticsIndex() throws Exception {
+        JdbcDataSource dataSource = new JdbcDataSource();
+        dataSource.setURL("jdbc:h2:mem:workflow_run_diagnostics_index_schema;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1");
+        dataSource.setUser("sa");
+        dataSource.setPassword("");
+
+        Flyway.configure()
+                .dataSource(dataSource)
+                .locations("classpath:db/migration")
+                .load()
+                .migrate();
+
+        try (Connection connection = dataSource.getConnection();
+             Statement statement = connection.createStatement();
+             ResultSet resultSet = statement.executeQuery("""
+                     select index_name
+                     from information_schema.indexes
+                     where table_name = 'workflow_run'
+                       and index_name = 'idx_workflow_run_project_status_id'
+                     """)) {
+            assertThat(resultSet.next()).isTrue();
+            assertThat(resultSet.next()).isFalse();
+        }
+    }
+
+    @Test
+    void flywayMigrationsCreateWorkflowRunRecoveryIndex() throws Exception {
+        JdbcDataSource dataSource = new JdbcDataSource();
+        dataSource.setURL("jdbc:h2:mem:workflow_run_recovery_index_schema;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1");
+        dataSource.setUser("sa");
+        dataSource.setPassword("");
+
+        Flyway.configure()
+                .dataSource(dataSource)
+                .locations("classpath:db/migration")
+                .load()
+                .migrate();
+
+        try (Connection connection = dataSource.getConnection();
+             Statement statement = connection.createStatement();
+             ResultSet resultSet = statement.executeQuery("""
+                     select index_name
+                     from information_schema.indexes
+                     where table_name = 'workflow_run'
+                       and index_name = 'idx_workflow_run_status_created_at'
+                     """)) {
+            assertThat(resultSet.next()).isTrue();
+            assertThat(resultSet.next()).isFalse();
         }
     }
 
@@ -257,6 +427,58 @@ class SchemaInitSqlTest {
     }
 
     @Test
+    void flywayMigrationsCreateReviewIssueDiagnosticsIndex() throws Exception {
+        JdbcDataSource dataSource = new JdbcDataSource();
+        dataSource.setURL("jdbc:h2:mem:review_issue_diagnostics_index_schema;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1");
+        dataSource.setUser("sa");
+        dataSource.setPassword("");
+
+        Flyway.configure()
+                .dataSource(dataSource)
+                .locations("classpath:db/migration")
+                .load()
+                .migrate();
+
+        try (Connection connection = dataSource.getConnection();
+             Statement statement = connection.createStatement();
+             ResultSet resultSet = statement.executeQuery("""
+                     select index_name
+                     from information_schema.indexes
+                     where table_name = 'review_issue'
+                       and index_name = 'idx_review_issue_project_status_severity_id'
+                     """)) {
+            assertThat(resultSet.next()).isTrue();
+            assertThat(resultSet.next()).isFalse();
+        }
+    }
+
+    @Test
+    void flywayMigrationsCreateAgentTaskDiagnosticsIndex() throws Exception {
+        JdbcDataSource dataSource = new JdbcDataSource();
+        dataSource.setURL("jdbc:h2:mem:agent_task_diagnostics_index_schema;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1");
+        dataSource.setUser("sa");
+        dataSource.setPassword("");
+
+        Flyway.configure()
+                .dataSource(dataSource)
+                .locations("classpath:db/migration")
+                .load()
+                .migrate();
+
+        try (Connection connection = dataSource.getConnection();
+             Statement statement = connection.createStatement();
+             ResultSet resultSet = statement.executeQuery("""
+                     select index_name
+                     from information_schema.indexes
+                     where table_name = 'agent_task'
+                       and index_name = 'idx_agent_task_project_status_id'
+                     """)) {
+            assertThat(resultSet.next()).isTrue();
+            assertThat(resultSet.next()).isFalse();
+        }
+    }
+
+    @Test
     void flywayMigrationsCreateArtifactHistoryIndex() throws Exception {
         JdbcDataSource dataSource = new JdbcDataSource();
         dataSource.setURL("jdbc:h2:mem:artifact_history_index_schema;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1");
@@ -309,6 +531,32 @@ class SchemaInitSqlTest {
     }
 
     @Test
+    void flywayMigrationsCreateArtifactTypeLatestIndex() throws Exception {
+        JdbcDataSource dataSource = new JdbcDataSource();
+        dataSource.setURL("jdbc:h2:mem:artifact_type_latest_index_schema;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1");
+        dataSource.setUser("sa");
+        dataSource.setPassword("");
+
+        Flyway.configure()
+                .dataSource(dataSource)
+                .locations("classpath:db/migration")
+                .load()
+                .migrate();
+
+        try (Connection connection = dataSource.getConnection();
+             Statement statement = connection.createStatement();
+             ResultSet resultSet = statement.executeQuery("""
+                     select index_name
+                     from information_schema.indexes
+                     where table_name = 'artifact'
+                       and index_name = 'idx_artifact_project_type_id'
+                     """)) {
+            assertThat(resultSet.next()).isTrue();
+            assertThat(resultSet.next()).isFalse();
+        }
+    }
+
+    @Test
     void flywayMigrationsCreateExternalCallLogTable() throws Exception {
         JdbcDataSource dataSource = new JdbcDataSource();
         dataSource.setURL("jdbc:h2:mem:external_call_log_schema;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1");
@@ -347,6 +595,32 @@ class SchemaInitSqlTest {
                      from information_schema.indexes
                      where table_name = 'external_call_log'
                        and index_name = 'idx_external_call_log_project_id_id'
+                     """)) {
+            assertThat(resultSet.next()).isTrue();
+            assertThat(resultSet.next()).isFalse();
+        }
+    }
+
+    @Test
+    void flywayMigrationsCreateExternalCallLogDiagnosticsIndex() throws Exception {
+        JdbcDataSource dataSource = new JdbcDataSource();
+        dataSource.setURL("jdbc:h2:mem:external_call_log_diagnostics_index_schema;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1");
+        dataSource.setUser("sa");
+        dataSource.setPassword("");
+
+        Flyway.configure()
+                .dataSource(dataSource)
+                .locations("classpath:db/migration")
+                .load()
+                .migrate();
+
+        try (Connection connection = dataSource.getConnection();
+             Statement statement = connection.createStatement();
+             ResultSet resultSet = statement.executeQuery("""
+                     select index_name
+                     from information_schema.indexes
+                     where table_name = 'external_call_log'
+                       and index_name = 'idx_external_call_log_project_status_id'
                      """)) {
             assertThat(resultSet.next()).isTrue();
             assertThat(resultSet.next()).isFalse();
@@ -496,6 +770,32 @@ class SchemaInitSqlTest {
     }
 
     @Test
+    void flywayMigrationsCreateCodeGenerationJobDiagnosticsIndex() throws Exception {
+        JdbcDataSource dataSource = new JdbcDataSource();
+        dataSource.setURL("jdbc:h2:mem:code_generation_job_diagnostics_index_schema;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1");
+        dataSource.setUser("sa");
+        dataSource.setPassword("");
+
+        Flyway.configure()
+                .dataSource(dataSource)
+                .locations("classpath:db/migration")
+                .load()
+                .migrate();
+
+        try (Connection connection = dataSource.getConnection();
+             Statement statement = connection.createStatement();
+             ResultSet resultSet = statement.executeQuery("""
+                     select index_name
+                     from information_schema.indexes
+                     where table_name = 'code_generation_job'
+                       and index_name = 'idx_code_generation_job_project_status_id'
+                     """)) {
+            assertThat(resultSet.next()).isTrue();
+            assertThat(resultSet.next()).isFalse();
+        }
+    }
+
+    @Test
     void flywayMigrationsCreateModelInvocationHistoryIndex() throws Exception {
         JdbcDataSource dataSource = new JdbcDataSource();
         dataSource.setURL("jdbc:h2:mem:model_invocation_history_index_schema;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1");
@@ -515,6 +815,32 @@ class SchemaInitSqlTest {
                      from information_schema.indexes
                      where table_name = 'model_invocation'
                        and index_name = 'idx_model_invocation_project_id_id'
+                     """)) {
+            assertThat(resultSet.next()).isTrue();
+            assertThat(resultSet.next()).isFalse();
+        }
+    }
+
+    @Test
+    void flywayMigrationsCreateModelInvocationDiagnosticsIndex() throws Exception {
+        JdbcDataSource dataSource = new JdbcDataSource();
+        dataSource.setURL("jdbc:h2:mem:model_invocation_diagnostics_index_schema;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1");
+        dataSource.setUser("sa");
+        dataSource.setPassword("");
+
+        Flyway.configure()
+                .dataSource(dataSource)
+                .locations("classpath:db/migration")
+                .load()
+                .migrate();
+
+        try (Connection connection = dataSource.getConnection();
+             Statement statement = connection.createStatement();
+             ResultSet resultSet = statement.executeQuery("""
+                     select index_name
+                     from information_schema.indexes
+                     where table_name = 'model_invocation'
+                       and index_name = 'idx_model_invocation_project_status_id'
                      """)) {
             assertThat(resultSet.next()).isTrue();
             assertThat(resultSet.next()).isFalse();

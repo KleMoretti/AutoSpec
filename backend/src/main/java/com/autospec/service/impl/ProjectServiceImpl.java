@@ -6,6 +6,8 @@ import com.autospec.service.ProjectService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
+
 @Service
 public class ProjectServiceImpl extends ServiceImpl<ProjectMapper, Project> implements ProjectService {
 
@@ -18,5 +20,10 @@ public class ProjectServiceImpl extends ServiceImpl<ProjectMapper, Project> impl
         project.setStatus("CREATED");
         save(project);
         return project;
+    }
+
+    @Override
+    public List<Project> listVisibleProjects(Long userId, int limit, int offset) {
+        return baseMapper.selectVisibleProjects(userId, limit, offset);
     }
 }

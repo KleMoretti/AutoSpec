@@ -156,6 +156,54 @@ class ProjectControllerTest {
     }
 
     @Test
+    void projectHistoryListsOnlyVisibleProjectsAndDetailRequiresMembership() throws Exception {
+        String ownerToken = sessionTokenForNewUser("project-history-owner-" + System.nanoTime());
+        long firstProjectId = createProject(ownerToken, "Project History First", "First visible requirement.");
+        long secondProjectId = createProject(ownerToken, "Project History Second", "Second visible requirement.");
+        long thirdProjectId = createProject(ownerToken, "Project History Third", "Third visible requirement.");
+        String otherToken = sessionTokenForNewUser("project-history-other-" + System.nanoTime());
+        long otherProjectId = createProject(otherToken, "Project History Other", "Other tenant requirement.");
+        String viewerToken = sessionTokenForProjectMember(secondProjectId, "project-history-viewer-" + System.nanoTime(), "VIEWER");
+
+        mockMvc.perform(get("/api/projects?limit=2&offset=1")
+                        .header(SESSION_HEADER, ownerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].projectId").value(secondProjectId))
+                .andExpect(jsonPath("$[0].name").value("Project History Second"))
+                .andExpect(jsonPath("$[0].status").value("CREATED"))
+                .andExpect(jsonPath("$[0].originalRequirement").value("Second visible requirement."))
+                .andExpect(jsonPath("$[0].createdAt").isString())
+                .andExpect(jsonPath("$[0].updatedAt").isString())
+                .andExpect(jsonPath("$[1].projectId").value(firstProjectId));
+
+        mockMvc.perform(get("/api/projects/{projectId}", secondProjectId)
+                        .header(SESSION_HEADER, viewerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.projectId").value(secondProjectId))
+                .andExpect(jsonPath("$.name").value("Project History Second"))
+                .andExpect(jsonPath("$.originalRequirement").value("Second visible requirement."));
+
+        mockMvc.perform(get("/api/projects/{projectId}", firstProjectId)
+                        .header(SESSION_HEADER, otherToken))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(get("/api/projects/{projectId}", otherProjectId)
+                        .header(SESSION_HEADER, ownerToken))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(get("/api/projects")
+                        .header(SESSION_HEADER, ownerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[?(@.projectId == " + otherProjectId + ")]").isEmpty());
+
+        mockMvc.perform(get("/api/projects?limit=0")
+                        .header(SESSION_HEADER, ownerToken))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+    }
+
+    @Test
     void exportRequiresProjectMembership() throws Exception {
         String token = loginToken();
         long projectId = createProject(token, "Export Project", "Build exportable artifacts.");
@@ -292,6 +340,13 @@ class ProjectControllerTest {
         artifact(projectId, "BACKEND_DESIGN", "Role Backend", "{\"tables\":[],\"apis\":[]}");
         artifact(projectId, "REVIEW_REPORT", "Role Review", "{\"score\":100,\"issues\":[]}");
 
+        WorkflowRun runningRun = new WorkflowRun();
+        runningRun.setProjectId(projectId);
+        runningRun.setOperation("GENERATE_V4");
+        runningRun.setIdempotencyKey("viewer-cancel-denied-key");
+        runningRun.setStatus("RUNNING");
+        workflowRunService.save(runningRun);
+
         String viewerToken = sessionTokenForProjectMember(projectId, "viewer-user-" + System.nanoTime(), "VIEWER");
         String editorToken = sessionTokenForProjectMember(projectId, "editor-user-" + System.nanoTime(), "EDITOR");
 
@@ -313,6 +368,10 @@ class ProjectControllerTest {
         mockMvc.perform(post("/api/projects/{projectId}/generate-v4", projectId)
                         .header(SESSION_HEADER, viewerToken)
                         .header("Idempotency-Key", "viewer-run-key"))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(post("/api/projects/{projectId}/workflow-runs/{runId}/cancel", projectId, runningRun.getId())
+                        .header(SESSION_HEADER, viewerToken))
                 .andExpect(status().isForbidden());
 
         mockMvc.perform(post("/api/projects/{projectId}/export?format=MARKDOWN", projectId)
@@ -380,10 +439,16 @@ class ProjectControllerTest {
         mockMvc.perform(get("/api/projects/{projectId}/workflow-runs", projectId)
                         .header(SESSION_HEADER, otherUserToken))
                 .andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/projects/{projectId}/workflow-runs/{runId}/cancel", projectId, run.getId())
+                        .header(SESSION_HEADER, otherUserToken))
+                .andExpect(status().isForbidden());
         mockMvc.perform(get("/api/projects/{projectId}/model-invocations", projectId)
                         .header(SESSION_HEADER, otherUserToken))
                 .andExpect(status().isForbidden());
         mockMvc.perform(get("/api/projects/{projectId}/external-calls", projectId)
+                        .header(SESSION_HEADER, otherUserToken))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/projects/{projectId}/diagnostics", projectId)
                         .header(SESSION_HEADER, otherUserToken))
                 .andExpect(status().isForbidden());
         mockMvc.perform(get("/api/projects/{projectId}/audit-events", projectId)
@@ -475,6 +540,7 @@ class ProjectControllerTest {
                         .header(SESSION_HEADER, token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].agentNode").value("product_manager"))
+                .andExpect(jsonPath("$[0].promptVersionId").isNumber())
                 .andExpect(jsonPath("$[0].providerKey").value("local"))
                 .andExpect(jsonPath("$[0].modelName").value("deterministic-fixture"))
                 .andExpect(jsonPath("$[0].status").value("SUCCEEDED"));
@@ -1085,6 +1151,40 @@ class ProjectControllerTest {
     }
 
     @Test
+    void runningWorkflowRunCanBeCancelled() throws Exception {
+        String token = loginToken();
+        long projectId = createProject(token, "Cancelable Workflow Project", "Build cancellable workflow orchestration.");
+
+        WorkflowRun runningRun = new WorkflowRun();
+        runningRun.setProjectId(projectId);
+        runningRun.setOperation("GENERATE_V4");
+        runningRun.setIdempotencyKey("cancel-workflow-key");
+        runningRun.setStatus("RUNNING");
+        runningRun.setStartedAt(LocalDateTime.now().minusMinutes(5));
+        workflowRunService.save(runningRun);
+
+        mockMvc.perform(post("/api/projects/{projectId}/workflow-runs/{runId}/cancel", projectId, runningRun.getId())
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(runningRun.getId()))
+                .andExpect(jsonPath("$.status").value("CANCELLED"))
+                .andExpect(jsonPath("$.errorMessage").value("Cancelled by user request"))
+                .andExpect(jsonPath("$.completedAt").isString());
+
+        WorkflowRun cancelledRun = workflowRunService.getById(runningRun.getId());
+        assertThat(cancelledRun.getStatus()).isEqualTo("CANCELLED");
+        assertThat(cancelledRun.getCompletedAt()).isNotNull();
+
+        mockMvc.perform(get("/api/projects/{projectId}/audit-events", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].eventType").value("WORKFLOW_RUN_CANCELLED"))
+                .andExpect(jsonPath("$[0].entityType").value("WORKFLOW_RUN"))
+                .andExpect(jsonPath("$[0].entityId").value(runningRun.getId()))
+                .andExpect(jsonPath("$[0].message").value("Workflow run cancelled by user request"));
+    }
+
+    @Test
     void codeGenerationJobsCanBeListedAndRunningJobCanBeCancelled() throws Exception {
         String token = loginToken();
         long projectId = createProject(token, "Cancelable Code Job Project", "Build cancellable code export.");
@@ -1111,6 +1211,14 @@ class ProjectControllerTest {
         CodeGenerationJob cancelledJob = codeGenerationJobService.getById(runningJob.getId());
         assertThat(cancelledJob.getStatus()).isEqualTo("CANCELLED");
         assertThat(cancelledJob.getCompletedAt()).isNotNull();
+
+        mockMvc.perform(get("/api/projects/{projectId}/audit-events", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].eventType").value("CODE_GENERATION_JOB_CANCELLED"))
+                .andExpect(jsonPath("$[0].entityType").value("CODE_GENERATION_JOB"))
+                .andExpect(jsonPath("$[0].entityId").value(runningJob.getId()))
+                .andExpect(jsonPath("$[0].message").value("Code generation job cancelled by user request"));
     }
 
     @Test

@@ -8,6 +8,7 @@ import com.autospec.dto.CreateProjectResponse;
 import com.autospec.dto.GenerateProjectResponse;
 import com.autospec.dto.PaginationRequest;
 import com.autospec.dto.ProjectProgressResponse;
+import com.autospec.dto.ProjectResponse;
 import com.autospec.dto.RetryTaskResponse;
 import com.autospec.dto.ReviewIssueResponse;
 import com.autospec.dto.ReviewResponse;
@@ -71,6 +72,20 @@ public class ProjectController {
         this.projectAccessService = projectAccessService;
     }
 
+    @GetMapping
+    public List<ProjectResponse> projects(
+            @RequestHeader(value = "X-AutoSpec-Session-Token", required = false) String sessionToken,
+            @RequestParam(defaultValue = "50") Integer limit,
+            @RequestParam(defaultValue = "0") Integer offset
+    ) {
+        PaginationRequest pagination = PaginationRequest.of(limit, offset);
+        Long userId = projectAccessService.resolveUserId(sessionToken);
+        return projectAccessService.listVisibleProjects(userId, pagination.limit(), pagination.offset())
+                .stream()
+                .map(ProjectResponse::from)
+                .toList();
+    }
+
     @PostMapping
     public CreateProjectResponse createProject(
             @Valid @RequestBody CreateProjectRequest request,
@@ -82,6 +97,15 @@ public class ProjectController {
         projectService.updateById(project);
         projectAccessService.addOwner(project.getId(), userId);
         return new CreateProjectResponse(project.getId(), project.getStatus());
+    }
+
+    @GetMapping("/{projectId}")
+    public ProjectResponse project(
+            @PathVariable Long projectId,
+            @RequestHeader(value = "X-AutoSpec-Session-Token", required = false) String sessionToken
+    ) {
+        Long userId = projectAccessService.resolveUserId(sessionToken);
+        return ProjectResponse.from(projectAccessService.requireVisibleProject(projectId, userId));
     }
 
     @PostMapping("/{projectId}/generate")

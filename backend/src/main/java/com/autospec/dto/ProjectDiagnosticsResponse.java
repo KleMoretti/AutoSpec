@@ -5,7 +5,10 @@ public record ProjectDiagnosticsResponse(
         Long latestWorkflowRunId,
         String latestCorrelationId,
         long workflowRunCount,
+        long runningWorkflowRunCount,
         long failedWorkflowRunCount,
+        long cancelledWorkflowRunCount,
+        String latestFailedWorkflowRunErrorMessage,
         long agentTaskCount,
         long failedAgentTaskCount,
         String latestFailedAgentTaskNodeName,
@@ -25,6 +28,15 @@ public record ProjectDiagnosticsResponse(
         long runningCodeGenerationJobCount,
         long failedCodeGenerationJobCount,
         long cancelledCodeGenerationJobCount,
-        String latestFailedCodeGenerationJobErrorMessage
+        String latestFailedCodeGenerationJobErrorMessage,
+        Integer latestEvaluationOverallScore,
+        String latestEvaluationGrade,
+        long latestEvaluationIssueCount,
+        long reviewIssueCount,
+        long openReviewIssueCount,
+        long blockingReviewIssueCount,
+        String latestOpenReviewIssueSeverity,
+        String latestOpenReviewIssueType,
+        String latestOpenReviewIssueDescription
 ) {
 }

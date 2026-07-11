@@ -1,13 +1,16 @@
 package com.autospec;
 
 import com.autospec.entity.AgentTask;
+import com.autospec.entity.Artifact;
 import com.autospec.entity.CodeGenerationJob;
 import com.autospec.entity.ModelInvocation;
 import com.autospec.entity.Project;
+import com.autospec.entity.ReviewIssue;
 import com.autospec.entity.UserAccount;
 import com.autospec.entity.WorkflowRun;
 import com.autospec.service.AgentEngineClient;
 import com.autospec.service.AgentTaskService;
+import com.autospec.service.ArtifactService;
 import com.autospec.service.AuditEventService;
 import com.autospec.service.AuthService;
 import com.autospec.service.CodeGenerationJobService;
@@ -15,6 +18,7 @@ import com.autospec.service.ExternalCallLogService;
 import com.autospec.service.ModelInvocationService;
 import com.autospec.service.ProjectAccessService;
 import com.autospec.service.ProjectService;
+import com.autospec.service.ReviewIssueService;
 import com.autospec.service.WorkflowRunService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -68,6 +72,12 @@ class BackendDiagnosticsControllerTest {
     @Autowired
     private CodeGenerationJobService codeGenerationJobService;
 
+    @Autowired
+    private ReviewIssueService reviewIssueService;
+
+    @Autowired
+    private ArtifactService artifactService;
+
     @MockBean
     private AgentEngineClient agentEngineClient;
 
@@ -82,8 +92,13 @@ class BackendDiagnosticsControllerTest {
 
         WorkflowRun completedRun = workflowRun(project.getId(), "wf-old", "COMPLETED");
         workflowRunService.save(completedRun);
+        WorkflowRun runningRun = workflowRun(project.getId(), "wf-running", "RUNNING");
+        workflowRunService.save(runningRun);
         WorkflowRun failedRun = workflowRun(project.getId(), "wf-latest", "FAILED");
+        failedRun.setErrorMessage("Timed out while running workflow run");
         workflowRunService.save(failedRun);
+        WorkflowRun cancelledRun = workflowRun(project.getId(), "wf-cancelled", "CANCELLED");
+        workflowRunService.save(cancelledRun);
         agentTaskService.save(agentTask(project.getId(), "product_manager", "SUCCEEDED"));
         agentTaskService.save(agentTask(project.getId(), "api_designer", "FAILED"));
 
@@ -125,15 +140,31 @@ class BackendDiagnosticsControllerTest {
         codeGenerationJobService.save(codeGenerationJob(project.getId(), "RUNNING", null));
         codeGenerationJobService.save(codeGenerationJob(project.getId(), "FAILED", "Code export timed out"));
         codeGenerationJobService.save(codeGenerationJob(project.getId(), "CANCELLED", "Cancelled by user"));
+        reviewIssueService.save(reviewIssue(project.getId(), "LOW", "STYLE", "RESOLVED", "Resolved copy issue"));
+        reviewIssueService.save(reviewIssue(project.getId(), "MEDIUM", "API_COVERAGE", "OPEN", "Missing export status"));
+        reviewIssueService.save(reviewIssue(project.getId(), "HIGH", "SECURITY", "OPEN", "Viewer can approve artifact"));
+        artifactService.save(evaluationReport(project.getId(), """
+                {
+                  "overall_score": 87,
+                  "grade": "B",
+                  "issues": [
+                    {"severity": "MEDIUM", "description": "Missing frontend route coverage."},
+                    {"severity": "LOW", "description": "RAG citation evidence is thin."}
+                  ]
+                }
+                """));
 
         mockMvc.perform(get("/api/projects/{projectId}/diagnostics", project.getId())
                         .header(SESSION_HEADER, token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.projectId").value(project.getId()))
-                .andExpect(jsonPath("$.latestWorkflowRunId").value(failedRun.getId()))
-                .andExpect(jsonPath("$.latestCorrelationId").value("wf-latest"))
-                .andExpect(jsonPath("$.workflowRunCount").value(2))
+                .andExpect(jsonPath("$.latestWorkflowRunId").value(cancelledRun.getId()))
+                .andExpect(jsonPath("$.latestCorrelationId").value("wf-cancelled"))
+                .andExpect(jsonPath("$.workflowRunCount").value(4))
+                .andExpect(jsonPath("$.runningWorkflowRunCount").value(1))
                 .andExpect(jsonPath("$.failedWorkflowRunCount").value(1))
+                .andExpect(jsonPath("$.cancelledWorkflowRunCount").value(1))
+                .andExpect(jsonPath("$.latestFailedWorkflowRunErrorMessage").value("Timed out while running workflow run"))
                 .andExpect(jsonPath("$.agentTaskCount").value(2))
                 .andExpect(jsonPath("$.failedAgentTaskCount").value(1))
                 .andExpect(jsonPath("$.latestFailedAgentTaskNodeName").value("api_designer"))
@@ -153,7 +184,16 @@ class BackendDiagnosticsControllerTest {
                 .andExpect(jsonPath("$.runningCodeGenerationJobCount").value(1))
                 .andExpect(jsonPath("$.failedCodeGenerationJobCount").value(1))
                 .andExpect(jsonPath("$.cancelledCodeGenerationJobCount").value(1))
-                .andExpect(jsonPath("$.latestFailedCodeGenerationJobErrorMessage").value("Code export timed out"));
+                .andExpect(jsonPath("$.latestFailedCodeGenerationJobErrorMessage").value("Code export timed out"))
+                .andExpect(jsonPath("$.reviewIssueCount").value(3))
+                .andExpect(jsonPath("$.openReviewIssueCount").value(2))
+                .andExpect(jsonPath("$.blockingReviewIssueCount").value(1))
+                .andExpect(jsonPath("$.latestOpenReviewIssueSeverity").value("HIGH"))
+                .andExpect(jsonPath("$.latestOpenReviewIssueType").value("SECURITY"))
+                .andExpect(jsonPath("$.latestOpenReviewIssueDescription").value("Viewer can approve artifact"))
+                .andExpect(jsonPath("$.latestEvaluationOverallScore").value(87))
+                .andExpect(jsonPath("$.latestEvaluationGrade").value("B"))
+                .andExpect(jsonPath("$.latestEvaluationIssueCount").value(2));
     }
 
     private WorkflowRun workflowRun(Long projectId, String correlationId, String status) {
@@ -216,5 +256,31 @@ class BackendDiagnosticsControllerTest {
             job.setCancelledAt(LocalDateTime.now());
         }
         return job;
+    }
+
+    private ReviewIssue reviewIssue(Long projectId, String severity, String issueType, String status, String description) {
+        ReviewIssue issue = new ReviewIssue();
+        issue.setProjectId(projectId);
+        issue.setSeverity(severity);
+        issue.setIssueType(issueType);
+        issue.setDescription(description);
+        issue.setSuggestion("Review the generated artifact contract.");
+        issue.setStatus(status);
+        issue.setCreatedAt(LocalDateTime.now());
+        return issue;
+    }
+
+    private Artifact evaluationReport(Long projectId, String content) {
+        Artifact artifact = new Artifact();
+        artifact.setProjectId(projectId);
+        artifact.setType("EVALUATION_REPORT");
+        artifact.setTitle("Diagnostics Evaluation Report");
+        artifact.setContent(content);
+        artifact.setFormat("JSON");
+        artifact.setVersion(1);
+        artifact.setStatus("GENERATED");
+        artifact.setSourceAgent("EvaluatorAgent_v1");
+        artifact.setCreatedAt(LocalDateTime.now());
+        return artifact;
     }
 }
