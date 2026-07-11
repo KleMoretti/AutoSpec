@@ -135,21 +135,21 @@ Expected: all schema tests pass.
 - Create: `backend/src/main/java/com/autospec/workflow/runtime/DagCompiler.java`
 - Create: `backend/src/test/java/com/autospec/workflow/runtime/DagCompilerTest.java`
 
-- [ ] **Step 1: Write failing compiler tests**
+- [x] **Step 1: Write failing compiler tests**
 
 Cover deterministic topological layers, parallel siblings, unknown dependencies, ordinary cycles, unreachable nodes, and exclusion of `REWORK` edges from ordinary topological sorting.
 
-- [ ] **Step 2: Verify tests fail because the compiler is absent**
+- [x] **Step 2: Verify tests fail because the compiler is absent**
 
 ```powershell
 & 'D:\apache-maven-3.8.9\bin\mvn.cmd' -f backend\pom.xml -Dtest=DagCompilerTest test
 ```
 
-- [ ] **Step 3: Implement immutable spec records and compiler**
+- [x] **Step 3: Implement immutable spec records and compiler**
 
 Represent nodes and edges as Java records. Compile ordered node maps, predecessor/successor maps, topological layers, entry nodes, and terminal nodes. Reject invalid graphs with stable domain error codes.
 
-- [ ] **Step 4: Verify focused tests are green**
+- [x] **Step 4: Verify focused tests are green**
 
 Run the command from Step 2. Expected: all compiler cases pass.
 
