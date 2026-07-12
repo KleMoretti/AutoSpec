@@ -27,7 +27,7 @@ class NodeCommand(BaseModel):
 class NodeExecutionEvent(BaseModel):
     event_id: str
     source_event_id: str
-    event_type: Literal["NODE_SUCCEEDED", "NODE_FAILED"]
+    event_type: Literal["NODE_HEARTBEAT", "NODE_SUCCEEDED", "NODE_FAILED"]
     workflow_run_id: int
     node_run_id: int
     node_id: str

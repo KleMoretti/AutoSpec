@@ -1,4 +1,5 @@
 import json
+import asyncio
 
 import pytest
 
@@ -118,3 +119,25 @@ async def test_worker_rejects_message_without_payload_without_acknowledging():
         await worker.process(StreamMessage(message_id="1-0", fields={}))
 
     assert client.acknowledged == []
+
+
+@pytest.mark.asyncio
+async def test_worker_publishes_heartbeat_before_terminal_event_for_long_execution():
+    class SlowExecutor:
+        async def execute(self, _command):
+            await asyncio.sleep(0.03)
+            return success_event()
+
+    client = FakeStreamClient()
+    worker = WorkflowStreamWorker(
+        client,
+        SlowExecutor(),
+        heartbeat_interval_seconds=0.01,
+    )
+
+    await worker.process(message())
+
+    event_types = [published.event_type for _, published in client.published]
+    assert event_types[-1] == "NODE_SUCCEEDED"
+    assert "NODE_HEARTBEAT" in event_types[:-1]
+    assert len(client.acknowledged) == 1
