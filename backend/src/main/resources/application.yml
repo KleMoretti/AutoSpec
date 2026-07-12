@@ -34,3 +34,12 @@ server:
 autospec:
   agent-engine:
     base-url: ${AGENT_ENGINE_BASE_URL:http://localhost:8000}
+  workflow:
+    events:
+      polling:
+        enabled: ${WORKFLOW_EVENT_POLLING_ENABLED:false}
+        consumer-name: ${WORKFLOW_EVENT_CONSUMER_NAME:control-plane}
+        batch-size: ${WORKFLOW_EVENT_BATCH_SIZE:10}
+        block-timeout: ${WORKFLOW_EVENT_BLOCK_TIMEOUT:1s}
+        fixed-delay: ${WORKFLOW_EVENT_FIXED_DELAY:1000}
+        initial-delay: ${WORKFLOW_EVENT_INITIAL_DELAY:1000}
