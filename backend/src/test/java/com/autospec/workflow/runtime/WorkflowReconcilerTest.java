@@ -3,6 +3,7 @@ package com.autospec.workflow.runtime;
 import com.autospec.entity.WorkflowNodeRun;
 import com.autospec.workflow.spec.WorkflowNodeDocument;
 import com.autospec.workflow.spec.WorkflowSpecDocument;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -18,7 +19,7 @@ class WorkflowReconcilerTest {
                 nodeRun(11L, "backend", "PENDING", 0),
                 nodeRun(12L, "frontend", "PENDING", 0)
         ));
-        WorkflowReconciler reconciler = new WorkflowReconciler(gateway, new NodeReadinessEvaluator());
+        WorkflowReconciler reconciler = reconciler(gateway);
 
         ReconciliationResult result = reconciler.reconcile(7L, graph(2));
 
@@ -26,6 +27,12 @@ class WorkflowReconcilerTest {
         assertThat(gateway.commands).hasSize(2);
         assertThat(gateway.commands).extracting(QueuedNodeCommand::executionId)
                 .doesNotHaveDuplicates();
+        assertThat(gateway.commands).allSatisfy(command -> {
+            assertThat(command.handlerKey()).isEqualTo("FixtureAgent");
+            assertThat(command.handlerVersion()).isEqualTo("v1");
+            assertThat(command.timeoutMs()).isEqualTo(30000);
+            assertThat(command.inputPayload().isObject()).isTrue();
+        });
     }
 
     @Test
@@ -35,7 +42,7 @@ class WorkflowReconcilerTest {
                 nodeRun(12L, "frontend", "PENDING", 0)
         ));
         gateway.rejectedNode = "frontend";
-        WorkflowReconciler reconciler = new WorkflowReconciler(gateway, new NodeReadinessEvaluator());
+        WorkflowReconciler reconciler = reconciler(gateway);
 
         ReconciliationResult result = reconciler.reconcile(7L, graph(2));
 
@@ -50,7 +57,7 @@ class WorkflowReconcilerTest {
         InMemorySchedulingGateway gateway = new InMemorySchedulingGateway(List.of(
                 nodeRun(11L, "backend", "PENDING", 0)
         ));
-        WorkflowReconciler reconciler = new WorkflowReconciler(gateway, new NodeReadinessEvaluator());
+        WorkflowReconciler reconciler = reconciler(gateway);
 
         reconciler.reconcile(7L, graph(1));
         ReconciliationResult second = reconciler.reconcile(7L, graph(1));
@@ -73,6 +80,10 @@ class WorkflowReconcilerTest {
         ));
     }
 
+    private WorkflowReconciler reconciler(WorkflowSchedulingGateway gateway) {
+        return new WorkflowReconciler(gateway, new NodeReadinessEvaluator(), new ObjectMapper());
+    }
+
     private WorkflowNodeRun nodeRun(Long id, String nodeId, String status, int lockVersion) {
         WorkflowNodeRun run = new WorkflowNodeRun();
         run.setId(id);
@@ -81,6 +92,9 @@ class WorkflowReconcilerTest {
         run.setRevision(1);
         run.setAttempt(1);
         run.setStatus(status);
+        run.setHandlerKey("FixtureAgent");
+        run.setHandlerVersion("v1");
+        run.setInputJson("{}");
         run.setLockVersion(lockVersion);
         return run;
     }

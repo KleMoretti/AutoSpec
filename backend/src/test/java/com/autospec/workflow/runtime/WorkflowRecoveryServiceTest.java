@@ -66,7 +66,7 @@ class WorkflowRecoveryServiceTest {
         WorkflowOutbox outbox = inserted.getValue();
         assertThat(outbox.getEventType()).isEqualTo("EXECUTE_NODE");
         assertThat(outbox.getStatus()).isEqualTo("PENDING");
-        assertThat(new ObjectMapper().readTree(outbox.getPayloadJson()).get("nodeRunId").asLong())
+        assertThat(new ObjectMapper().readTree(outbox.getPayloadJson()).get("node_run_id").asLong())
                 .isEqualTo(12L);
         assertThat(result.compensatedCommands()).isEqualTo(1);
     }

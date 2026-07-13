@@ -1,6 +1,7 @@
 package com.autospec.workflow.runtime;
 
 import com.autospec.entity.WorkflowNodeRun;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -13,13 +14,16 @@ import org.springframework.stereotype.Component;
 public class WorkflowReconciler {
     private final WorkflowSchedulingGateway gateway;
     private final NodeReadinessEvaluator readinessEvaluator;
+    private final ObjectMapper objectMapper;
 
     public WorkflowReconciler(
             WorkflowSchedulingGateway gateway,
-            NodeReadinessEvaluator readinessEvaluator
+            NodeReadinessEvaluator readinessEvaluator,
+            ObjectMapper objectMapper
     ) {
         this.gateway = gateway;
         this.readinessEvaluator = readinessEvaluator;
+        this.objectMapper = objectMapper;
     }
 
     public ReconciliationResult reconcile(long workflowRunId, CompiledWorkflow graph) {
@@ -49,14 +53,8 @@ public class WorkflowReconciler {
             }
             String executionId = workflowRunId + ":" + nodeId + ":"
                     + nodeRun.getRevision() + ":" + nodeRun.getAttempt();
-            QueuedNodeCommand command = new QueuedNodeCommand(
-                    UUID.randomUUID().toString(),
-                    workflowRunId,
-                    nodeRun.getId(),
-                    nodeId,
-                    nodeRun.getRevision(),
-                    nodeRun.getAttempt(),
-                    executionId
+            QueuedNodeCommand command = QueuedNodeCommand.fromNodeRun(
+                    UUID.randomUUID().toString(), nodeRun, executionId, objectMapper
             );
             if (gateway.reserveAndAppendCommand(nodeRun, command)) {
                 queued.add(nodeId);

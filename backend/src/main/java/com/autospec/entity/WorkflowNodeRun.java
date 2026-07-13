@@ -20,6 +20,7 @@ public class WorkflowNodeRun {
     private String status;
     private String handlerKey;
     private String handlerVersion;
+    private Integer timeoutMs;
     private String inputJson;
     private String outputJson;
     private String errorCode;

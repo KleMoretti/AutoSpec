@@ -122,6 +122,7 @@ public class WorkflowRecoveryService {
         replacement.setStatus(WorkflowNodeStatus.PENDING.name());
         replacement.setHandlerKey(stale.getHandlerKey());
         replacement.setHandlerVersion(stale.getHandlerVersion());
+        replacement.setTimeoutMs(stale.getTimeoutMs());
         replacement.setInputJson(stale.getInputJson());
         replacement.setLockVersion(0);
         replacement.setCreatedAt(now);
@@ -137,7 +138,10 @@ public class WorkflowRecoveryService {
     private boolean hasExecuteCommand(long nodeRunId) {
         return outboxMapper.selectCount(new LambdaQueryWrapper<WorkflowOutbox>()
                 .eq(WorkflowOutbox::getEventType, "EXECUTE_NODE")
-                .like(WorkflowOutbox::getPayloadJson, "\"nodeRunId\":" + nodeRunId)) > 0;
+                .and(wrapper -> wrapper
+                        .like(WorkflowOutbox::getPayloadJson, "\"node_run_id\":" + nodeRunId)
+                        .or()
+                        .like(WorkflowOutbox::getPayloadJson, "\"nodeRunId\":" + nodeRunId))) > 0;
     }
 
     private boolean claimForCompensation(WorkflowNodeRun queued, LocalDateTime now) {
@@ -165,14 +169,8 @@ public class WorkflowRecoveryService {
     }
 
     private WorkflowOutbox compensationCommand(WorkflowNodeRun queued, LocalDateTime now) {
-        QueuedNodeCommand command = new QueuedNodeCommand(
-                UUID.randomUUID().toString(),
-                queued.getWorkflowRunId(),
-                queued.getId(),
-                queued.getNodeId(),
-                queued.getRevision(),
-                queued.getAttempt(),
-                queued.getExecutionId()
+        QueuedNodeCommand command = QueuedNodeCommand.fromNodeRun(
+                UUID.randomUUID().toString(), queued, queued.getExecutionId(), objectMapper
         );
         WorkflowOutbox outbox = new WorkflowOutbox();
         outbox.setEventId(command.eventId());

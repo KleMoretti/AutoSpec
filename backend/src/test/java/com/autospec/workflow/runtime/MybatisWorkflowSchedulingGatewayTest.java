@@ -15,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -93,7 +94,11 @@ class MybatisWorkflowSchedulingGatewayTest {
                 nodeRun.getNodeId(),
                 nodeRun.getRevision(),
                 nodeRun.getAttempt(),
-                nodeRun.getWorkflowRunId() + ":" + nodeRun.getNodeId() + ":1:1"
+                nodeRun.getWorkflowRunId() + ":" + nodeRun.getNodeId() + ":1:1",
+                nodeRun.getHandlerKey(),
+                nodeRun.getHandlerVersion(),
+                30000,
+                JsonNodeFactory.instance.objectNode()
         );
     }
 }

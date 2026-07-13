@@ -195,7 +195,7 @@ class SchemaInitSqlTest {
                     .doesNotThrowAnyException();
             assertThatCode(() -> execute(connection, "select workflow_version_id, workflow_snapshot_json, replay_of_run_id, review_round, max_review_rounds, lock_version, last_heartbeat_at from workflow_run where 1 = 0"))
                     .doesNotThrowAnyException();
-            assertThatCode(() -> execute(connection, "select workflow_run_id, node_id, revision, attempt, execution_id, status, input_json, output_json, error_code, lock_version from workflow_node_run where 1 = 0"))
+            assertThatCode(() -> execute(connection, "select workflow_run_id, node_id, revision, attempt, execution_id, status, timeout_ms, input_json, output_json, error_code, lock_version from workflow_node_run where 1 = 0"))
                     .doesNotThrowAnyException();
             assertThatCode(() -> execute(connection, "select workflow_run_id, node_run_id, mode, status, decision, idempotency_key from workflow_approval where 1 = 0"))
                     .doesNotThrowAnyException();
