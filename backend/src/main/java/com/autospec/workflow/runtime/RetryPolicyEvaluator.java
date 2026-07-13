@@ -1,9 +1,12 @@
 package com.autospec.workflow.runtime;
 
+import org.springframework.stereotype.Component;
+
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Set;
 
+@Component
 public class RetryPolicyEvaluator {
 
     public Decision evaluate(

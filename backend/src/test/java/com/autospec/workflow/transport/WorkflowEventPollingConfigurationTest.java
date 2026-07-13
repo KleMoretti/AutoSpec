@@ -2,6 +2,7 @@ package com.autospec.workflow.transport;
 
 import com.autospec.mapper.ProcessedWorkflowEventMapper;
 import com.autospec.mapper.WorkflowNodeRunMapper;
+import com.autospec.workflow.runtime.WorkflowFailureDecisionService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -15,6 +16,8 @@ class WorkflowEventPollingConfigurationTest {
             .withBean(StringRedisTemplate.class, () -> mock(StringRedisTemplate.class))
             .withBean(ProcessedWorkflowEventMapper.class, () -> mock(ProcessedWorkflowEventMapper.class))
             .withBean(WorkflowNodeRunMapper.class, () -> mock(WorkflowNodeRunMapper.class))
+            .withBean(WorkflowFailureDecisionService.class,
+                    () -> mock(WorkflowFailureDecisionService.class))
             .withBean(WorkflowRunReconciliationTrigger.class,
                     () -> mock(WorkflowRunReconciliationTrigger.class))
             .withBean(ObjectMapper.class, ObjectMapper::new)

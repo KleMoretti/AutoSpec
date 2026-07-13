@@ -2,6 +2,7 @@ package com.autospec.workflow.transport;
 
 import com.autospec.mapper.ProcessedWorkflowEventMapper;
 import com.autospec.mapper.WorkflowNodeRunMapper;
+import com.autospec.workflow.runtime.WorkflowFailureDecisionService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -26,10 +27,12 @@ public class WorkflowEventPollingConfiguration {
             ProcessedWorkflowEventMapper processedEventMapper,
             WorkflowNodeRunMapper nodeRunMapper,
             WorkflowRunReconciliationTrigger reconciliationTrigger,
+            WorkflowFailureDecisionService failureDecisionService,
             ObjectMapper objectMapper
     ) {
         return new WorkflowEventConsumer(
-                processedEventMapper, nodeRunMapper, reconciliationTrigger, objectMapper
+                processedEventMapper, nodeRunMapper, reconciliationTrigger,
+                failureDecisionService, objectMapper
         );
     }
 

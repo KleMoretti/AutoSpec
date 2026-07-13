@@ -4,6 +4,8 @@ import com.autospec.entity.ProcessedWorkflowEvent;
 import com.autospec.entity.WorkflowNodeRun;
 import com.autospec.mapper.ProcessedWorkflowEventMapper;
 import com.autospec.mapper.WorkflowNodeRunMapper;
+import com.autospec.workflow.runtime.RetryPolicyEvaluator;
+import com.autospec.workflow.runtime.WorkflowFailureDecisionService;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -16,17 +18,20 @@ public class WorkflowEventConsumer {
     private final ProcessedWorkflowEventMapper processedEventMapper;
     private final WorkflowNodeRunMapper nodeRunMapper;
     private final WorkflowRunReconciliationTrigger reconciliationTrigger;
+    private final WorkflowFailureDecisionService failureDecisionService;
     private final ObjectMapper objectMapper;
 
     public WorkflowEventConsumer(
             ProcessedWorkflowEventMapper processedEventMapper,
             WorkflowNodeRunMapper nodeRunMapper,
             WorkflowRunReconciliationTrigger reconciliationTrigger,
+            WorkflowFailureDecisionService failureDecisionService,
             ObjectMapper objectMapper
     ) {
         this.processedEventMapper = processedEventMapper;
         this.nodeRunMapper = nodeRunMapper;
         this.reconciliationTrigger = reconciliationTrigger;
+        this.failureDecisionService = failureDecisionService;
         this.objectMapper = objectMapper;
     }
 
@@ -75,13 +80,30 @@ public class WorkflowEventConsumer {
                     .setSql("lock_version = lock_version + 1"));
         }
         if ("NODE_FAILED".equals(event.eventType())) {
-            return nodeRunMapper.update(null, update
-                    .set("status", "FAILED")
+            WorkflowNodeRun nodeRun = nodeRunMapper.selectById(event.nodeRunId());
+            if (nodeRun == null) {
+                return 0;
+            }
+            RetryPolicyEvaluator.Decision decision = failureDecisionService.decide(
+                    nodeRun, event.errorCode(), now
+            );
+            UpdateWrapper<WorkflowNodeRun> failedUpdate = update
                     .set("error_code", event.errorCode())
                     .set("error_message", event.errorMessage())
                     .set("finished_at", now)
                     .set("updated_at", now)
-                    .setSql("lock_version = lock_version + 1"));
+                    .setSql("lock_version = lock_version + 1");
+            if (decision.action() == RetryPolicyEvaluator.Action.RETRY) {
+                failedUpdate.set("status", "RETRY_WAIT")
+                        .set("next_retry_at", decision.nextRetryAt());
+            } else if (decision.action() == RetryPolicyEvaluator.Action.FALLBACK) {
+                failedUpdate.set("status", "FALLBACK_READY")
+                        .set("handler_key", decision.handlerKey())
+                        .set("next_retry_at", decision.nextRetryAt());
+            } else {
+                failedUpdate.set("status", "FAILED");
+            }
+            return nodeRunMapper.update(null, failedUpdate);
         }
         throw new IllegalArgumentException("Unsupported workflow event type: " + event.eventType());
     }
