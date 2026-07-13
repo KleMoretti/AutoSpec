@@ -35,6 +35,11 @@ autospec:
   agent-engine:
     base-url: ${AGENT_ENGINE_BASE_URL:http://localhost:8000}
   workflow:
+    recovery:
+      enabled: ${WORKFLOW_RECOVERY_ENABLED:false}
+      lease-timeout: ${WORKFLOW_RECOVERY_LEASE_TIMEOUT:30s}
+      fixed-delay: ${WORKFLOW_RECOVERY_FIXED_DELAY:5000}
+      initial-delay: ${WORKFLOW_RECOVERY_INITIAL_DELAY:5000}
     events:
       polling:
         enabled: ${WORKFLOW_EVENT_POLLING_ENABLED:false}
