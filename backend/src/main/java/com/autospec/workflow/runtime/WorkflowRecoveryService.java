@@ -55,6 +55,22 @@ public class WorkflowRecoveryService {
             }
         }
 
+        List<WorkflowNodeRun> dueAttempts = nodeRunMapper.selectList(
+                new LambdaQueryWrapper<WorkflowNodeRun>()
+                        .in(WorkflowNodeRun::getStatus,
+                                WorkflowNodeStatus.RETRY_WAIT.name(),
+                                WorkflowNodeStatus.FALLBACK_READY.name())
+                        .le(WorkflowNodeRun::getNextRetryAt, now)
+                        .orderByAsc(WorkflowNodeRun::getNextRetryAt)
+                        .orderByAsc(WorkflowNodeRun::getId)
+        );
+        for (WorkflowNodeRun due : dueAttempts) {
+            if (claimDueAttempt(due, now)) {
+                nodeRunMapper.insert(replacement(due, now));
+                replacements++;
+            }
+        }
+
         int compensated = 0;
         List<WorkflowNodeRun> queuedRuns = nodeRunMapper.selectList(
                 new LambdaQueryWrapper<WorkflowNodeRun>()
@@ -122,6 +138,19 @@ public class WorkflowRecoveryService {
                 .eq("lock_version", queued.getLockVersion())
                 .set("updated_at", now)
                 .set("lock_version", queued.getLockVersion() + 1));
+        return updated == 1;
+    }
+
+    private boolean claimDueAttempt(WorkflowNodeRun due, LocalDateTime now) {
+        int updated = nodeRunMapper.update(null, new UpdateWrapper<WorkflowNodeRun>()
+                .eq("id", due.getId())
+                .eq("execution_id", due.getExecutionId())
+                .eq("status", due.getStatus())
+                .eq("lock_version", due.getLockVersion())
+                .eq("next_retry_at", due.getNextRetryAt())
+                .set("next_retry_at", null)
+                .set("updated_at", now)
+                .set("lock_version", due.getLockVersion() + 1));
         return updated == 1;
     }
 
