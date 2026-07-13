@@ -7,7 +7,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.stereotype.Component;
 
+@Component
 public class WorkflowReconciler {
     private final WorkflowSchedulingGateway gateway;
     private final NodeReadinessEvaluator readinessEvaluator;

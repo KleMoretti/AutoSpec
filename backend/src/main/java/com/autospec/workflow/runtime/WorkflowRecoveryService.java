@@ -4,6 +4,7 @@ import com.autospec.entity.WorkflowNodeRun;
 import com.autospec.entity.WorkflowOutbox;
 import com.autospec.mapper.WorkflowNodeRunMapper;
 import com.autospec.mapper.WorkflowOutboxMapper;
+import com.autospec.workflow.transport.WorkflowRunReconciliationTrigger;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -14,6 +15,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -21,15 +24,18 @@ public class WorkflowRecoveryService {
     private final WorkflowNodeRunMapper nodeRunMapper;
     private final WorkflowOutboxMapper outboxMapper;
     private final ObjectMapper objectMapper;
+    private final WorkflowRunReconciliationTrigger reconciliationTrigger;
 
     public WorkflowRecoveryService(
             WorkflowNodeRunMapper nodeRunMapper,
             WorkflowOutboxMapper outboxMapper,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            WorkflowRunReconciliationTrigger reconciliationTrigger
     ) {
         this.nodeRunMapper = nodeRunMapper;
         this.outboxMapper = outboxMapper;
         this.objectMapper = objectMapper;
+        this.reconciliationTrigger = reconciliationTrigger;
     }
 
     @Transactional
@@ -40,6 +46,7 @@ public class WorkflowRecoveryService {
 
         int orphaned = 0;
         int replacements = 0;
+        Set<Long> runsToReconcile = new LinkedHashSet<>();
         LocalDateTime leaseCutoff = now.minus(leaseTimeout);
         List<WorkflowNodeRun> staleRuns = nodeRunMapper.selectList(
                 new LambdaQueryWrapper<WorkflowNodeRun>()
@@ -52,6 +59,7 @@ public class WorkflowRecoveryService {
                 orphaned++;
                 nodeRunMapper.insert(replacement(stale, now));
                 replacements++;
+                runsToReconcile.add(stale.getWorkflowRunId());
             }
         }
 
@@ -68,6 +76,7 @@ public class WorkflowRecoveryService {
             if (claimDueAttempt(due, now)) {
                 nodeRunMapper.insert(replacement(due, now));
                 replacements++;
+                runsToReconcile.add(due.getWorkflowRunId());
             }
         }
 
@@ -83,6 +92,7 @@ public class WorkflowRecoveryService {
                 compensated++;
             }
         }
+        runsToReconcile.forEach(reconciliationTrigger::reconcile);
         return new RecoveryResult(orphaned, replacements, compensated);
     }
 

@@ -4,6 +4,7 @@ import com.autospec.entity.WorkflowNodeRun;
 import com.autospec.entity.WorkflowOutbox;
 import com.autospec.mapper.WorkflowNodeRunMapper;
 import com.autospec.mapper.WorkflowOutboxMapper;
+import com.autospec.workflow.transport.WorkflowRunReconciliationTrigger;
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
@@ -130,8 +131,9 @@ class WorkflowRecoveryServiceTest {
         when(nodeMapper.selectList(any(Wrapper.class)))
                 .thenReturn(List.of(), List.of(retryWait), List.of());
         when(nodeMapper.update(any(), any(Wrapper.class))).thenReturn(1);
+        WorkflowRunReconciliationTrigger trigger = mock(WorkflowRunReconciliationTrigger.class);
 
-        WorkflowRecoveryService.RecoveryResult result = service(nodeMapper, outboxMapper)
+        WorkflowRecoveryService.RecoveryResult result = service(nodeMapper, outboxMapper, trigger)
                 .recover(LocalDateTime.of(2026, 7, 13, 12, 0), Duration.ofSeconds(30));
 
         ArgumentCaptor<WorkflowNodeRun> inserted = ArgumentCaptor.forClass(WorkflowNodeRun.class);
@@ -140,6 +142,7 @@ class WorkflowRecoveryServiceTest {
         assertThat(inserted.getValue().getStatus()).isEqualTo("PENDING");
         assertThat(inserted.getValue().getHandlerKey()).isEqualTo("handler");
         assertThat(result.replacementAttempts()).isEqualTo(1);
+        verify(trigger).reconcile(7L);
     }
 
     @Test
@@ -184,7 +187,15 @@ class WorkflowRecoveryServiceTest {
             WorkflowNodeRunMapper nodeMapper,
             WorkflowOutboxMapper outboxMapper
     ) {
-        return new WorkflowRecoveryService(nodeMapper, outboxMapper, new ObjectMapper());
+        return service(nodeMapper, outboxMapper, mock(WorkflowRunReconciliationTrigger.class));
+    }
+
+    private WorkflowRecoveryService service(
+            WorkflowNodeRunMapper nodeMapper,
+            WorkflowOutboxMapper outboxMapper,
+            WorkflowRunReconciliationTrigger trigger
+    ) {
+        return new WorkflowRecoveryService(nodeMapper, outboxMapper, new ObjectMapper(), trigger);
     }
 
     private WorkflowNodeRun node(Long id, String status, int attempt, String executionId) {
