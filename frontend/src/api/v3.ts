@@ -26,6 +26,52 @@ export async function getWorkflow(projectId: number): Promise<WorkflowSnapshotRe
   return request(`/api/projects/${projectId}/workflow`);
 }
 
+export type WorkflowApprovalDecision =
+  | 'APPROVE'
+  | 'REJECT'
+  | 'EDIT_AND_APPROVE'
+  | 'ROLLBACK_TO_NODE'
+  | 'CANCEL_WORKFLOW';
+
+export interface WorkflowApprovalResponse {
+  id: number;
+  workflowRunId: number;
+  nodeRunId: number;
+  nodeId: string;
+  mode: 'BEFORE_NODE' | 'AFTER_NODE' | string;
+  allowedActions: WorkflowApprovalDecision[];
+  status: 'PENDING' | 'DECIDED' | string;
+  decision?: WorkflowApprovalDecision;
+  candidateArtifactId?: number;
+  revisedArtifactId?: number;
+  decisionReason?: string;
+  decidedAt?: string;
+  createdAt?: string;
+}
+
+export interface ApprovalDecisionPayload {
+  decision: WorkflowApprovalDecision;
+  reason?: string;
+  editedContent?: string;
+  rollbackNodeId?: string;
+  idempotencyKey: string;
+}
+
+export async function getWorkflowApprovals(projectId: number): Promise<WorkflowApprovalResponse[]> {
+  return request(`/api/projects/${projectId}/workflow-approvals`);
+}
+
+export async function decideWorkflowApproval(
+  approvalId: number,
+  payload: ApprovalDecisionPayload
+): Promise<WorkflowApprovalResponse> {
+  return request(`/api/workflow-approvals/${approvalId}/decide`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+}
+
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const nextInit = withSessionHeader(init);
   const response = nextInit === undefined ? await fetch(url) : await fetch(url, nextInit);
@@ -36,20 +82,20 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 function withSessionHeader(init?: RequestInit): RequestInit | undefined {
-  const userId = readSessionUserId();
-  if (!userId) {
+  const sessionToken = readSessionToken();
+  if (!sessionToken) {
     return init;
   }
   return {
     ...init,
     headers: {
       ...(init?.headers as Record<string, string> | undefined),
-      'X-AutoSpec-User-Id': String(userId)
+      'X-AutoSpec-Session-Token': sessionToken
     }
   };
 }
 
-function readSessionUserId(): number | null {
+function readSessionToken(): string | null {
   if (typeof localStorage === 'undefined') {
     return null;
   }
@@ -58,8 +104,8 @@ function readSessionUserId(): number | null {
     return null;
   }
   try {
-    const parsed = JSON.parse(raw) as { userId?: number };
-    return parsed.userId ?? null;
+    const parsed = JSON.parse(raw) as { sessionToken?: string };
+    return parsed.sessionToken ?? null;
   } catch {
     return null;
   }

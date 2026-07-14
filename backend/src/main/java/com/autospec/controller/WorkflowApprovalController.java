@@ -9,6 +9,8 @@ import com.autospec.mapper.WorkflowNodeRunMapper;
 import com.autospec.mapper.WorkflowRunMapper;
 import com.autospec.service.ProjectAccessService;
 import com.autospec.service.WorkflowApprovalService;
+import com.autospec.workflow.runtime.DagCompiler;
+import com.autospec.workflow.runtime.WorkflowSnapshotParser;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -29,17 +31,23 @@ public class WorkflowApprovalController {
     private final WorkflowRunMapper runMapper;
     private final WorkflowNodeRunMapper nodeRunMapper;
     private final ProjectAccessService projectAccessService;
+    private final WorkflowSnapshotParser snapshotParser;
+    private final DagCompiler dagCompiler;
 
     public WorkflowApprovalController(
             WorkflowApprovalService approvalService,
             WorkflowRunMapper runMapper,
             WorkflowNodeRunMapper nodeRunMapper,
-            ProjectAccessService projectAccessService
+            ProjectAccessService projectAccessService,
+            WorkflowSnapshotParser snapshotParser,
+            DagCompiler dagCompiler
     ) {
         this.approvalService = approvalService;
         this.runMapper = runMapper;
         this.nodeRunMapper = nodeRunMapper;
         this.projectAccessService = projectAccessService;
+        this.snapshotParser = snapshotParser;
+        this.dagCompiler = dagCompiler;
     }
 
     @GetMapping("/projects/{projectId}/workflow-approvals")
@@ -87,9 +95,19 @@ public class WorkflowApprovalController {
 
     private WorkflowApprovalResponse response(WorkflowApproval approval) {
         WorkflowNodeRun nodeRun = nodeRunMapper.selectById(approval.getNodeRunId());
+        WorkflowRun run = requireRun(approval.getWorkflowRunId());
+        String nodeId = nodeRun == null ? null : nodeRun.getNodeId();
+        List<String> allowedActions = nodeId == null
+                ? List.of()
+                : dagCompiler.compile(snapshotParser.parse(run.getWorkflowSnapshotJson()))
+                        .nodes()
+                        .get(nodeId)
+                        .approval()
+                        .allowedActions();
         return WorkflowApprovalResponse.from(
                 approval,
-                nodeRun == null ? null : nodeRun.getNodeId()
+                nodeId,
+                allowedActions
         );
     }
 

@@ -79,7 +79,8 @@ body {
 
 .page-toolbar h1.ant-typography,
 .panel h1.ant-typography,
-.panel h2.ant-typography {
+.panel h2.ant-typography,
+.panel h3.ant-typography {
   margin: 0 0 12px;
 }
 
@@ -93,6 +94,11 @@ body {
 
 .panel h2.ant-typography {
   font-size: 18px;
+}
+
+.panel h3.ant-typography {
+  margin: 0;
+  font-size: 17px;
 }
 
 .full-width {

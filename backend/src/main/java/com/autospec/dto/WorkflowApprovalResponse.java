@@ -3,6 +3,7 @@ package com.autospec.dto;
 import com.autospec.entity.WorkflowApproval;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 public record WorkflowApprovalResponse(
         Long id,
@@ -10,6 +11,7 @@ public record WorkflowApprovalResponse(
         Long nodeRunId,
         String nodeId,
         String mode,
+        List<String> allowedActions,
         String status,
         String decision,
         Long candidateArtifactId,
@@ -20,7 +22,8 @@ public record WorkflowApprovalResponse(
 ) {
     public static WorkflowApprovalResponse from(
             WorkflowApproval approval,
-            String nodeId
+            String nodeId,
+            List<String> allowedActions
     ) {
         return new WorkflowApprovalResponse(
                 approval.getId(),
@@ -28,6 +31,7 @@ public record WorkflowApprovalResponse(
                 approval.getNodeRunId(),
                 nodeId,
                 approval.getMode(),
+                allowedActions,
                 approval.getStatus(),
                 approval.getDecision(),
                 approval.getCandidateArtifactId(),

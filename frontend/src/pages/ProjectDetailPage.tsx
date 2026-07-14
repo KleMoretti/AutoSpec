@@ -27,7 +27,14 @@ import {
   subscribeProjectEvents,
   updateArtifact
 } from '../api/projects';
-import { type WorkflowSnapshotResponse, getWorkflow } from '../api/v3';
+import {
+  type ApprovalDecisionPayload,
+  type WorkflowApprovalResponse,
+  type WorkflowSnapshotResponse,
+  decideWorkflowApproval,
+  getWorkflow,
+  getWorkflowApprovals
+} from '../api/v3';
 import AgentTimeline from '../components/AgentTimeline';
 import ArtifactTabs from '../components/ArtifactTabs';
 import CodeExportPanel from '../components/CodeExportPanel';
@@ -35,6 +42,7 @@ import ExecutionEventList from '../components/ExecutionEventList';
 import PrdEditor from '../components/PrdEditor';
 import ReviewIssueTable from '../components/ReviewIssueTable';
 import WorkflowGraph from '../components/WorkflowGraph';
+import WorkflowApprovalPanel from '../components/WorkflowApprovalPanel';
 
 function ProjectDetailPage() {
   const params = useParams();
@@ -44,6 +52,7 @@ function ProjectDetailPage() {
   const [review, setReview] = useState<ReviewResponse | null>(null);
   const [events, setEvents] = useState<AgentEventResponse[]>([]);
   const [workflow, setWorkflow] = useState<WorkflowSnapshotResponse | null>(null);
+  const [approvals, setApprovals] = useState<WorkflowApprovalResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [continuing, setContinuing] = useState(false);
@@ -65,18 +74,20 @@ function ProjectDetailPage() {
       return;
     }
     try {
-      const [nextProgress, nextArtifacts, nextReview, nextEvents, nextWorkflow] = await Promise.all([
+      const [nextProgress, nextArtifacts, nextReview, nextEvents, nextWorkflow, nextApprovals] = await Promise.all([
         getProgress(projectId),
         getArtifacts(projectId),
         getReview(projectId).catch(() => null),
         getEventHistory(projectId).catch(() => []),
-        getWorkflow(projectId).catch(() => null)
+        getWorkflow(projectId).catch(() => null),
+        getWorkflowApprovals(projectId).catch(() => [])
       ]);
       setProgress(nextProgress);
       setArtifacts(nextArtifacts);
       setReview(nextReview);
       setEvents(nextEvents);
       setWorkflow(nextWorkflow);
+      setApprovals(nextApprovals);
       setError(null);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Load failed');
@@ -192,6 +203,17 @@ function ProjectDetailPage() {
     }
   }
 
+  async function handleApprovalDecision(approvalId: number, payload: ApprovalDecisionPayload) {
+    try {
+      await decideWorkflowApproval(approvalId, payload);
+      message.success('Workflow decision applied');
+      await loadProject();
+    } catch (decisionError) {
+      message.error(decisionError instanceof Error ? decisionError.message : 'Decision failed');
+      throw decisionError;
+    }
+  }
+
   async function handleExportMarkdown() {
     setDownloadingMarkdown(true);
     try {
@@ -302,6 +324,7 @@ function ProjectDetailPage() {
       ) : null}
       <AgentTimeline progress={progress} onRetryTask={handleRetryTask} retryingTaskId={retryingTaskId} />
       <WorkflowGraph workflow={workflow} />
+      <WorkflowApprovalPanel approvals={approvals} artifacts={artifacts} onDecide={handleApprovalDecision} />
       {projectStatus === 'GENERATING' || events.length > 0 ? <ExecutionEventList events={events} /> : null}
       {projectStatus === 'COMPLETED' ? <CodeExportPanel projectId={projectId} disabled={artifacts.length === 0} /> : null}
       <ArtifactTabs artifacts={artifacts} />
