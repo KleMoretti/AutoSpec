@@ -35,7 +35,7 @@ autospec:
   agent-engine:
     base-url: ${AGENT_ENGINE_BASE_URL:http://localhost:8000}
   workflow:
-    available-handlers: ${WORKFLOW_AVAILABLE_HANDLERS:FixtureAgent:v1,ProductManagerAgent:v1,ArchitectAgent:v1,BackendEngineerAgent:v2,FrontendEngineerAgent:v1,ReviewerAgent:v1,EvaluatorAgent:v1,author_agent:v1,reviewer_agent:v1}
+    available-handlers: ${WORKFLOW_AVAILABLE_HANDLERS:FixtureAgent:v1,ProductManagerAgent:v1,ArchitectAgent:v1,BackendEngineerAgent:v1,BackendEngineerAgent:v2,FrontendEngineerAgent:v1,ReviewerAgent:v1,EvaluatorAgent:v1,author_agent:v1,reviewer_agent:v1}
     recovery:
       enabled: ${WORKFLOW_RECOVERY_ENABLED:false}
       lease-timeout: ${WORKFLOW_RECOVERY_LEASE_TIMEOUT:30s}

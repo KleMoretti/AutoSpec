@@ -17,18 +17,21 @@ public class WorkflowReconciler {
     private final NodeReadinessEvaluator readinessEvaluator;
     private final ObjectMapper objectMapper;
     private final WorkflowApprovalCoordinator approvalCoordinator;
+    private final WorkflowNodeInputAssembler inputAssembler;
 
     @Autowired
     public WorkflowReconciler(
             WorkflowSchedulingGateway gateway,
             NodeReadinessEvaluator readinessEvaluator,
             ObjectMapper objectMapper,
-            WorkflowApprovalCoordinator approvalCoordinator
+            WorkflowApprovalCoordinator approvalCoordinator,
+            WorkflowNodeInputAssembler inputAssembler
     ) {
         this.gateway = gateway;
         this.readinessEvaluator = readinessEvaluator;
         this.objectMapper = objectMapper;
         this.approvalCoordinator = approvalCoordinator;
+        this.inputAssembler = inputAssembler;
     }
 
     public WorkflowReconciler(
@@ -36,7 +39,7 @@ public class WorkflowReconciler {
             NodeReadinessEvaluator readinessEvaluator,
             ObjectMapper objectMapper
     ) {
-        this(gateway, readinessEvaluator, objectMapper, WorkflowApprovalCoordinator.none());
+        this(gateway, readinessEvaluator, objectMapper, WorkflowApprovalCoordinator.none(), null);
     }
 
     public ReconciliationResult reconcile(long workflowRunId, CompiledWorkflow graph) {
@@ -66,6 +69,9 @@ public class WorkflowReconciler {
             }
             if (approvalCoordinator.pauseBeforeIfRequired(graph, nodeRun)) {
                 continue;
+            }
+            if (inputAssembler != null) {
+                inputAssembler.assemble(graph, nodeRun);
             }
             String executionId = workflowRunId + ":" + nodeId + ":"
                     + nodeRun.getRevision() + ":" + nodeRun.getAttempt();

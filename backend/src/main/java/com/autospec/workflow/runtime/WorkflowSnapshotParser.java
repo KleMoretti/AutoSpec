@@ -30,6 +30,7 @@ public class WorkflowSnapshotParser {
                     requiredText(root, "workflow_key"),
                     requiredText(root, "version"),
                     root.path("runtime").path("max_parallel_nodes").asInt(1),
+                    root.path("runtime").path("max_review_rounds").asInt(0),
                     nodes(root.path("nodes")),
                     edges(root.path("edges")),
                     strings(root.path("entry_nodes"))
@@ -47,7 +48,10 @@ public class WorkflowSnapshotParser {
         values.forEach(node -> result.add(new WorkflowNodeDocument(
                 requiredText(node, "node_id"),
                 strings(node.path("depends_on")),
-                approval(node.path("approval"))
+                approval(node.path("approval")),
+                optionalText(node, "agent_name"),
+                optionalText(node, "artifact_type"),
+                node.path("timeout_ms").asInt(30000)
         )));
         return result;
     }
@@ -99,5 +103,10 @@ public class WorkflowSnapshotParser {
             throw new IllegalArgumentException("workflow snapshot field is required: " + field);
         }
         return value;
+    }
+
+    private String optionalText(JsonNode node, String field) {
+        String value = node.path(field).asText();
+        return value.isBlank() ? null : value;
     }
 }

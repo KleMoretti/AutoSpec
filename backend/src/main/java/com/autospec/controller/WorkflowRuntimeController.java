@@ -3,13 +3,17 @@ package com.autospec.controller;
 import com.autospec.dto.WorkflowNodeRunResponse;
 import com.autospec.dto.WorkflowReplayRequest;
 import com.autospec.dto.WorkflowRunResponse;
+import com.autospec.dto.WorkflowRunStartRequest;
 import com.autospec.entity.WorkflowNodeRun;
 import com.autospec.entity.WorkflowRun;
 import com.autospec.mapper.WorkflowNodeRunMapper;
 import com.autospec.mapper.WorkflowRunMapper;
 import com.autospec.service.ProjectAccessService;
 import com.autospec.service.WorkflowReplayService;
+import com.autospec.service.WorkflowRunCreationService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -30,17 +34,48 @@ public class WorkflowRuntimeController {
     private final WorkflowNodeRunMapper nodeRunMapper;
     private final ProjectAccessService projectAccessService;
     private final WorkflowReplayService replayService;
+    private final WorkflowRunCreationService runCreationService;
+    private final ObjectMapper objectMapper;
 
     public WorkflowRuntimeController(
             WorkflowRunMapper runMapper,
             WorkflowNodeRunMapper nodeRunMapper,
             ProjectAccessService projectAccessService,
-            WorkflowReplayService replayService
+            WorkflowReplayService replayService,
+            WorkflowRunCreationService runCreationService,
+            ObjectMapper objectMapper
     ) {
         this.runMapper = runMapper;
         this.nodeRunMapper = nodeRunMapper;
         this.projectAccessService = projectAccessService;
         this.replayService = replayService;
+        this.runCreationService = runCreationService;
+        this.objectMapper = objectMapper;
+    }
+
+    @PostMapping
+    public WorkflowRunResponse start(
+            @Valid @RequestBody WorkflowRunStartRequest request,
+            @RequestHeader(value = "X-AutoSpec-Session-Token", required = false) String sessionToken
+    ) {
+        projectAccessService.requireProjectRole(
+                request.projectId(),
+                projectAccessService.resolveUserId(sessionToken),
+                "OWNER",
+                "EDITOR"
+        );
+        try {
+            return WorkflowRunResponse.from(runCreationService.start(
+                    new WorkflowRunCreationService.StartCommand(
+                            request.projectId(),
+                            request.workflowVersionId(),
+                            objectMapper.writeValueAsString(request.input()),
+                            request.idempotencyKey()
+                    )
+            ));
+        } catch (JsonProcessingException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid workflow input", exception);
+        }
     }
 
     @GetMapping("/{runId}")

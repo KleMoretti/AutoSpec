@@ -14,6 +14,7 @@ import com.autospec.service.WorkflowApprovalService;
 import com.autospec.workflow.runtime.CompiledWorkflow;
 import com.autospec.workflow.runtime.DagCompiler;
 import com.autospec.workflow.runtime.WorkflowNodeStatus;
+import com.autospec.workflow.runtime.WorkflowArtifactProjector;
 import com.autospec.workflow.runtime.WorkflowSnapshotParser;
 import com.autospec.workflow.transport.WorkflowRunReconciliationTrigger;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
@@ -53,6 +54,7 @@ public class WorkflowApprovalServiceImpl implements WorkflowApprovalService {
     private final WorkflowSnapshotParser snapshotParser;
     private final DagCompiler dagCompiler;
     private final WorkflowRunReconciliationTrigger reconciliationTrigger;
+    private final WorkflowArtifactProjector artifactProjector;
 
     public WorkflowApprovalServiceImpl(
             WorkflowApprovalMapper approvalMapper,
@@ -62,6 +64,7 @@ public class WorkflowApprovalServiceImpl implements WorkflowApprovalService {
             WorkflowTransitionMapper transitionMapper,
             WorkflowSnapshotParser snapshotParser,
             DagCompiler dagCompiler,
+            WorkflowArtifactProjector artifactProjector,
             @Lazy WorkflowRunReconciliationTrigger reconciliationTrigger
     ) {
         this.approvalMapper = approvalMapper;
@@ -71,6 +74,7 @@ public class WorkflowApprovalServiceImpl implements WorkflowApprovalService {
         this.transitionMapper = transitionMapper;
         this.snapshotParser = snapshotParser;
         this.dagCompiler = dagCompiler;
+        this.artifactProjector = artifactProjector;
         this.reconciliationTrigger = reconciliationTrigger;
     }
 
@@ -164,10 +168,11 @@ public class WorkflowApprovalServiceImpl implements WorkflowApprovalService {
         if (updated == 0) {
             return 0;
         }
-        Artifact candidate = artifactMapper.selectOne(new LambdaQueryWrapper<Artifact>()
-                .eq(Artifact::getWorkflowNodeRunId, nodeRun.getId())
-                .orderByDesc(Artifact::getId)
-                .last("limit 1"));
+        Artifact candidate = artifactProjector.project(
+                nodeRun,
+                outputJson,
+                "PENDING_REVIEW"
+        );
         createPendingApproval(
                 nodeRun,
                 "AFTER_NODE",
@@ -290,6 +295,16 @@ public class WorkflowApprovalServiceImpl implements WorkflowApprovalService {
         }
         if (nodeRunMapper.update(null, update) == 0) {
             throw conflict("Approval node is no longer waiting");
+        }
+        if (editedOutput == null
+                && "AFTER_NODE".equals(approval.getMode())
+                && approval.getCandidateArtifactId() != null) {
+            artifactMapper.update(null, new LambdaUpdateWrapper<Artifact>()
+                    .eq(Artifact::getId, approval.getCandidateArtifactId())
+                    .eq(Artifact::getStatus, "PENDING_REVIEW")
+                    .set(Artifact::getStatus, "APPROVED")
+                    .set(Artifact::getApprovedAt, now)
+                    .set(Artifact::getUpdatedAt, now));
         }
         transition(nodeRun, "WAITING_APPROVAL", targetStatus, "APPROVAL_ACCEPTED", now);
         reconciliationTrigger.reconcile(nodeRun.getWorkflowRunId());

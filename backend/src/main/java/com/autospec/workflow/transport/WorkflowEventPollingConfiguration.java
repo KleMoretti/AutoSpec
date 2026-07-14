@@ -4,6 +4,8 @@ import com.autospec.mapper.ProcessedWorkflowEventMapper;
 import com.autospec.mapper.WorkflowNodeRunMapper;
 import com.autospec.workflow.runtime.WorkflowFailureDecisionService;
 import com.autospec.workflow.runtime.WorkflowApprovalCoordinator;
+import com.autospec.workflow.runtime.WorkflowArtifactProjector;
+import com.autospec.workflow.runtime.ReviewerReworkCoordinator;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -31,13 +33,17 @@ public class WorkflowEventPollingConfiguration {
             WorkflowRunReconciliationTrigger reconciliationTrigger,
             WorkflowFailureDecisionService failureDecisionService,
             ObjectProvider<WorkflowApprovalCoordinator> approvalCoordinatorProvider,
+            ObjectProvider<WorkflowArtifactProjector> artifactProjectorProvider,
+            ObjectProvider<ReviewerReworkCoordinator> reworkCoordinatorProvider,
             ObjectMapper objectMapper
     ) {
         return new WorkflowEventConsumer(
                 processedEventMapper, nodeRunMapper, reconciliationTrigger,
                 failureDecisionService,
                 objectMapper,
-                approvalCoordinatorProvider.getIfAvailable(WorkflowApprovalCoordinator::none)
+                approvalCoordinatorProvider.getIfAvailable(WorkflowApprovalCoordinator::none),
+                artifactProjectorProvider.getIfAvailable(WorkflowArtifactProjector::none),
+                reworkCoordinatorProvider.getIfAvailable(ReviewerReworkCoordinator::none)
         );
     }
 

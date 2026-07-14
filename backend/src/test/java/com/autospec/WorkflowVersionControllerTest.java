@@ -7,6 +7,7 @@ import com.autospec.entity.WorkflowVersion;
 import com.autospec.mapper.WorkflowDefinitionMapper;
 import com.autospec.mapper.WorkflowVersionMapper;
 import com.autospec.service.ProjectAccessService;
+import com.autospec.service.WorkflowVersionManagementService;
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import org.junit.jupiter.api.Test;
 
@@ -25,10 +26,12 @@ class WorkflowVersionControllerTest {
         WorkflowDefinitionMapper definitionMapper = mock(WorkflowDefinitionMapper.class);
         WorkflowVersionMapper versionMapper = mock(WorkflowVersionMapper.class);
         ProjectAccessService accessService = mock(ProjectAccessService.class);
+        WorkflowVersionManagementService managementService = mock(WorkflowVersionManagementService.class);
         WorkflowVersionController controller = new WorkflowVersionController(
                 definitionMapper,
                 versionMapper,
-                accessService
+                accessService,
+                managementService
         );
         WorkflowDefinition definition = new WorkflowDefinition();
         definition.setId(4L);

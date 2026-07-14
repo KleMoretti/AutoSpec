@@ -6,7 +6,9 @@ import com.autospec.mapper.ProcessedWorkflowEventMapper;
 import com.autospec.mapper.WorkflowNodeRunMapper;
 import com.autospec.workflow.runtime.RetryPolicyEvaluator;
 import com.autospec.workflow.runtime.WorkflowApprovalCoordinator;
+import com.autospec.workflow.runtime.WorkflowArtifactProjector;
 import com.autospec.workflow.runtime.WorkflowFailureDecisionService;
+import com.autospec.workflow.runtime.ReviewerReworkCoordinator;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -22,6 +24,8 @@ public class WorkflowEventConsumer {
     private final WorkflowFailureDecisionService failureDecisionService;
     private final ObjectMapper objectMapper;
     private final WorkflowApprovalCoordinator approvalCoordinator;
+    private final WorkflowArtifactProjector artifactProjector;
+    private final ReviewerReworkCoordinator reworkCoordinator;
 
     public WorkflowEventConsumer(
             ProcessedWorkflowEventMapper processedEventMapper,
@@ -31,12 +35,36 @@ public class WorkflowEventConsumer {
             ObjectMapper objectMapper,
             WorkflowApprovalCoordinator approvalCoordinator
     ) {
+        this(
+                processedEventMapper,
+                nodeRunMapper,
+                reconciliationTrigger,
+                failureDecisionService,
+                objectMapper,
+                approvalCoordinator,
+                WorkflowArtifactProjector.none(),
+                ReviewerReworkCoordinator.none()
+        );
+    }
+
+    public WorkflowEventConsumer(
+            ProcessedWorkflowEventMapper processedEventMapper,
+            WorkflowNodeRunMapper nodeRunMapper,
+            WorkflowRunReconciliationTrigger reconciliationTrigger,
+            WorkflowFailureDecisionService failureDecisionService,
+            ObjectMapper objectMapper,
+            WorkflowApprovalCoordinator approvalCoordinator,
+            WorkflowArtifactProjector artifactProjector,
+            ReviewerReworkCoordinator reworkCoordinator
+    ) {
         this.processedEventMapper = processedEventMapper;
         this.nodeRunMapper = nodeRunMapper;
         this.reconciliationTrigger = reconciliationTrigger;
         this.failureDecisionService = failureDecisionService;
         this.objectMapper = objectMapper;
         this.approvalCoordinator = approvalCoordinator;
+        this.artifactProjector = artifactProjector;
+        this.reworkCoordinator = reworkCoordinator;
     }
 
     public WorkflowEventConsumer(
@@ -52,7 +80,9 @@ public class WorkflowEventConsumer {
                 reconciliationTrigger,
                 failureDecisionService,
                 objectMapper,
-                null
+                null,
+                WorkflowArtifactProjector.none(),
+                ReviewerReworkCoordinator.none()
         );
     }
 
@@ -108,12 +138,25 @@ public class WorkflowEventConsumer {
                     return paused;
                 }
             }
-            return nodeRunMapper.update(null, update
+            int succeeded = nodeRunMapper.update(null, update
                     .set("status", "SUCCEEDED")
                     .set("output_json", event.outputPayload() == null ? null : event.outputPayload().toString())
                     .set("finished_at", now)
                     .set("updated_at", now)
                     .setSql("lock_version = lock_version + 1"));
+            if (succeeded == 1) {
+                WorkflowNodeRun nodeRun = nodeRunMapper.selectById(event.nodeRunId());
+                String outputJson = event.outputPayload() == null
+                        ? null
+                        : event.outputPayload().toString();
+                artifactProjector.project(
+                        nodeRun,
+                        outputJson,
+                        "GENERATED"
+                );
+                reworkCoordinator.applyIfRequested(nodeRun, outputJson);
+            }
+            return succeeded;
         }
         if ("NODE_FAILED".equals(event.eventType())) {
             WorkflowNodeRun nodeRun = nodeRunMapper.selectById(event.nodeRunId());
