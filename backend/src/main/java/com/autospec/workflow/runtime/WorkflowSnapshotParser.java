@@ -1,6 +1,7 @@
 package com.autospec.workflow.runtime;
 
 import com.autospec.workflow.spec.WorkflowEdgeDocument;
+import com.autospec.workflow.spec.WorkflowApprovalDocument;
 import com.autospec.workflow.spec.WorkflowNodeDocument;
 import com.autospec.workflow.spec.WorkflowSpecDocument;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -44,9 +45,24 @@ public class WorkflowSnapshotParser {
         }
         List<WorkflowNodeDocument> result = new ArrayList<>();
         values.forEach(node -> result.add(new WorkflowNodeDocument(
-                requiredText(node, "node_id"), strings(node.path("depends_on"))
+                requiredText(node, "node_id"),
+                strings(node.path("depends_on")),
+                approval(node.path("approval"))
         )));
         return result;
+    }
+
+    private WorkflowApprovalDocument approval(JsonNode value) {
+        if (value.isMissingNode() || value.isNull()) {
+            return WorkflowApprovalDocument.none();
+        }
+        if (!value.isObject()) {
+            throw new IllegalArgumentException("workflow node approval must be an object");
+        }
+        return new WorkflowApprovalDocument(
+                value.path("mode").asText("NONE"),
+                strings(value.path("allowed_actions"))
+        );
     }
 
     private List<WorkflowEdgeDocument> edges(JsonNode values) {

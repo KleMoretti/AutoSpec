@@ -3,12 +3,14 @@ package com.autospec.workflow.transport;
 import com.autospec.mapper.ProcessedWorkflowEventMapper;
 import com.autospec.mapper.WorkflowNodeRunMapper;
 import com.autospec.workflow.runtime.WorkflowFailureDecisionService;
+import com.autospec.workflow.runtime.WorkflowApprovalCoordinator;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.convert.DurationStyle;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
@@ -28,11 +30,14 @@ public class WorkflowEventPollingConfiguration {
             WorkflowNodeRunMapper nodeRunMapper,
             WorkflowRunReconciliationTrigger reconciliationTrigger,
             WorkflowFailureDecisionService failureDecisionService,
+            ObjectProvider<WorkflowApprovalCoordinator> approvalCoordinatorProvider,
             ObjectMapper objectMapper
     ) {
         return new WorkflowEventConsumer(
                 processedEventMapper, nodeRunMapper, reconciliationTrigger,
-                failureDecisionService, objectMapper
+                failureDecisionService,
+                objectMapper,
+                approvalCoordinatorProvider.getIfAvailable(WorkflowApprovalCoordinator::none)
         );
     }
 

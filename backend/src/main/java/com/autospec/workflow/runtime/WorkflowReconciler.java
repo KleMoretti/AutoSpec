@@ -2,6 +2,7 @@ package com.autospec.workflow.runtime;
 
 import com.autospec.entity.WorkflowNodeRun;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -15,15 +16,27 @@ public class WorkflowReconciler {
     private final WorkflowSchedulingGateway gateway;
     private final NodeReadinessEvaluator readinessEvaluator;
     private final ObjectMapper objectMapper;
+    private final WorkflowApprovalCoordinator approvalCoordinator;
+
+    @Autowired
+    public WorkflowReconciler(
+            WorkflowSchedulingGateway gateway,
+            NodeReadinessEvaluator readinessEvaluator,
+            ObjectMapper objectMapper,
+            WorkflowApprovalCoordinator approvalCoordinator
+    ) {
+        this.gateway = gateway;
+        this.readinessEvaluator = readinessEvaluator;
+        this.objectMapper = objectMapper;
+        this.approvalCoordinator = approvalCoordinator;
+    }
 
     public WorkflowReconciler(
             WorkflowSchedulingGateway gateway,
             NodeReadinessEvaluator readinessEvaluator,
             ObjectMapper objectMapper
     ) {
-        this.gateway = gateway;
-        this.readinessEvaluator = readinessEvaluator;
-        this.objectMapper = objectMapper;
+        this(gateway, readinessEvaluator, objectMapper, WorkflowApprovalCoordinator.none());
     }
 
     public ReconciliationResult reconcile(long workflowRunId, CompiledWorkflow graph) {
@@ -49,6 +62,9 @@ public class WorkflowReconciler {
             WorkflowNodeRun nodeRun = latestRuns.get(nodeId);
             if (nodeRun == null) {
                 concurrentChanges.add(nodeId);
+                continue;
+            }
+            if (approvalCoordinator.pauseBeforeIfRequired(graph, nodeRun)) {
                 continue;
             }
             String executionId = workflowRunId + ":" + nodeId + ":"

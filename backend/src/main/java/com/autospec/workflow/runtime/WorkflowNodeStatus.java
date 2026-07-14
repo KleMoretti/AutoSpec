@@ -24,7 +24,7 @@ public enum WorkflowNodeStatus {
 
     private Set<WorkflowNodeStatus> allowedTargets() {
         return switch (this) {
-            case PENDING -> EnumSet.of(READY, SKIPPED, CANCELLED);
+            case PENDING -> EnumSet.of(READY, WAITING_APPROVAL, SKIPPED, CANCELLED);
             case READY -> EnumSet.of(QUEUED, WAITING_APPROVAL, CANCELLED);
             case QUEUED -> EnumSet.of(RUNNING, CANCELLED, ORPHANED);
             case RUNNING -> EnumSet.of(SUCCEEDED, FAILED, RETRY_WAIT, FALLBACK_READY,

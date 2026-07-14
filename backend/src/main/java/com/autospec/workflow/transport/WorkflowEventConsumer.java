@@ -5,6 +5,7 @@ import com.autospec.entity.WorkflowNodeRun;
 import com.autospec.mapper.ProcessedWorkflowEventMapper;
 import com.autospec.mapper.WorkflowNodeRunMapper;
 import com.autospec.workflow.runtime.RetryPolicyEvaluator;
+import com.autospec.workflow.runtime.WorkflowApprovalCoordinator;
 import com.autospec.workflow.runtime.WorkflowFailureDecisionService;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
@@ -20,6 +21,23 @@ public class WorkflowEventConsumer {
     private final WorkflowRunReconciliationTrigger reconciliationTrigger;
     private final WorkflowFailureDecisionService failureDecisionService;
     private final ObjectMapper objectMapper;
+    private final WorkflowApprovalCoordinator approvalCoordinator;
+
+    public WorkflowEventConsumer(
+            ProcessedWorkflowEventMapper processedEventMapper,
+            WorkflowNodeRunMapper nodeRunMapper,
+            WorkflowRunReconciliationTrigger reconciliationTrigger,
+            WorkflowFailureDecisionService failureDecisionService,
+            ObjectMapper objectMapper,
+            WorkflowApprovalCoordinator approvalCoordinator
+    ) {
+        this.processedEventMapper = processedEventMapper;
+        this.nodeRunMapper = nodeRunMapper;
+        this.reconciliationTrigger = reconciliationTrigger;
+        this.failureDecisionService = failureDecisionService;
+        this.objectMapper = objectMapper;
+        this.approvalCoordinator = approvalCoordinator;
+    }
 
     public WorkflowEventConsumer(
             ProcessedWorkflowEventMapper processedEventMapper,
@@ -28,11 +46,14 @@ public class WorkflowEventConsumer {
             WorkflowFailureDecisionService failureDecisionService,
             ObjectMapper objectMapper
     ) {
-        this.processedEventMapper = processedEventMapper;
-        this.nodeRunMapper = nodeRunMapper;
-        this.reconciliationTrigger = reconciliationTrigger;
-        this.failureDecisionService = failureDecisionService;
-        this.objectMapper = objectMapper;
+        this(
+                processedEventMapper,
+                nodeRunMapper,
+                reconciliationTrigger,
+                failureDecisionService,
+                objectMapper,
+                null
+        );
     }
 
     @Transactional
@@ -72,6 +93,21 @@ public class WorkflowEventConsumer {
                     .set("updated_at", now));
         }
         if ("NODE_SUCCEEDED".equals(event.eventType())) {
+            if (approvalCoordinator != null) {
+                WorkflowNodeRun nodeRun = nodeRunMapper.selectById(event.nodeRunId());
+                if (nodeRun == null) {
+                    return 0;
+                }
+                Integer paused = approvalCoordinator.pauseAfterIfRequired(
+                        nodeRun,
+                        event.executionId(),
+                        event.outputPayload() == null ? null : event.outputPayload().toString(),
+                        now
+                );
+                if (paused != null) {
+                    return paused;
+                }
+            }
             return nodeRunMapper.update(null, update
                     .set("status", "SUCCEEDED")
                     .set("output_json", event.outputPayload() == null ? null : event.outputPayload().toString())
