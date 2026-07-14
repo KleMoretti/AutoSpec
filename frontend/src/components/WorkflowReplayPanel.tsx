@@ -1,0 +1,228 @@
+import { BranchesOutlined, HistoryOutlined, PlayCircleOutlined } from '@ant-design/icons';
+import { Alert, Button, Card, Descriptions, Select, Space, Tag, Timeline, Typography } from 'antd';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type {
+  WorkflowNodeRunResponse,
+  WorkflowReplayPayload,
+  WorkflowRunResponse,
+  WorkflowVersionResponse
+} from '../api/v3';
+
+interface WorkflowReplayPanelProps {
+  runs: WorkflowRunResponse[];
+  versions: WorkflowVersionResponse[];
+  onReplay: (runId: number, payload: WorkflowReplayPayload) => Promise<WorkflowRunResponse>;
+  onLoadTimeline: (runId: number) => Promise<WorkflowNodeRunResponse[]>;
+}
+
+type ReplayMode = WorkflowReplayPayload['mode'];
+
+function WorkflowReplayPanel({ runs, versions, onReplay, onLoadTimeline }: WorkflowReplayPanelProps) {
+  const [sourceRunId, setSourceRunId] = useState<number | undefined>(runs.at(-1)?.id);
+  const [mode, setMode] = useState<ReplayMode>('ORIGINAL_SNAPSHOT');
+  const [selectedVersionId, setSelectedVersionId] = useState<number | undefined>();
+  const [submitting, setSubmitting] = useState(false);
+  const [result, setResult] = useState<WorkflowRunResponse | null>(null);
+  const [timelineRunId, setTimelineRunId] = useState<number | null>(null);
+  const [nodes, setNodes] = useState<WorkflowNodeRunResponse[]>([]);
+  const [timelineLoading, setTimelineLoading] = useState(false);
+  const idempotencyKey = useRef(createReplayKey());
+  const publishedVersions = useMemo(
+    () => versions.filter((version) => version.status === 'PUBLISHED'),
+    [versions]
+  );
+
+  useEffect(() => {
+    if (!sourceRunId && runs.length > 0) {
+      setSourceRunId(runs.at(-1)?.id);
+    }
+  }, [runs, sourceRunId]);
+
+  if (runs.length === 0) {
+    return null;
+  }
+
+  async function submitReplay() {
+    if (!sourceRunId || (mode === 'SELECTED_VERSION' && !selectedVersionId)) {
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const replay = await onReplay(
+        sourceRunId,
+        buildReplayPayload(mode, selectedVersionId, idempotencyKey.current)
+      );
+      setResult(replay);
+      idempotencyKey.current = createReplayKey();
+      await loadTimeline(replay.id);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function loadTimeline(runId: number) {
+    setTimelineRunId(runId);
+    setTimelineLoading(true);
+    try {
+      setNodes(await onLoadTimeline(runId));
+    } finally {
+      setTimelineLoading(false);
+    }
+  }
+
+  return (
+    <section className="panel" aria-labelledby="workflow-replay-title">
+      <Space direction="vertical" size={16} className="full-width">
+        <Space>
+          <HistoryOutlined />
+          <Typography.Title level={3} id="workflow-replay-title">Workflow replay</Typography.Title>
+        </Space>
+        <Card size="small" title="Create an immutable replay">
+          <Space wrap align="end">
+            <label>
+              <Typography.Text strong>Source run</Typography.Text>
+              <Select
+                aria-label="Source workflow run"
+                className="replay-select"
+                value={sourceRunId}
+                onChange={setSourceRunId}
+                options={runs.map((run) => ({
+                  value: run.id,
+                  label: `#${run.id} · ${run.status}${run.replayOfRunId ? ` · replay of #${run.replayOfRunId}` : ''}`
+                }))}
+              />
+            </label>
+            <label>
+              <Typography.Text strong>Replay mode</Typography.Text>
+              <Select
+                aria-label="Replay mode"
+                className="replay-select"
+                value={mode}
+                onChange={setMode}
+                options={[
+                  { value: 'ORIGINAL_SNAPSHOT', label: 'Original snapshot' },
+                  { value: 'SELECTED_VERSION', label: 'Selected version' }
+                ]}
+              />
+            </label>
+            {mode === 'SELECTED_VERSION' ? (
+              <label>
+                <Typography.Text strong>Published version</Typography.Text>
+                <Select
+                  aria-label="Published workflow version"
+                  className="replay-select"
+                  value={selectedVersionId}
+                  onChange={setSelectedVersionId}
+                  placeholder="Choose version"
+                  options={publishedVersions.map((version) => ({
+                    value: version.id,
+                    label: `${version.version} · #${version.id}`
+                  }))}
+                />
+              </label>
+            ) : null}
+            <Button
+              type="primary"
+              icon={<PlayCircleOutlined />}
+              loading={submitting}
+              disabled={!sourceRunId || (mode === 'SELECTED_VERSION' && !selectedVersionId)}
+              onClick={() => void submitReplay()}
+            >
+              Start replay
+            </Button>
+          </Space>
+        </Card>
+        {result ? (
+          <Alert
+            type="success"
+            showIcon
+            message={`Replay #${result.id} created from run #${result.replayOfRunId}`}
+            description={
+              <Button type="link" className="inline-link" onClick={() => void loadTimeline(result.id)}>
+                Open new run timeline
+              </Button>
+            }
+          />
+        ) : null}
+        <div className="workflow-run-grid">
+          {runs.slice().reverse().map((run) => (
+            <Card size="small" key={run.id}>
+              <Space direction="vertical" size={8} className="full-width">
+                <Space wrap>
+                  <Typography.Text strong>Run #{run.id}</Typography.Text>
+                  <Tag color={statusColor(run.status)}>{run.status}</Tag>
+                  {run.replayOfRunId ? <Tag icon={<BranchesOutlined />}>from #{run.replayOfRunId}</Tag> : null}
+                </Space>
+                <Typography.Text className="muted">
+                  {run.operation} · version #{run.workflowVersionId ?? 'snapshot'}
+                </Typography.Text>
+                <Button type="link" className="inline-link" onClick={() => void loadTimeline(run.id)}>
+                  View timeline
+                </Button>
+              </Space>
+            </Card>
+          ))}
+        </div>
+        {timelineRunId ? (
+          <Card id="workflow-run-timeline" size="small" title={`Run #${timelineRunId} timeline`} loading={timelineLoading}>
+            {nodes.length === 0 && !timelineLoading ? (
+              <Typography.Text className="muted">No node attempts recorded.</Typography.Text>
+            ) : (
+              <Timeline
+                items={nodes.map((node) => ({
+                  color: statusColor(node.status),
+                  children: (
+                    <Descriptions size="small" column={{ xs: 1, sm: 2, md: 3 }}>
+                      <Descriptions.Item label="Node">{node.nodeId}</Descriptions.Item>
+                      <Descriptions.Item label="Status"><Tag>{node.status}</Tag></Descriptions.Item>
+                      <Descriptions.Item label="Revision / attempt">{node.revision} / {node.attempt}</Descriptions.Item>
+                      <Descriptions.Item label="Handler">{node.handlerKey}:{node.handlerVersion}</Descriptions.Item>
+                      <Descriptions.Item label="Worker">{node.workerId ?? 'unassigned'}</Descriptions.Item>
+                      <Descriptions.Item label="Duration">{formatDuration(node.startedAt, node.finishedAt)}</Descriptions.Item>
+                    </Descriptions>
+                  )
+                }))}
+              />
+            )}
+          </Card>
+        ) : null}
+      </Space>
+    </section>
+  );
+}
+
+export function buildReplayPayload(
+  mode: ReplayMode,
+  selectedVersionId: number | undefined,
+  idempotencyKey: string
+): WorkflowReplayPayload {
+  return {
+    mode,
+    selectedWorkflowVersionId: mode === 'SELECTED_VERSION' ? selectedVersionId : undefined,
+    idempotencyKey
+  };
+}
+
+export function formatDuration(startedAt?: string, finishedAt?: string): string {
+  if (!startedAt || !finishedAt) {
+    return '—';
+  }
+  const milliseconds = new Date(finishedAt).getTime() - new Date(startedAt).getTime();
+  return milliseconds >= 0 ? `${milliseconds} ms` : '—';
+}
+
+function statusColor(status: string): string {
+  if (status === 'SUCCEEDED' || status === 'COMPLETED') return 'green';
+  if (status === 'FAILED' || status === 'CANCELLED') return 'red';
+  if (status === 'RUNNING' || status === 'QUEUED') return 'blue';
+  return 'gray';
+}
+
+function createReplayKey(): string {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return crypto.randomUUID();
+  }
+  return `replay-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+export default WorkflowReplayPanel;

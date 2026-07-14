@@ -72,6 +72,86 @@ export async function decideWorkflowApproval(
   });
 }
 
+export interface WorkflowRunResponse {
+  id: number;
+  projectId: number;
+  operation: string;
+  idempotencyKey: string;
+  correlationId?: string;
+  workflowVersionId?: number;
+  replayOfRunId?: number;
+  reviewRound?: number;
+  maxReviewRounds?: number;
+  status: string;
+  responseStatus?: string;
+  responsePercent?: number;
+  errorMessage?: string;
+  startedAt?: string;
+  completedAt?: string;
+}
+
+export interface WorkflowNodeRunResponse {
+  id: number;
+  workflowRunId: number;
+  nodeId: string;
+  revision: number;
+  attempt: number;
+  executionId: string;
+  status: string;
+  handlerKey: string;
+  handlerVersion: string;
+  timeoutMs?: number;
+  inputJson?: string;
+  outputJson?: string;
+  errorCode?: string;
+  errorMessage?: string;
+  queuedAt?: string;
+  startedAt?: string;
+  heartbeatAt?: string;
+  finishedAt?: string;
+  workerId?: string;
+}
+
+export interface WorkflowVersionResponse {
+  id: number;
+  definitionId: number;
+  workflowKey: string;
+  version: string;
+  contentHash: string;
+  status: string;
+  publishedAt?: string;
+  createdAt?: string;
+}
+
+export interface WorkflowReplayPayload {
+  mode: 'ORIGINAL_SNAPSHOT' | 'SELECTED_VERSION';
+  selectedWorkflowVersionId?: number;
+  idempotencyKey: string;
+}
+
+export async function getWorkflowRuns(projectId: number): Promise<WorkflowRunResponse[]> {
+  return request(`/api/projects/${projectId}/workflow-runs`);
+}
+
+export async function getWorkflowRunNodes(runId: number): Promise<WorkflowNodeRunResponse[]> {
+  return request(`/api/workflow-runs/${runId}/nodes`);
+}
+
+export async function getWorkflowVersions(workflowKey: string): Promise<WorkflowVersionResponse[]> {
+  return request(`/api/workflows/${encodeURIComponent(workflowKey)}/versions`);
+}
+
+export async function replayWorkflowRun(
+  runId: number,
+  payload: WorkflowReplayPayload
+): Promise<WorkflowRunResponse> {
+  return request(`/api/workflow-runs/${runId}/replay`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+}
+
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const nextInit = withSessionHeader(init);
   const response = nextInit === undefined ? await fetch(url) : await fetch(url, nextInit);

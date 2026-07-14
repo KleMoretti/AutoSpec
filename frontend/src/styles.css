@@ -125,6 +125,26 @@ body {
   gap: 16px;
 }
 
+.workflow-run-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+label:has(.replay-select) {
+  display: grid;
+  gap: 6px;
+}
+
+.replay-select {
+  min-width: 210px;
+}
+
+.inline-link {
+  height: auto;
+  padding: 0;
+}
+
 .json-editor textarea,
 .json-editor {
   font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
