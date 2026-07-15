@@ -1,17 +1,124 @@
 services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-autospec}
+      MYSQL_USER: ${MYSQL_USER:-autospec}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD is required}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD is required}
+    ports:
+      - "${DB_PORT:-3306}:3306"
+    volumes:
+      - autospec_mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
   redis:
     image: redis:7.4-alpine
-    container_name: autospec-redis
     restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
     ports:
       - "${REDIS_PORT:-6379}:6379"
     volumes:
       - autospec_redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  agent-engine:
+    build:
+      context: ./agent-engine
+    restart: unless-stopped
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "${AGENT_ENGINE_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-autospec}
+      MYSQL_USER: ${MYSQL_USER:-autospec}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD is required}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      AGENT_ENGINE_BASE_URL: http://agent-engine:8000
+      SQL_INIT_MODE: never
+      WORKFLOW_OUTBOX_ENABLED: "true"
+      WORKFLOW_EVENT_POLLING_ENABLED: "true"
+      WORKFLOW_EVENT_CONSUMER_NAME: control-plane
+      WORKFLOW_RECOVERY_ENABLED: "true"
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      agent-engine:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  agent-worker-1:
+    build:
+      context: ./agent-engine
+    restart: unless-stopped
+    command: ["python", "-m", "worker_main"]
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      WORKER_NAME: autospec-worker-1
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  agent-worker-2:
+    build:
+      context: ./agent-engine
+    restart: unless-stopped
+    command: ["python", "-m", "worker_main"]
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      WORKER_NAME: autospec-worker-2
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-5173}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost/"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
 volumes:
+  autospec_mysql_data:
   autospec_redis_data:

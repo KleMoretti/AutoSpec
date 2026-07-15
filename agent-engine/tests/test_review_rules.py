@@ -4,6 +4,7 @@ from schemas.backend_design import BackendDesignArtifact
 from schemas.prd import PrdArtifact
 from schemas.architecture_design import ArchitectureDesignArtifact
 from schemas.frontend_skeleton import FrontendSkeletonArtifact
+from schemas.review import ReviewReport
 
 
 def _prd_with_features(*features: str) -> PrdArtifact:
@@ -379,3 +380,47 @@ def test_reviewer_agent_appends_v3_rules_when_v3_context_is_present():
     )
 
     assert [issue.issue_type for issue in report.issues] == ["RAG_SOURCE_CITATION"]
+
+
+def test_reviewer_routes_backend_issues_to_structured_rework_target():
+    report = ReviewerAgent().run(
+        _prd_with_features("favorite products"),
+        _backend_with_api("GET", "/api/projects"),
+    )
+
+    assert report.decision == "REWORK"
+    assert [route.target_node for route in report.routes] == ["backend_engineer"]
+    assert report.routes[0].issue_ids == ["R-1"]
+    assert report.routes[0].required_changes == [report.issues[0].suggestion]
+    assert report.routes[0].invalidate_downstream is True
+
+
+def test_reviewer_pass_has_no_rework_routes():
+    report = ReviewerAgent().run(
+        _prd_with_features("Product publishing"),
+        _backend_with_api("POST", "/api/products"),
+    )
+
+    assert report.decision == "PASS"
+    assert report.routes == []
+
+
+def test_review_report_rejects_rework_route_outside_v5_allowlist():
+    payload = {
+        "score": 60,
+        "issues": [],
+        "decision": "REWORK",
+        "routes": [
+            {
+                "target_node": "reviewer",
+                "issue_ids": ["R-1"],
+                "required_changes": ["Review itself again."],
+                "invalidate_downstream": True,
+            }
+        ],
+    }
+
+    import pytest
+
+    with pytest.raises(ValueError, match="target_node"):
+        ReviewReport.model_validate(payload)

@@ -12,6 +12,7 @@ import {
   type AgentEventResponse,
   type ArtifactResponse,
   type ProjectProgressResponse,
+  type ProjectResponse,
   type ReviewResponse,
   approveArtifact,
   continueGeneration,
@@ -22,12 +23,32 @@ import {
   getArtifacts,
   getEventHistory,
   getProgress,
+  getProject,
   getReview,
   retryTask,
   subscribeProjectEvents,
   updateArtifact
 } from '../api/projects';
-import { type WorkflowSnapshotResponse, getWorkflow } from '../api/v3';
+import {
+  type ApprovalDecisionPayload,
+  type WorkflowApprovalResponse,
+  type WorkflowNodeRunResponse,
+  type WorkflowReplayPayload,
+  type WorkflowRunResponse,
+  type WorkflowRunStartPayload,
+  type WorkflowRuntimeMetricsResponse,
+  type WorkflowSnapshotResponse,
+  type WorkflowVersionResponse,
+  decideWorkflowApproval,
+  getWorkflow,
+  getWorkflowApprovals,
+  getWorkflowRunNodes,
+  getWorkflowRunMetrics,
+  getWorkflowRuns,
+  getWorkflowVersions,
+  replayWorkflowRun,
+  startWorkflowRun
+} from '../api/v3';
 import AgentTimeline from '../components/AgentTimeline';
 import ArtifactTabs from '../components/ArtifactTabs';
 import CodeExportPanel from '../components/CodeExportPanel';
@@ -35,15 +56,21 @@ import ExecutionEventList from '../components/ExecutionEventList';
 import PrdEditor from '../components/PrdEditor';
 import ReviewIssueTable from '../components/ReviewIssueTable';
 import WorkflowGraph from '../components/WorkflowGraph';
+import WorkflowApprovalPanel from '../components/WorkflowApprovalPanel';
+import WorkflowReplayPanel from '../components/WorkflowReplayPanel';
 
 function ProjectDetailPage() {
   const params = useParams();
   const projectId = useMemo(() => Number(params.projectId), [params.projectId]);
+  const [project, setProject] = useState<ProjectResponse | null>(null);
   const [progress, setProgress] = useState<ProjectProgressResponse | null>(null);
   const [artifacts, setArtifacts] = useState<ArtifactResponse[]>([]);
   const [review, setReview] = useState<ReviewResponse | null>(null);
   const [events, setEvents] = useState<AgentEventResponse[]>([]);
   const [workflow, setWorkflow] = useState<WorkflowSnapshotResponse | null>(null);
+  const [approvals, setApprovals] = useState<WorkflowApprovalResponse[]>([]);
+  const [workflowRuns, setWorkflowRuns] = useState<WorkflowRunResponse[]>([]);
+  const [workflowVersions, setWorkflowVersions] = useState<WorkflowVersionResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [continuing, setContinuing] = useState(false);
@@ -65,18 +92,36 @@ function ProjectDetailPage() {
       return;
     }
     try {
-      const [nextProgress, nextArtifacts, nextReview, nextEvents, nextWorkflow] = await Promise.all([
+      const [
+        nextProject,
+        nextProgress,
+        nextArtifacts,
+        nextReview,
+        nextEvents,
+        nextWorkflow,
+        nextApprovals,
+        nextRuns,
+        nextVersions
+      ] = await Promise.all([
+        getProject(projectId),
         getProgress(projectId),
         getArtifacts(projectId),
         getReview(projectId).catch(() => null),
         getEventHistory(projectId).catch(() => []),
-        getWorkflow(projectId).catch(() => null)
+        getWorkflow(projectId).catch(() => null),
+        getWorkflowApprovals(projectId).catch(() => []),
+        getWorkflowRuns(projectId).catch(() => []),
+        getWorkflowVersions('autospec-v5').catch(() => [])
       ]);
+      setProject(nextProject);
       setProgress(nextProgress);
       setArtifacts(nextArtifacts);
       setReview(nextReview);
       setEvents(nextEvents);
       setWorkflow(nextWorkflow);
+      setApprovals(nextApprovals);
+      setWorkflowRuns(nextRuns);
+      setWorkflowVersions(nextVersions);
       setError(null);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Load failed');
@@ -192,6 +237,59 @@ function ProjectDetailPage() {
     }
   }
 
+  async function handleApprovalDecision(approvalId: number, payload: ApprovalDecisionPayload) {
+    try {
+      await decideWorkflowApproval(approvalId, payload);
+      message.success('Workflow decision applied');
+      await loadProject();
+    } catch (decisionError) {
+      message.error(decisionError instanceof Error ? decisionError.message : 'Decision failed');
+      throw decisionError;
+    }
+  }
+
+  async function handleReplay(runId: number, payload: WorkflowReplayPayload): Promise<WorkflowRunResponse> {
+    try {
+      const replay = await replayWorkflowRun(runId, payload);
+      message.success(`Replay #${replay.id} started`);
+      await loadProject();
+      return replay;
+    } catch (replayError) {
+      message.error(replayError instanceof Error ? replayError.message : 'Replay failed');
+      throw replayError;
+    }
+  }
+
+  async function handleStartWorkflow(payload: WorkflowRunStartPayload): Promise<WorkflowRunResponse> {
+    try {
+      const run = await startWorkflowRun(payload);
+      message.success(`Workflow run #${run.id} started`);
+      await loadProject();
+      return run;
+    } catch (startError) {
+      message.error(startError instanceof Error ? startError.message : 'Workflow start failed');
+      throw startError;
+    }
+  }
+
+  async function handleLoadTimeline(runId: number): Promise<WorkflowNodeRunResponse[]> {
+    try {
+      return await getWorkflowRunNodes(runId);
+    } catch (timelineError) {
+      message.error(timelineError instanceof Error ? timelineError.message : 'Timeline load failed');
+      throw timelineError;
+    }
+  }
+
+  async function handleLoadMetrics(runId: number): Promise<WorkflowRuntimeMetricsResponse> {
+    try {
+      return await getWorkflowRunMetrics(runId);
+    } catch (metricsError) {
+      message.error(metricsError instanceof Error ? metricsError.message : 'Metrics load failed');
+      throw metricsError;
+    }
+  }
+
   async function handleExportMarkdown() {
     setDownloadingMarkdown(true);
     try {
@@ -302,6 +400,17 @@ function ProjectDetailPage() {
       ) : null}
       <AgentTimeline progress={progress} onRetryTask={handleRetryTask} retryingTaskId={retryingTaskId} />
       <WorkflowGraph workflow={workflow} />
+      <WorkflowApprovalPanel approvals={approvals} artifacts={artifacts} onDecide={handleApprovalDecision} />
+      <WorkflowReplayPanel
+        projectId={projectId}
+        requirement={project?.originalRequirement ?? ''}
+        runs={workflowRuns}
+        versions={workflowVersions}
+        onStart={handleStartWorkflow}
+        onReplay={handleReplay}
+        onLoadTimeline={handleLoadTimeline}
+        onLoadMetrics={handleLoadMetrics}
+      />
       {projectStatus === 'GENERATING' || events.length > 0 ? <ExecutionEventList events={events} /> : null}
       {projectStatus === 'COMPLETED' ? <CodeExportPanel projectId={projectId} disabled={artifacts.length === 0} /> : null}
       <ArtifactTabs artifacts={artifacts} />

@@ -32,6 +32,8 @@ public class Artifact {
 
     private Long parentArtifactId;
 
+    private Long workflowNodeRunId;
+
     private LocalDateTime approvedAt;
 
     private LocalDateTime createdAt;
