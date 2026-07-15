@@ -101,6 +101,7 @@ export interface WorkflowNodeRunResponse {
   handlerKey: string;
   handlerVersion: string;
   timeoutMs?: number;
+  durationMs?: number;
   inputJson?: string;
   outputJson?: string;
   errorCode?: string;
@@ -110,6 +111,18 @@ export interface WorkflowNodeRunResponse {
   heartbeatAt?: string;
   finishedAt?: string;
   workerId?: string;
+}
+
+export interface WorkflowRuntimeMetricsResponse {
+  workflowRunId: number;
+  nodeAttemptCount: number;
+  queueTimeMs: number;
+  executionDurationMs: number;
+  retryCount: number;
+  recoveryCount: number;
+  tokenCount: number;
+  estimatedCost: number;
+  acceptedDuplicateEventCount: number;
 }
 
 export interface WorkflowVersionResponse {
@@ -153,6 +166,12 @@ export async function startWorkflowRun(
 
 export async function getWorkflowRunNodes(runId: number): Promise<WorkflowNodeRunResponse[]> {
   return request(`/api/workflow-runs/${runId}/nodes`);
+}
+
+export async function getWorkflowRunMetrics(
+  runId: number
+): Promise<WorkflowRuntimeMetricsResponse> {
+  return request(`/api/workflow-runs/${runId}/metrics`);
 }
 
 export async function getWorkflowVersions(workflowKey: string): Promise<WorkflowVersionResponse[]> {

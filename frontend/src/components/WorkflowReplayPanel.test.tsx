@@ -31,6 +31,7 @@ describe('WorkflowReplayPanel', () => {
         onStart={vi.fn()}
         onReplay={vi.fn()}
         onLoadTimeline={vi.fn()}
+        onLoadMetrics={vi.fn()}
       />
     );
 
@@ -51,6 +52,7 @@ describe('WorkflowReplayPanel', () => {
         onStart={vi.fn()}
         onReplay={vi.fn()}
         onLoadTimeline={vi.fn()}
+        onLoadMetrics={vi.fn()}
       />
     );
 

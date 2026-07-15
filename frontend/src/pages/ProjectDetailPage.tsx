@@ -36,12 +36,14 @@ import {
   type WorkflowReplayPayload,
   type WorkflowRunResponse,
   type WorkflowRunStartPayload,
+  type WorkflowRuntimeMetricsResponse,
   type WorkflowSnapshotResponse,
   type WorkflowVersionResponse,
   decideWorkflowApproval,
   getWorkflow,
   getWorkflowApprovals,
   getWorkflowRunNodes,
+  getWorkflowRunMetrics,
   getWorkflowRuns,
   getWorkflowVersions,
   replayWorkflowRun,
@@ -279,6 +281,15 @@ function ProjectDetailPage() {
     }
   }
 
+  async function handleLoadMetrics(runId: number): Promise<WorkflowRuntimeMetricsResponse> {
+    try {
+      return await getWorkflowRunMetrics(runId);
+    } catch (metricsError) {
+      message.error(metricsError instanceof Error ? metricsError.message : 'Metrics load failed');
+      throw metricsError;
+    }
+  }
+
   async function handleExportMarkdown() {
     setDownloadingMarkdown(true);
     try {
@@ -398,6 +409,7 @@ function ProjectDetailPage() {
         onStart={handleStartWorkflow}
         onReplay={handleReplay}
         onLoadTimeline={handleLoadTimeline}
+        onLoadMetrics={handleLoadMetrics}
       />
       {projectStatus === 'GENERATING' || events.length > 0 ? <ExecutionEventList events={events} /> : null}
       {projectStatus === 'COMPLETED' ? <CodeExportPanel projectId={projectId} disabled={artifacts.length === 0} /> : null}

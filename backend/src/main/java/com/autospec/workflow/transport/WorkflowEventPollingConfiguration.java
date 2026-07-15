@@ -2,6 +2,7 @@ package com.autospec.workflow.transport;
 
 import com.autospec.mapper.ProcessedWorkflowEventMapper;
 import com.autospec.mapper.WorkflowNodeRunMapper;
+import com.autospec.mapper.WorkflowRunMapper;
 import com.autospec.workflow.runtime.WorkflowFailureDecisionService;
 import com.autospec.workflow.runtime.WorkflowApprovalCoordinator;
 import com.autospec.workflow.runtime.WorkflowArtifactProjector;
@@ -30,6 +31,7 @@ public class WorkflowEventPollingConfiguration {
     WorkflowEventConsumer workflowEventConsumer(
             ProcessedWorkflowEventMapper processedEventMapper,
             WorkflowNodeRunMapper nodeRunMapper,
+            ObjectProvider<WorkflowRunMapper> runMapperProvider,
             WorkflowRunReconciliationTrigger reconciliationTrigger,
             WorkflowFailureDecisionService failureDecisionService,
             ObjectProvider<WorkflowApprovalCoordinator> approvalCoordinatorProvider,
@@ -43,7 +45,8 @@ public class WorkflowEventPollingConfiguration {
                 objectMapper,
                 approvalCoordinatorProvider.getIfAvailable(WorkflowApprovalCoordinator::none),
                 artifactProjectorProvider.getIfAvailable(WorkflowArtifactProjector::none),
-                reworkCoordinatorProvider.getIfAvailable(ReviewerReworkCoordinator::none)
+                reworkCoordinatorProvider.getIfAvailable(ReviewerReworkCoordinator::none),
+                runMapperProvider.getIfAvailable()
         );
     }
 

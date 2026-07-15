@@ -2,8 +2,10 @@ package com.autospec.workflow.transport;
 
 import com.autospec.entity.ProcessedWorkflowEvent;
 import com.autospec.entity.WorkflowNodeRun;
+import com.autospec.entity.WorkflowRun;
 import com.autospec.mapper.ProcessedWorkflowEventMapper;
 import com.autospec.mapper.WorkflowNodeRunMapper;
+import com.autospec.mapper.WorkflowRunMapper;
 import com.autospec.workflow.runtime.RetryPolicyEvaluator;
 import com.autospec.workflow.runtime.WorkflowApprovalCoordinator;
 import com.autospec.workflow.runtime.WorkflowArtifactProjector;
@@ -20,6 +22,7 @@ import java.time.LocalDateTime;
 public class WorkflowEventConsumer {
     private final ProcessedWorkflowEventMapper processedEventMapper;
     private final WorkflowNodeRunMapper nodeRunMapper;
+    private final WorkflowRunMapper runMapper;
     private final WorkflowRunReconciliationTrigger reconciliationTrigger;
     private final WorkflowFailureDecisionService failureDecisionService;
     private final ObjectMapper objectMapper;
@@ -43,7 +46,8 @@ public class WorkflowEventConsumer {
                 objectMapper,
                 approvalCoordinator,
                 WorkflowArtifactProjector.none(),
-                ReviewerReworkCoordinator.none()
+                ReviewerReworkCoordinator.none(),
+                null
         );
     }
 
@@ -57,8 +61,33 @@ public class WorkflowEventConsumer {
             WorkflowArtifactProjector artifactProjector,
             ReviewerReworkCoordinator reworkCoordinator
     ) {
+        this(
+                processedEventMapper,
+                nodeRunMapper,
+                reconciliationTrigger,
+                failureDecisionService,
+                objectMapper,
+                approvalCoordinator,
+                artifactProjector,
+                reworkCoordinator,
+                null
+        );
+    }
+
+    public WorkflowEventConsumer(
+            ProcessedWorkflowEventMapper processedEventMapper,
+            WorkflowNodeRunMapper nodeRunMapper,
+            WorkflowRunReconciliationTrigger reconciliationTrigger,
+            WorkflowFailureDecisionService failureDecisionService,
+            ObjectMapper objectMapper,
+            WorkflowApprovalCoordinator approvalCoordinator,
+            WorkflowArtifactProjector artifactProjector,
+            ReviewerReworkCoordinator reworkCoordinator,
+            WorkflowRunMapper runMapper
+    ) {
         this.processedEventMapper = processedEventMapper;
         this.nodeRunMapper = nodeRunMapper;
+        this.runMapper = runMapper;
         this.reconciliationTrigger = reconciliationTrigger;
         this.failureDecisionService = failureDecisionService;
         this.objectMapper = objectMapper;
@@ -82,7 +111,8 @@ public class WorkflowEventConsumer {
                 objectMapper,
                 null,
                 WorkflowArtifactProjector.none(),
-                ReviewerReworkCoordinator.none()
+                ReviewerReworkCoordinator.none(),
+                null
         );
     }
 
@@ -91,6 +121,7 @@ public class WorkflowEventConsumer {
         WorkflowExecutionEvent event = parse(payloadJson);
         if (processedEventMapper.selectCount(new QueryWrapper<ProcessedWorkflowEvent>()
                 .eq("event_id", event.eventId())) > 0) {
+            recordDuplicate(event.workflowRunId());
             return WorkflowEventOutcome.DUPLICATE;
         }
 
@@ -117,29 +148,35 @@ public class WorkflowEventConsumer {
                 .eq("execution_id", event.executionId())
                 .in("status", "QUEUED", "RUNNING");
         if ("NODE_HEARTBEAT".equals(event.eventType())) {
+            WorkflowNodeRun nodeRun = nodeRunMapper.selectById(event.nodeRunId());
             return nodeRunMapper.update(null, update
                     .set("status", "RUNNING")
+                    .set(nodeRun != null && nodeRun.getStartedAt() == null, "started_at", now)
                     .set("heartbeat_at", now)
                     .set("updated_at", now));
         }
         if ("NODE_SUCCEEDED".equals(event.eventType())) {
+            WorkflowNodeRun currentNodeRun = nodeRunMapper.selectById(event.nodeRunId());
             if (approvalCoordinator != null) {
-                WorkflowNodeRun nodeRun = nodeRunMapper.selectById(event.nodeRunId());
-                if (nodeRun == null) {
+                if (currentNodeRun == null) {
                     return 0;
                 }
                 Integer paused = approvalCoordinator.pauseAfterIfRequired(
-                        nodeRun,
+                        currentNodeRun,
                         event.executionId(),
                         event.outputPayload() == null ? null : event.outputPayload().toString(),
                         now
                 );
                 if (paused != null) {
+                    persistTiming(event, now, currentNodeRun);
                     return paused;
                 }
             }
             int succeeded = nodeRunMapper.update(null, update
                     .set("status", "SUCCEEDED")
+                    .set("duration_ms", event.durationMs())
+                    .set(currentNodeRun == null || currentNodeRun.getStartedAt() == null,
+                            "started_at", startedAt(event, now))
                     .set("output_json", event.outputPayload() == null ? null : event.outputPayload().toString())
                     .set("finished_at", now)
                     .set("updated_at", now)
@@ -169,6 +206,8 @@ public class WorkflowEventConsumer {
             UpdateWrapper<WorkflowNodeRun> failedUpdate = update
                     .set("error_code", event.errorCode())
                     .set("error_message", event.errorMessage())
+                    .set("duration_ms", event.durationMs())
+                    .set(nodeRun.getStartedAt() == null, "started_at", startedAt(event, now))
                     .set("finished_at", now)
                     .set("updated_at", now)
                     .setSql("lock_version = lock_version + 1");
@@ -185,6 +224,33 @@ public class WorkflowEventConsumer {
             return nodeRunMapper.update(null, failedUpdate);
         }
         throw new IllegalArgumentException("Unsupported workflow event type: " + event.eventType());
+    }
+
+    private LocalDateTime startedAt(WorkflowExecutionEvent event, LocalDateTime now) {
+        long durationMs = event.durationMs() == null ? 0 : Math.max(0, event.durationMs());
+        return now.minusNanos(durationMs * 1_000_000L);
+    }
+
+    private void persistTiming(
+            WorkflowExecutionEvent event,
+            LocalDateTime now,
+            WorkflowNodeRun nodeRun
+    ) {
+        nodeRunMapper.update(null, new UpdateWrapper<WorkflowNodeRun>()
+                .eq("id", event.nodeRunId())
+                .set("duration_ms", event.durationMs())
+                .set(nodeRun.getStartedAt() == null, "started_at", startedAt(event, now))
+                .set("updated_at", now));
+    }
+
+    private void recordDuplicate(long workflowRunId) {
+        if (runMapper == null) {
+            return;
+        }
+        runMapper.update(null, new UpdateWrapper<WorkflowRun>()
+                .eq("id", workflowRunId)
+                .setSql("accepted_duplicate_event_count = accepted_duplicate_event_count + 1")
+                .set("updated_at", LocalDateTime.now()));
     }
 
     private WorkflowExecutionEvent parse(String payloadJson) {

@@ -17,6 +17,7 @@ import com.autospec.mapper.WorkflowVersionMapper;
 import com.autospec.service.ProjectService;
 import com.autospec.service.WorkflowApprovalService;
 import com.autospec.service.WorkflowRunCreationService;
+import com.autospec.service.WorkflowRuntimeMetricsService;
 import com.autospec.service.WorkflowVersionManagementService;
 import com.autospec.workflow.runtime.ReviewerReworkCoordinator;
 import com.autospec.workflow.runtime.WorkflowApprovalCoordinator;
@@ -48,6 +49,8 @@ class DynamicWorkflowLifecycleTest {
     private ProjectService projectService;
     @Autowired
     private WorkflowRunCreationService runCreationService;
+    @Autowired
+    private WorkflowRuntimeMetricsService metricsService;
     @Autowired
     private WorkflowVersionManagementService versionManagementService;
     @Autowired
@@ -144,6 +147,15 @@ class DynamicWorkflowLifecycleTest {
         WorkflowRun completed = runMapper.selectById(run.getId());
         assertThat(completed.getStatus()).isEqualTo("COMPLETED");
         assertThat(completed.getResponsePercent()).isEqualTo(100);
+        assertThat(completed.getAcceptedDuplicateEventCount()).isEqualTo(1);
+        assertThat(metricsService.metrics(run.getId()))
+                .satisfies(metrics -> {
+                    assertThat(metrics.nodeAttemptCount()).isEqualTo(6);
+                    assertThat(metrics.executionDurationMs()).isEqualTo(72);
+                    assertThat(metrics.retryCount()).isZero();
+                    assertThat(metrics.recoveryCount()).isZero();
+                    assertThat(metrics.acceptedDuplicateEventCount()).isEqualTo(1);
+                });
         assertThat(artifactMapper.selectList(new LambdaQueryWrapper<Artifact>()
                 .eq(Artifact::getProjectId, project.getId())))
                 .extracting(Artifact::getType, Artifact::getWorkflowNodeRunId)
@@ -199,7 +211,8 @@ class DynamicWorkflowLifecycleTest {
                 objectMapper,
                 approvalCoordinator,
                 artifactProjector,
-                reworkCoordinator
+                reworkCoordinator,
+                runMapper
         );
     }
 

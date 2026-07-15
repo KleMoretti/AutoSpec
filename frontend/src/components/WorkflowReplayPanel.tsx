@@ -6,6 +6,7 @@ import type {
   WorkflowReplayPayload,
   WorkflowRunResponse,
   WorkflowRunStartPayload,
+  WorkflowRuntimeMetricsResponse,
   WorkflowVersionResponse
 } from '../api/v3';
 
@@ -17,6 +18,7 @@ interface WorkflowReplayPanelProps {
   onStart: (payload: WorkflowRunStartPayload) => Promise<WorkflowRunResponse>;
   onReplay: (runId: number, payload: WorkflowReplayPayload) => Promise<WorkflowRunResponse>;
   onLoadTimeline: (runId: number) => Promise<WorkflowNodeRunResponse[]>;
+  onLoadMetrics: (runId: number) => Promise<WorkflowRuntimeMetricsResponse>;
 }
 
 type ReplayMode = WorkflowReplayPayload['mode'];
@@ -28,7 +30,8 @@ function WorkflowReplayPanel({
   versions,
   onStart,
   onReplay,
-  onLoadTimeline
+  onLoadTimeline,
+  onLoadMetrics
 }: WorkflowReplayPanelProps) {
   const [startVersionId, setStartVersionId] = useState<number | undefined>();
   const [sourceRunId, setSourceRunId] = useState<number | undefined>(runs.at(-1)?.id);
@@ -40,6 +43,7 @@ function WorkflowReplayPanel({
   const [result, setResult] = useState<WorkflowRunResponse | null>(null);
   const [timelineRunId, setTimelineRunId] = useState<number | null>(null);
   const [nodes, setNodes] = useState<WorkflowNodeRunResponse[]>([]);
+  const [metrics, setMetrics] = useState<WorkflowRuntimeMetricsResponse | null>(null);
   const [timelineLoading, setTimelineLoading] = useState(false);
   const idempotencyKey = useRef(createReplayKey());
   const startIdempotencyKey = useRef(createStartKey());
@@ -99,7 +103,12 @@ function WorkflowReplayPanel({
     setTimelineRunId(runId);
     setTimelineLoading(true);
     try {
-      setNodes(await onLoadTimeline(runId));
+      const [nextNodes, nextMetrics] = await Promise.all([
+        onLoadTimeline(runId),
+        onLoadMetrics(runId)
+      ]);
+      setNodes(nextNodes);
+      setMetrics(nextMetrics);
     } finally {
       setTimelineLoading(false);
     }
@@ -235,6 +244,15 @@ function WorkflowReplayPanel({
         </div>
         {timelineRunId ? (
           <Card id="workflow-run-timeline" size="small" title={`Run #${timelineRunId} timeline`} loading={timelineLoading}>
+            {metrics ? (
+              <Descriptions size="small" column={{ xs: 1, sm: 2, md: 4 }} className="workflow-metrics">
+                <Descriptions.Item label="Queue time">{metrics.queueTimeMs} ms</Descriptions.Item>
+                <Descriptions.Item label="Execution">{metrics.executionDurationMs} ms</Descriptions.Item>
+                <Descriptions.Item label="Retries / recoveries">{metrics.retryCount} / {metrics.recoveryCount}</Descriptions.Item>
+                <Descriptions.Item label="Tokens / cost">{metrics.tokenCount} / {metrics.estimatedCost}</Descriptions.Item>
+                <Descriptions.Item label="Duplicate events">{metrics.acceptedDuplicateEventCount}</Descriptions.Item>
+              </Descriptions>
+            ) : null}
             {nodes.length === 0 && !timelineLoading ? (
               <Typography.Text className="muted">No node attempts recorded.</Typography.Text>
             ) : (

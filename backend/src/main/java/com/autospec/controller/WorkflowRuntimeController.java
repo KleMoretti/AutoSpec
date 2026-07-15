@@ -4,6 +4,7 @@ import com.autospec.dto.WorkflowNodeRunResponse;
 import com.autospec.dto.WorkflowReplayRequest;
 import com.autospec.dto.WorkflowRunResponse;
 import com.autospec.dto.WorkflowRunStartRequest;
+import com.autospec.dto.WorkflowRuntimeMetricsResponse;
 import com.autospec.entity.WorkflowNodeRun;
 import com.autospec.entity.WorkflowRun;
 import com.autospec.mapper.WorkflowNodeRunMapper;
@@ -11,6 +12,7 @@ import com.autospec.mapper.WorkflowRunMapper;
 import com.autospec.service.ProjectAccessService;
 import com.autospec.service.WorkflowReplayService;
 import com.autospec.service.WorkflowRunCreationService;
+import com.autospec.service.WorkflowRuntimeMetricsService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -35,6 +37,7 @@ public class WorkflowRuntimeController {
     private final ProjectAccessService projectAccessService;
     private final WorkflowReplayService replayService;
     private final WorkflowRunCreationService runCreationService;
+    private final WorkflowRuntimeMetricsService metricsService;
     private final ObjectMapper objectMapper;
 
     public WorkflowRuntimeController(
@@ -43,6 +46,7 @@ public class WorkflowRuntimeController {
             ProjectAccessService projectAccessService,
             WorkflowReplayService replayService,
             WorkflowRunCreationService runCreationService,
+            WorkflowRuntimeMetricsService metricsService,
             ObjectMapper objectMapper
     ) {
         this.runMapper = runMapper;
@@ -50,6 +54,7 @@ public class WorkflowRuntimeController {
         this.projectAccessService = projectAccessService;
         this.replayService = replayService;
         this.runCreationService = runCreationService;
+        this.metricsService = metricsService;
         this.objectMapper = objectMapper;
     }
 
@@ -103,6 +108,16 @@ public class WorkflowRuntimeController {
                 .stream()
                 .map(WorkflowNodeRunResponse::from)
                 .toList();
+    }
+
+    @GetMapping("/{runId}/metrics")
+    public WorkflowRuntimeMetricsResponse metrics(
+            @PathVariable Long runId,
+            @RequestHeader(value = "X-AutoSpec-Session-Token", required = false) String sessionToken
+    ) {
+        WorkflowRun run = requireRun(runId);
+        requireAccess(run, sessionToken, "OWNER", "EDITOR", "VIEWER");
+        return metricsService.metrics(runId);
     }
 
     @PostMapping("/{runId}/replay")

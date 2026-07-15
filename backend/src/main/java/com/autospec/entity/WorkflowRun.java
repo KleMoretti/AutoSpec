@@ -32,6 +32,8 @@ public class WorkflowRun {
 
     private Integer maxReviewRounds;
 
+    private Integer acceptedDuplicateEventCount;
+
     private Integer lockVersion;
 
     private LocalDateTime lastHeartbeatAt;
