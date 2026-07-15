@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import type { WorkflowRunResponse, WorkflowVersionResponse } from '../api/v3';
-import WorkflowReplayPanel, { buildReplayPayload, formatDuration } from './WorkflowReplayPanel';
+import WorkflowReplayPanel, { buildReplayPayload, buildStartPayload, formatDuration } from './WorkflowReplayPanel';
 
 const run: WorkflowRunResponse = {
   id: 12,
@@ -23,13 +23,49 @@ const version: WorkflowVersionResponse = {
 describe('WorkflowReplayPanel', () => {
   it('shows source runs, replay modes, and timeline entry points', () => {
     const html = renderToStaticMarkup(
-      <WorkflowReplayPanel runs={[run]} versions={[version]} onReplay={vi.fn()} onLoadTimeline={vi.fn()} />
+      <WorkflowReplayPanel
+        projectId={3}
+        requirement="Build AutoSpec"
+        runs={[run]}
+        versions={[version]}
+        onStart={vi.fn()}
+        onReplay={vi.fn()}
+        onLoadTimeline={vi.fn()}
+      />
     );
 
     expect(html).toContain('Source run');
     expect(html).toContain('Original snapshot');
     expect(html).toContain('Replay mode');
     expect(html).toContain('View timeline');
+    expect(html).toContain('Start V5 run');
+  });
+
+  it('renders the first-run entry point without existing history', () => {
+    const html = renderToStaticMarkup(
+      <WorkflowReplayPanel
+        projectId={3}
+        requirement="Build AutoSpec"
+        runs={[]}
+        versions={[version]}
+        onStart={vi.fn()}
+        onReplay={vi.fn()}
+        onLoadTimeline={vi.fn()}
+      />
+    );
+
+    expect(html).toContain('Start from a published workflow');
+    expect(html).toContain('Start V5 run');
+    expect(html).not.toContain('Create an immutable replay');
+  });
+
+  it('builds a frozen root input for a new V5 run', () => {
+    expect(buildStartPayload(3, 7, 'Build AutoSpec', 'start-key')).toEqual({
+      projectId: 3,
+      workflowVersionId: 7,
+      input: { requirement: 'Build AutoSpec', retrieved_sources: [] },
+      idempotencyKey: 'start-key'
+    });
   });
 
   it('builds selected-version payloads with a stable idempotency key', () => {

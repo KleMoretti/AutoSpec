@@ -12,6 +12,7 @@ import {
   type AgentEventResponse,
   type ArtifactResponse,
   type ProjectProgressResponse,
+  type ProjectResponse,
   type ReviewResponse,
   approveArtifact,
   continueGeneration,
@@ -22,6 +23,7 @@ import {
   getArtifacts,
   getEventHistory,
   getProgress,
+  getProject,
   getReview,
   retryTask,
   subscribeProjectEvents,
@@ -33,6 +35,7 @@ import {
   type WorkflowNodeRunResponse,
   type WorkflowReplayPayload,
   type WorkflowRunResponse,
+  type WorkflowRunStartPayload,
   type WorkflowSnapshotResponse,
   type WorkflowVersionResponse,
   decideWorkflowApproval,
@@ -41,7 +44,8 @@ import {
   getWorkflowRunNodes,
   getWorkflowRuns,
   getWorkflowVersions,
-  replayWorkflowRun
+  replayWorkflowRun,
+  startWorkflowRun
 } from '../api/v3';
 import AgentTimeline from '../components/AgentTimeline';
 import ArtifactTabs from '../components/ArtifactTabs';
@@ -56,6 +60,7 @@ import WorkflowReplayPanel from '../components/WorkflowReplayPanel';
 function ProjectDetailPage() {
   const params = useParams();
   const projectId = useMemo(() => Number(params.projectId), [params.projectId]);
+  const [project, setProject] = useState<ProjectResponse | null>(null);
   const [progress, setProgress] = useState<ProjectProgressResponse | null>(null);
   const [artifacts, setArtifacts] = useState<ArtifactResponse[]>([]);
   const [review, setReview] = useState<ReviewResponse | null>(null);
@@ -85,18 +90,28 @@ function ProjectDetailPage() {
       return;
     }
     try {
-      const [nextProgress, nextArtifacts, nextReview, nextEvents, nextWorkflow, nextApprovals, nextRuns] = await Promise.all([
+      const [
+        nextProject,
+        nextProgress,
+        nextArtifacts,
+        nextReview,
+        nextEvents,
+        nextWorkflow,
+        nextApprovals,
+        nextRuns,
+        nextVersions
+      ] = await Promise.all([
+        getProject(projectId),
         getProgress(projectId),
         getArtifacts(projectId),
         getReview(projectId).catch(() => null),
         getEventHistory(projectId).catch(() => []),
         getWorkflow(projectId).catch(() => null),
         getWorkflowApprovals(projectId).catch(() => []),
-        getWorkflowRuns(projectId).catch(() => [])
+        getWorkflowRuns(projectId).catch(() => []),
+        getWorkflowVersions('autospec-v5').catch(() => [])
       ]);
-      const nextVersions = nextWorkflow
-        ? await getWorkflowVersions(nextWorkflow.workflowKey).catch(() => [])
-        : [];
+      setProject(nextProject);
       setProgress(nextProgress);
       setArtifacts(nextArtifacts);
       setReview(nextReview);
@@ -243,6 +258,18 @@ function ProjectDetailPage() {
     }
   }
 
+  async function handleStartWorkflow(payload: WorkflowRunStartPayload): Promise<WorkflowRunResponse> {
+    try {
+      const run = await startWorkflowRun(payload);
+      message.success(`Workflow run #${run.id} started`);
+      await loadProject();
+      return run;
+    } catch (startError) {
+      message.error(startError instanceof Error ? startError.message : 'Workflow start failed');
+      throw startError;
+    }
+  }
+
   async function handleLoadTimeline(runId: number): Promise<WorkflowNodeRunResponse[]> {
     try {
       return await getWorkflowRunNodes(runId);
@@ -364,8 +391,11 @@ function ProjectDetailPage() {
       <WorkflowGraph workflow={workflow} />
       <WorkflowApprovalPanel approvals={approvals} artifacts={artifacts} onDecide={handleApprovalDecision} />
       <WorkflowReplayPanel
+        projectId={projectId}
+        requirement={project?.originalRequirement ?? ''}
         runs={workflowRuns}
         versions={workflowVersions}
+        onStart={handleStartWorkflow}
         onReplay={handleReplay}
         onLoadTimeline={handleLoadTimeline}
       />

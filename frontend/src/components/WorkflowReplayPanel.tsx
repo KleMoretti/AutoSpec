@@ -5,28 +5,44 @@ import type {
   WorkflowNodeRunResponse,
   WorkflowReplayPayload,
   WorkflowRunResponse,
+  WorkflowRunStartPayload,
   WorkflowVersionResponse
 } from '../api/v3';
 
 interface WorkflowReplayPanelProps {
+  projectId: number;
+  requirement: string;
   runs: WorkflowRunResponse[];
   versions: WorkflowVersionResponse[];
+  onStart: (payload: WorkflowRunStartPayload) => Promise<WorkflowRunResponse>;
   onReplay: (runId: number, payload: WorkflowReplayPayload) => Promise<WorkflowRunResponse>;
   onLoadTimeline: (runId: number) => Promise<WorkflowNodeRunResponse[]>;
 }
 
 type ReplayMode = WorkflowReplayPayload['mode'];
 
-function WorkflowReplayPanel({ runs, versions, onReplay, onLoadTimeline }: WorkflowReplayPanelProps) {
+function WorkflowReplayPanel({
+  projectId,
+  requirement,
+  runs,
+  versions,
+  onStart,
+  onReplay,
+  onLoadTimeline
+}: WorkflowReplayPanelProps) {
+  const [startVersionId, setStartVersionId] = useState<number | undefined>();
   const [sourceRunId, setSourceRunId] = useState<number | undefined>(runs.at(-1)?.id);
   const [mode, setMode] = useState<ReplayMode>('ORIGINAL_SNAPSHOT');
   const [selectedVersionId, setSelectedVersionId] = useState<number | undefined>();
   const [submitting, setSubmitting] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const [startResult, setStartResult] = useState<WorkflowRunResponse | null>(null);
   const [result, setResult] = useState<WorkflowRunResponse | null>(null);
   const [timelineRunId, setTimelineRunId] = useState<number | null>(null);
   const [nodes, setNodes] = useState<WorkflowNodeRunResponse[]>([]);
   const [timelineLoading, setTimelineLoading] = useState(false);
   const idempotencyKey = useRef(createReplayKey());
+  const startIdempotencyKey = useRef(createStartKey());
   const publishedVersions = useMemo(
     () => versions.filter((version) => version.status === 'PUBLISHED'),
     [versions]
@@ -38,8 +54,27 @@ function WorkflowReplayPanel({ runs, versions, onReplay, onLoadTimeline }: Workf
     }
   }, [runs, sourceRunId]);
 
-  if (runs.length === 0) {
-    return null;
+  useEffect(() => {
+    if (!startVersionId && publishedVersions.length > 0) {
+      setStartVersionId(publishedVersions.at(-1)?.id);
+    }
+  }, [publishedVersions, startVersionId]);
+
+  async function submitStart() {
+    if (!startVersionId || !requirement.trim()) {
+      return;
+    }
+    setStarting(true);
+    try {
+      const run = await onStart(
+        buildStartPayload(projectId, startVersionId, requirement, startIdempotencyKey.current)
+      );
+      setStartResult(run);
+      startIdempotencyKey.current = createStartKey();
+      await loadTimeline(run.id);
+    } finally {
+      setStarting(false);
+    }
   }
 
   async function submitReplay() {
@@ -75,10 +110,44 @@ function WorkflowReplayPanel({ runs, versions, onReplay, onLoadTimeline }: Workf
       <Space direction="vertical" size={16} className="full-width">
         <Space>
           <HistoryOutlined />
-          <Typography.Title level={3} id="workflow-replay-title">Workflow replay</Typography.Title>
+          <Typography.Title level={3} id="workflow-replay-title">V5 workflow runs</Typography.Title>
         </Space>
-        <Card size="small" title="Create an immutable replay">
+        <Card size="small" title="Start from a published workflow">
           <Space wrap align="end">
+            <label>
+              <Typography.Text strong>Published version</Typography.Text>
+              <Select
+                aria-label="Start workflow version"
+                className="replay-select"
+                value={startVersionId}
+                onChange={setStartVersionId}
+                placeholder="Choose version"
+                options={publishedVersions.map((version) => ({
+                  value: version.id,
+                  label: `${version.version} · #${version.id}`
+                }))}
+              />
+            </label>
+            <Button
+              type="primary"
+              icon={<PlayCircleOutlined />}
+              loading={starting}
+              disabled={!startVersionId || !requirement.trim()}
+              onClick={() => void submitStart()}
+            >
+              Start V5 run
+            </Button>
+          </Space>
+          {publishedVersions.length === 0 ? (
+            <Alert type="warning" showIcon message="No published autospec-v5 version is available." />
+          ) : null}
+        </Card>
+        {startResult ? (
+          <Alert type="success" showIcon message={`Workflow run #${startResult.id} started`} />
+        ) : null}
+        {runs.length > 0 ? (
+          <Card size="small" title="Create an immutable replay">
+            <Space wrap align="end">
             <label>
               <Typography.Text strong>Source run</Typography.Text>
               <Select
@@ -130,8 +199,9 @@ function WorkflowReplayPanel({ runs, versions, onReplay, onLoadTimeline }: Workf
             >
               Start replay
             </Button>
-          </Space>
-        </Card>
+            </Space>
+          </Card>
+        ) : null}
         {result ? (
           <Alert
             type="success"
@@ -203,6 +273,20 @@ export function buildReplayPayload(
   };
 }
 
+export function buildStartPayload(
+  projectId: number,
+  workflowVersionId: number,
+  requirement: string,
+  idempotencyKey: string
+): WorkflowRunStartPayload {
+  return {
+    projectId,
+    workflowVersionId,
+    input: { requirement, retrieved_sources: [] },
+    idempotencyKey
+  };
+}
+
 export function formatDuration(startedAt?: string, finishedAt?: string): string {
   if (!startedAt || !finishedAt) {
     return '—';
@@ -223,6 +307,13 @@ function createReplayKey(): string {
     return crypto.randomUUID();
   }
   return `replay-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function createStartKey(): string {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return crypto.randomUUID();
+  }
+  return `start-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
 export default WorkflowReplayPanel;

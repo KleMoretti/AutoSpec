@@ -10,6 +10,15 @@ export interface CreateProjectResponse {
   status: string;
 }
 
+export interface ProjectResponse {
+  projectId: number;
+  name: string;
+  originalRequirement: string;
+  status: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface GenerateProjectResponse {
   projectId: number;
   status: string;
@@ -107,6 +116,10 @@ export async function createProject(payload: CreateProjectPayload): Promise<Crea
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
   });
+}
+
+export async function getProject(projectId: number): Promise<ProjectResponse> {
+  return request(`/api/projects/${projectId}`);
 }
 
 export async function generateProject(projectId: number): Promise<GenerateProjectResponse> {

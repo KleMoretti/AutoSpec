@@ -118,9 +118,17 @@ export interface WorkflowVersionResponse {
   workflowKey: string;
   version: string;
   contentHash: string;
+  specJson?: string;
   status: string;
   publishedAt?: string;
   createdAt?: string;
+}
+
+export interface WorkflowRunStartPayload {
+  projectId: number;
+  workflowVersionId: number;
+  input: Record<string, unknown>;
+  idempotencyKey: string;
 }
 
 export interface WorkflowReplayPayload {
@@ -131,6 +139,16 @@ export interface WorkflowReplayPayload {
 
 export async function getWorkflowRuns(projectId: number): Promise<WorkflowRunResponse[]> {
   return request(`/api/projects/${projectId}/workflow-runs`);
+}
+
+export async function startWorkflowRun(
+  payload: WorkflowRunStartPayload
+): Promise<WorkflowRunResponse> {
+  return request('/api/workflow-runs', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
 }
 
 export async function getWorkflowRunNodes(runId: number): Promise<WorkflowNodeRunResponse[]> {
