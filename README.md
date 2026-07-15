@@ -2,6 +2,18 @@
 
 AutoSpec is a multi-agent SOP orchestration and evaluation platform for software requirements engineering. It is inspired by MetaGPT's role-based software-company workflow, but focuses on a narrower Java/enterprise scenario: turning a natural-language requirement into structured PRD, architecture, backend design, frontend skeleton, review report, code export, and evaluator report artifacts.
 
+## V5 Dynamic Workflow
+
+V5 replaces the fixed cross-Agent call chain with a durable, versioned DAG runtime:
+
+- Spring Boot owns immutable workflow versions, frozen run snapshots, DAG reconciliation, transactional Outbox, idempotent event consumption, approval, targeted rework, recovery, replay, and runtime metrics.
+- Redis Streams transports at-least-once node commands and terminal/heartbeat events.
+- Two or more Python Workers consume commands through a shared consumer group and execute versioned Pydantic-validated handlers.
+- MySQL remains the source of truth for runs, attempts, artifacts, transitions, approvals, and recovery checkpoints.
+- The React workspace can start a published V5 version, approve candidate artifacts, inspect attempts and metrics, and create immutable replays.
+
+The built-in `autospec-v5:v5` graph runs Backend Engineer and Frontend Engineer in parallel after Architect, joins them at Reviewer, supports bounded structured rework, and finishes with Evaluator.
+
 ## V4 Focus
 
 V4 shifts the project from a fixed document-generation pipeline toward Agent engineering depth:
@@ -16,18 +28,21 @@ V4 shifts the project from a fixed document-generation pipeline toward Agent eng
 ```text
 React frontend
   -> Spring Boot backend
-    -> FastAPI Agent Engine
-      -> Product Manager Agent
-      -> Architect Agent
-      -> Backend Engineer Agent
-      -> Frontend Engineer Agent
-      -> Reviewer Agent
-      -> Evaluator Agent
+    -> MySQL checkpoints + transactional Outbox
+    -> Redis command/event Streams
+      -> Python Worker consumer group
+        -> versioned Product Manager / Architect / Engineer / Reviewer / Evaluator handlers
+    -> DAG reconciliation / approval / rework / recovery / replay
 ```
 
 The backend remains the system of record for projects, artifacts, review issues, execution events, prompt/model metadata, workflow snapshots, exports, and evaluation reports. The Agent Engine owns role execution, schemas, workflow contracts, and deterministic evaluation rules.
 
 ## Key Modules
+
+- `backend/src/main/java/com/autospec/workflow`: V5 DAG compiler, runtime state machine, reconciliation, rework, recovery, and Redis transport.
+- `agent-engine/runtime`: versioned handler registry, node executor, Redis Stream Worker, pending-message claim, and production entry point.
+- `frontend/src/components/WorkflowReplayPanel.tsx`: V5 start, run history, metrics, attempt timeline, and immutable replay workspace.
+- `docs/examples/v5-dynamic-workflow-run.md`: sanitized lifecycle and failure-evidence trace.
 
 - `agent-engine/schemas/workflow_spec.py`: V4 workflow contract models.
 - `agent-engine/graph/workflow_specs.py`: built-in `autospec-v4` workflow registry.
@@ -39,6 +54,23 @@ The backend remains the system of record for projects, artifacts, review issues,
 - `docs/examples/v4-sample-artifacts.md`: sanitized V4 sample outputs.
 
 ## Verification
+
+### Run the complete V5 stack
+
+Copy `.env.example` to a local untracked `.env`, replace the placeholder MySQL values, then run:
+
+```powershell
+docker compose up --build
+```
+
+The stack exposes the frontend on `http://localhost:5173`, backend on `http://localhost:8080`, and Agent API on `http://localhost:8000`. Compose starts MySQL, persistent Redis, the control plane, two Worker consumers, and nginx.
+
+### V5 control-plane APIs
+
+- `POST /api/workflows`, `POST /api/workflows/{versionId}/validate`, `POST /api/workflows/{versionId}/publish`
+- `POST /api/workflow-runs`, `GET /api/workflow-runs/{runId}/nodes`, `GET /api/workflow-runs/{runId}/metrics`
+- `POST /api/workflow-approvals/{approvalId}/decide`
+- `POST /api/workflow-runs/{runId}/replay`
 
 Useful Agent Engine endpoints:
 
@@ -54,21 +86,21 @@ Useful backend/frontend path:
 Run Agent Engine tests:
 
 ```powershell
-python -m pytest agent-engine
+& 'D:\miniconda3\envs\CrewAI_Study\python.exe' -m pytest agent-engine -q
 ```
 
 Run backend tests:
 
 ```powershell
-cd backend
-mvn test
+& 'D:\apache-maven-3.8.9\bin\mvn.cmd' -f backend\pom.xml test
 ```
 
 Run frontend build:
 
 ```powershell
-cd frontend
-npm run build
+npm --prefix frontend test
+npm --prefix frontend run build
+docker compose config
 ```
 
 ## Resume Positioning

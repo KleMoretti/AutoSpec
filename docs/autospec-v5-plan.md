@@ -37,3 +37,7 @@ Replace hard-coded Agent sequencing with a versioned production DAG runtime. Spr
 - Any configured node can pause before or after execution for human approval.
 - Workflow replay never overwrites the original run or artifacts.
 - Existing V1-V4 endpoints and regression tests remain compatible.
+
+## Completion Evidence
+
+V5 implementation is complete on branch `codex/autospec-v5-dynamic-workflow`. The control-plane lifecycle regression, focused failure tests, all Agent tests, frontend tests/build, and Compose validation form the release gate. A sanitized trace and metric interpretation are available in `docs/examples/v5-dynamic-workflow-run.md`.

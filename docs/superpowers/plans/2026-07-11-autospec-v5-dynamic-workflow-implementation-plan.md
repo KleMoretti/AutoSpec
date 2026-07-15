@@ -12,6 +12,8 @@
 
 ## Delivery Strategy
 
+**Implementation status (2026-07-15): complete.** Tasks 1–11 are represented by focused commits and release-gated by the verification commands in Task 11. The sanitized execution/failure matrix is in `docs/examples/v5-dynamic-workflow-run.md`; the production-style topology is in `docker-compose.yml`.
+
 The design is split into six independently testable milestones. M1-M3 form the first production-style demonstration; M4-M6 add Agent-specific control features. Every production behavior starts with a failing test, followed by the smallest implementation and a focused green run.
 
 ## Task 1: Persist the approved V5 roadmap

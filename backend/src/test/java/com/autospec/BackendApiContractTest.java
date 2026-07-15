@@ -15,7 +15,8 @@ class BackendApiContractTest {
                 .getResourceAsStream("contracts/autospec-backend-v1.openapi.yaml");
 
         assertThat(stream).isNotNull();
-        String contract = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+        String contract = new String(stream.readAllBytes(), StandardCharsets.UTF_8)
+                .replace("\r\n", "\n");
 
         assertThat(contract)
                 .contains("openapi: 3.0.3")
