@@ -448,9 +448,14 @@ def _run_v2_node_output(
     if node_name == "backend_engineer":
         return BackendEngineerAgent(model_client).run(requirement, prd, retrieved_sources=retrieved_sources)
 
-    backend_design = BackendDesignArtifact.model_validate(payload["backend_design"])
-    architecture_design = ArchitectureDesignArtifact.model_validate(payload["architecture_design"])
     if node_name == "frontend_engineer":
+        architecture_design = ArchitectureDesignArtifact.model_validate(payload["architecture_design"])
+        backend_design_payload = payload.get("backend_design")
+        backend_design = (
+            BackendDesignArtifact.model_validate(backend_design_payload)
+            if backend_design_payload is not None
+            else None
+        )
         return FrontendEngineerAgent(model_client).run(
             requirement,
             prd,
@@ -459,6 +464,8 @@ def _run_v2_node_output(
             retrieved_sources=retrieved_sources,
         )
 
+    backend_design = BackendDesignArtifact.model_validate(payload["backend_design"])
+    architecture_design = ArchitectureDesignArtifact.model_validate(payload["architecture_design"])
     frontend_skeleton = FrontendSkeletonArtifact.model_validate(payload["frontend_skeleton"])
     return ReviewerAgent(model_client).run(
         prd,

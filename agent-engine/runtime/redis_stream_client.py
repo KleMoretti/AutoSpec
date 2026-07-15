@@ -16,6 +16,9 @@ class RedisWorkflowStreamClient:
 
         return cls(Redis.from_url(redis_url, decode_responses=False))
 
+    async def close(self) -> None:
+        await self._redis.aclose()
+
     async def ensure_group(self, stream: str, group: str) -> None:
         try:
             await self._redis.xgroup_create(

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 
 from runtime.redis_stream_client import RedisWorkflowStreamClient
 from runtime.worker import COMMAND_STREAM, WORKER_GROUP, WorkflowStreamWorker
@@ -55,4 +56,5 @@ class WorkflowWorkerRunner:
             except asyncio.CancelledError:
                 raise
             except Exception:
+                logging.getLogger(__name__).exception("workflow worker iteration failed")
                 await asyncio.sleep(retry_delay_seconds)

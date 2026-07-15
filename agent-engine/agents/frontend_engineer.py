@@ -1,4 +1,4 @@
-from typing import Any, Mapping
+from typing import Any
 
 from agents.base import ModelClient
 from schemas.architecture_design import ArchitectureDesignArtifact
@@ -18,16 +18,17 @@ class FrontendEngineerAgent:
         requirement: str,
         prd: PrdArtifact,
         architecture_design: ArchitectureDesignArtifact,
-        backend_design: BackendDesignArtifact,
+        backend_design: BackendDesignArtifact | None = None,
         retrieved_sources: list[dict[str, Any]] | None = None,
     ) -> FrontendSkeletonArtifact:
-        input_payload: Mapping[str, Any] = {
+        input_payload: dict[str, Any] = {
             "requirement": requirement,
             "prd": prd.model_dump(),
             "architecture_design": architecture_design.model_dump(),
-            "backend_design": backend_design.model_dump(),
             "retrieved_sources": retrieved_sources or [],
         }
+        if backend_design is not None:
+            input_payload["backend_design"] = backend_design.model_dump()
         if self.model_client is not None:
             return FrontendSkeletonArtifact.model_validate(
                 self.model_client.generate_json(self.prompt_name, input_payload)
