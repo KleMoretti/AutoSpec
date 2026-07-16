@@ -4,6 +4,8 @@ import com.autospec.entity.WorkflowOutbox;
 import com.autospec.mapper.WorkflowOutboxMapper;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -12,16 +14,20 @@ import java.util.List;
 @Service
 public class WorkflowOutboxPublisher {
     public static final String COMMAND_STREAM = "autospec.workflow.commands";
+    private static final Logger LOGGER = LoggerFactory.getLogger(WorkflowOutboxPublisher.class);
 
     private final WorkflowOutboxMapper outboxMapper;
     private final WorkflowCommandPublisher commandPublisher;
+    private final OutboxRetryPolicy retryPolicy;
 
     public WorkflowOutboxPublisher(
             WorkflowOutboxMapper outboxMapper,
-            WorkflowCommandPublisher commandPublisher
+            WorkflowCommandPublisher commandPublisher,
+            OutboxRetryPolicy retryPolicy
     ) {
         this.outboxMapper = outboxMapper;
         this.commandPublisher = commandPublisher;
+        this.retryPolicy = retryPolicy;
     }
 
     public int publishPending(int limit) {
@@ -39,7 +45,16 @@ public class WorkflowOutboxPublisher {
         );
         int published = 0;
         for (WorkflowOutbox outbox : pending) {
-            commandPublisher.publish(COMMAND_STREAM, outbox.getEventId(), outbox.getPayloadJson());
+            try {
+                commandPublisher.publish(
+                        COMMAND_STREAM,
+                        outbox.getEventId(),
+                        outbox.getPayloadJson()
+                );
+            } catch (RuntimeException exception) {
+                scheduleRetry(outbox, now, exception);
+                continue;
+            }
             int updated = outboxMapper.update(null, new UpdateWrapper<WorkflowOutbox>()
                     .eq("id", outbox.getId())
                     .eq("status", "PENDING")
@@ -49,5 +64,31 @@ public class WorkflowOutboxPublisher {
             published += updated;
         }
         return published;
+    }
+
+    private void scheduleRetry(
+            WorkflowOutbox outbox,
+            LocalDateTime now,
+            RuntimeException exception
+    ) {
+        int nextRetryCount = Math.max(0, outbox.getRetryCount() == null
+                ? 0
+                : outbox.getRetryCount()) + 1;
+        LocalDateTime nextRetryAt = retryPolicy.nextRetryAt(nextRetryCount, now);
+        int updated = outboxMapper.update(null, new UpdateWrapper<WorkflowOutbox>()
+                .eq("id", outbox.getId())
+                .eq("status", "PENDING")
+                .setSql("retry_count = retry_count + 1")
+                .set("next_retry_at", nextRetryAt)
+                .set("updated_at", now));
+        if (updated == 1) {
+            LOGGER.warn(
+                    "Scheduled outbox retry: eventId={}, retryCount={}, nextRetryAt={}, errorClass={}",
+                    outbox.getEventId(),
+                    nextRetryCount,
+                    nextRetryAt,
+                    exception.getClass().getSimpleName()
+            );
+        }
     }
 }

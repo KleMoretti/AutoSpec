@@ -56,6 +56,10 @@ autospec:
       batch-size: ${WORKFLOW_OUTBOX_BATCH_SIZE:20}
       fixed-delay: ${WORKFLOW_OUTBOX_FIXED_DELAY:500}
       initial-delay: ${WORKFLOW_OUTBOX_INITIAL_DELAY:1000}
+      retry:
+        base-delay: ${WORKFLOW_OUTBOX_RETRY_BASE_DELAY:1s}
+        max-delay: ${WORKFLOW_OUTBOX_RETRY_MAX_DELAY:1m}
+        jitter-ratio: ${WORKFLOW_OUTBOX_RETRY_JITTER_RATIO:0.2}
     recovery:
       enabled: ${WORKFLOW_RECOVERY_ENABLED:false}
       lease-timeout: ${WORKFLOW_RECOVERY_LEASE_TIMEOUT:30s}
