@@ -2,6 +2,7 @@ import pytest
 
 from runtime.node_executor import NodeExecutionEvent
 from runtime.redis_stream_client import RedisWorkflowStreamClient
+from runtime.worker import InvalidWorkflowCommandError, StreamMessage
 
 
 class ResponseError(Exception):
@@ -97,10 +98,34 @@ async def test_publish_and_acknowledge_use_stream_commands():
 
 
 @pytest.mark.asyncio
-async def test_claim_stale_commands_returns_decoded_messages():
+async def test_publish_dead_letter_preserves_source_and_original_fields_safely():
+    redis = FakeRedis()
+    client = RedisWorkflowStreamClient(redis)
+    message = StreamMessage("171-0", {"payload": "{not-json", "trace_id": "t-1"})
+
+    await client.publish_dead_letter(
+        "commands.dlq",
+        "commands",
+        message,
+        InvalidWorkflowCommandError("INVALID_JSON"),
+    )
+
+    fields = redis.calls[0][2]
+    assert fields == {
+        "source_stream": "commands",
+        "source_message_id": "171-0",
+        "error_category": "PROTOCOL_VALIDATION",
+        "error_type": "INVALID_JSON",
+        "original_fields": '{"payload":"{not-json","trace_id":"t-1"}',
+    }
+    assert "exception" not in fields
+
+
+@pytest.mark.asyncio
+async def test_claim_stale_commands_decodes_messages_and_advances_cursor():
     redis = FakeRedis()
     redis.claim_response = (
-        b"0-0",
+        b"173-0",
         [(b"172-0", {b"payload": b'{"event_id":"c2"}'})],
         [],
     )
@@ -111,3 +136,11 @@ async def test_claim_stale_commands_returns_decoded_messages():
     )
 
     assert [message.message_id for message in messages] == ["172-0"]
+    assert redis.calls[-1][1]["start_id"] == "0-0"
+
+    redis.claim_response = (b"0-0", [], [])
+    await client.claim_stale_commands(
+        "commands", "workers", "worker-2", minimum_idle_ms=30000, count=5
+    )
+
+    assert redis.calls[-1][1]["start_id"] == "173-0"

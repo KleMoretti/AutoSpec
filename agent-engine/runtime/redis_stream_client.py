@@ -1,14 +1,16 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from runtime.node_executor import NodeExecutionEvent
-from runtime.worker import StreamMessage
+from runtime.worker import InvalidWorkflowCommandError, StreamMessage
 
 
 class RedisWorkflowStreamClient:
     def __init__(self, redis_client: Any) -> None:
         self._redis = redis_client
+        self._claim_cursors: dict[tuple[str, str, str], str] = {}
 
     @classmethod
     def from_url(cls, redis_url: str) -> "RedisWorkflowStreamClient":
@@ -54,6 +56,29 @@ class RedisWorkflowStreamClient:
     async def acknowledge(self, stream: str, group: str, message_id: str) -> None:
         await self._redis.xack(stream, group, message_id)
 
+    async def publish_dead_letter(
+        self,
+        stream: str,
+        source_stream: str,
+        message: StreamMessage,
+        error: InvalidWorkflowCommandError,
+    ) -> None:
+        await self._redis.xadd(
+            stream,
+            {
+                "source_stream": source_stream,
+                "source_message_id": message.message_id,
+                "error_category": error.category,
+                "error_type": error.error_type,
+                "original_fields": json.dumps(
+                    message.fields,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                    default=self._json_default,
+                ),
+            },
+        )
+
     async def claim_stale_commands(
         self,
         stream: str,
@@ -62,14 +87,22 @@ class RedisWorkflowStreamClient:
         minimum_idle_ms: int,
         count: int = 10,
     ) -> list[StreamMessage]:
+        cursor_key = (stream, group, consumer)
+        start_id = self._claim_cursors.get(cursor_key, "0-0")
         response = await self._redis.xautoclaim(
             name=stream,
             groupname=group,
             consumername=consumer,
             min_idle_time=minimum_idle_ms,
-            start_id="0-0",
+            start_id=start_id,
             count=count,
         )
+        next_start_id = (
+            self._decode_value(response[0])
+            if response and len(response) > 0
+            else "0-0"
+        )
+        self._claim_cursors[cursor_key] = next_start_id
         entries = response[1] if response and len(response) > 1 else []
         return [self._decode_message(message_id, fields) for message_id, fields in entries]
 
@@ -93,3 +126,8 @@ class RedisWorkflowStreamClient:
 
     def _decode_value(self, value: Any) -> Any:
         return value.decode("utf-8") if isinstance(value, bytes) else value
+
+    def _json_default(self, value: Any) -> str:
+        if isinstance(value, bytes):
+            return value.decode("utf-8", errors="replace")
+        return str(value)

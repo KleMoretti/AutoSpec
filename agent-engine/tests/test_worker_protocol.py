@@ -5,7 +5,11 @@ import pytest
 
 from runtime.handler_registry import HandlerRegistry
 from runtime.node_executor import NodeExecutionEvent
-from runtime.worker import StreamMessage, WorkflowStreamWorker
+from runtime.worker import (
+    InvalidWorkflowCommandError,
+    StreamMessage,
+    WorkflowStreamWorker,
+)
 
 
 class FakeStreamClient:
@@ -115,9 +119,25 @@ async def test_worker_rejects_message_without_payload_without_acknowledging():
     client = FakeStreamClient()
     worker = WorkflowStreamWorker(client, StubExecutor(success_event()))
 
-    with pytest.raises(ValueError, match="payload"):
+    with pytest.raises(InvalidWorkflowCommandError) as error:
         await worker.process(StreamMessage(message_id="1-0", fields={}))
 
+    assert error.value.error_type == "MISSING_PAYLOAD"
+    assert client.acknowledged == []
+
+
+@pytest.mark.asyncio
+async def test_worker_safely_classifies_invalid_json_without_acknowledging():
+    client = FakeStreamClient()
+    worker = WorkflowStreamWorker(client, StubExecutor(success_event()))
+
+    with pytest.raises(InvalidWorkflowCommandError) as error:
+        await worker.process(
+            StreamMessage(message_id="1-0", fields={"payload": "{not-json"})
+        )
+
+    assert error.value.category == "PROTOCOL_VALIDATION"
+    assert error.value.error_type == "INVALID_JSON"
     assert client.acknowledged == []
 
 

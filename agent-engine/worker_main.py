@@ -9,7 +9,7 @@ from uuid import uuid4
 from runtime.node_executor import NodeExecutor
 from runtime.production_handlers import build_production_registry
 from runtime.redis_stream_client import RedisWorkflowStreamClient
-from runtime.worker import WorkflowStreamWorker
+from runtime.worker import COMMAND_DLQ_STREAM, WorkflowStreamWorker
 from runtime.worker_runner import WorkflowWorkerRunner
 
 
@@ -28,6 +28,7 @@ def build_runner() -> tuple[WorkflowWorkerRunner, RedisWorkflowStreamClient]:
         client,
         worker,
         consumer_name=consumer_name,
+        dead_letter_stream=os.getenv("WORKER_DLQ_STREAM", COMMAND_DLQ_STREAM),
         claim_idle_ms=int(os.getenv("WORKER_CLAIM_IDLE_MS", "30000")),
         read_block_ms=int(os.getenv("WORKER_READ_BLOCK_MS", "5000")),
         batch_size=int(os.getenv("WORKER_BATCH_SIZE", "10")),

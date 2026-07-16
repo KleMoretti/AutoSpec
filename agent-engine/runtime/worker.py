@@ -6,10 +6,13 @@ from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+from pydantic import ValidationError
+
 from runtime.node_executor import NodeCommand, NodeExecutionEvent, NodeExecutor
 
 
 COMMAND_STREAM = "autospec.workflow.commands"
+COMMAND_DLQ_STREAM = "autospec.workflow.commands.dlq"
 EVENT_STREAM = "autospec.workflow.events"
 WORKER_GROUP = "autospec-workers"
 
@@ -18,6 +21,16 @@ WORKER_GROUP = "autospec-workers"
 class StreamMessage:
     message_id: str
     fields: dict[str, Any]
+
+
+class InvalidWorkflowCommandError(ValueError):
+    """A safely classified command protocol error suitable for DLQ metadata."""
+
+    category = "PROTOCOL_VALIDATION"
+
+    def __init__(self, error_type: str) -> None:
+        super().__init__(error_type)
+        self.error_type = error_type
 
 
 class WorkflowStreamClient(Protocol):
@@ -83,12 +96,21 @@ class WorkflowStreamWorker:
 
     def _parse_command(self, message: StreamMessage) -> NodeCommand:
         if "payload" not in message.fields:
-            raise ValueError("workflow command message requires payload")
+            raise InvalidWorkflowCommandError("MISSING_PAYLOAD")
         payload = message.fields["payload"]
         if isinstance(payload, bytes):
-            payload = payload.decode("utf-8")
+            try:
+                payload = payload.decode("utf-8")
+            except UnicodeDecodeError:
+                raise InvalidWorkflowCommandError("INVALID_ENCODING") from None
         if isinstance(payload, str):
-            payload = json.loads(payload)
+            try:
+                payload = json.loads(payload)
+            except json.JSONDecodeError:
+                raise InvalidWorkflowCommandError("INVALID_JSON") from None
         if not isinstance(payload, dict):
-            raise ValueError("workflow command payload must be a JSON object")
-        return NodeCommand.model_validate(payload)
+            raise InvalidWorkflowCommandError("PAYLOAD_NOT_OBJECT")
+        try:
+            return NodeCommand.model_validate(payload)
+        except ValidationError:
+            raise InvalidWorkflowCommandError("SCHEMA_VALIDATION") from None
