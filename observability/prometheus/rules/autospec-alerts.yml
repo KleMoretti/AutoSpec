@@ -1,0 +1,66 @@
+groups:
+  - name: autospec-reliability
+    rules:
+      - alert: AutoSpecOutboxBacklog
+        expr: max(autospec_workflow_outbox_pending) > 100
+        for: 5m
+        labels:
+          severity: warning
+          component: outbox
+        annotations:
+          summary: AutoSpec Outbox backlog is growing
+          description: More than 100 Outbox messages have remained unpublished for 5 minutes.
+
+      - alert: AutoSpecRedisPendingBacklog
+        expr: max(autospec_redis_stream_pending) > 100
+        for: 5m
+        labels:
+          severity: warning
+          component: redis-streams
+        annotations:
+          summary: AutoSpec Redis consumer group has a pending backlog
+          description: More than 100 Redis Stream messages have remained pending for 5 minutes.
+
+      - alert: AutoSpecHttpP99TooHigh
+        expr: |
+          histogram_quantile(
+            0.99,
+            sum by (le) (
+              rate(http_server_requests_seconds_bucket{
+                job="autospec-backend",
+                uri!~"/actuator.*"
+              }[5m])
+            )
+          ) > 2
+        for: 10m
+        labels:
+          severity: warning
+          component: backend
+        annotations:
+          summary: AutoSpec backend HTTP P99 latency is above 2 seconds
+          description: Backend HTTP P99 has exceeded 2 seconds for 10 minutes.
+
+      - alert: AutoSpecHttpFailureRateTooHigh
+        expr: |
+          (
+            sum(rate(http_server_requests_seconds_count{
+              job="autospec-backend",
+              status=~"5..",
+              uri!~"/actuator.*"
+            }[5m]))
+            /
+            clamp_min(
+              sum(rate(http_server_requests_seconds_count{
+                job="autospec-backend",
+                uri!~"/actuator.*"
+              }[5m])),
+              0.001
+            )
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+          component: backend
+        annotations:
+          summary: AutoSpec backend HTTP failure rate is above 5 percent
+          description: Backend HTTP 5xx responses have exceeded 5 percent for 5 minutes.
