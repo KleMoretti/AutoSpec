@@ -1,0 +1,15 @@
+spring:
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: false
+
+autospec:
+  workflow:
+    outbox:
+      enabled: false
+    recovery:
+      enabled: false
+    events:
+      polling:
+        enabled: false
