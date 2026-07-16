@@ -21,6 +21,7 @@
         <java.version>17</java.version>
         <mybatis-plus.version>3.5.7</mybatis-plus.version>
         <skip.unit.tests>false</skip.unit.tests>
+        <testcontainers.version>1.21.4</testcontainers.version>
     </properties>
 
     <dependencies>

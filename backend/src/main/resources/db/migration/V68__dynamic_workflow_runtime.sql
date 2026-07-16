@@ -24,15 +24,15 @@ create table if not exists workflow_version (
     index idx_workflow_version_definition_id (definition_id)
 );
 
-alter table workflow_run add column if not exists workflow_version_id bigint null;
-alter table workflow_run add column if not exists workflow_snapshot_json text null;
-alter table workflow_run add column if not exists replay_of_run_id bigint null;
-alter table workflow_run add column if not exists review_round int not null default 0;
-alter table workflow_run add column if not exists max_review_rounds int not null default 0;
-alter table workflow_run add column if not exists lock_version int not null default 0;
-alter table workflow_run add column if not exists last_heartbeat_at timestamp null;
-create index if not exists idx_workflow_run_workflow_version_id on workflow_run (workflow_version_id);
-create index if not exists idx_workflow_run_replay_of_run_id on workflow_run (replay_of_run_id);
+alter table workflow_run add column workflow_version_id bigint null;
+alter table workflow_run add column workflow_snapshot_json text null;
+alter table workflow_run add column replay_of_run_id bigint null;
+alter table workflow_run add column review_round int not null default 0;
+alter table workflow_run add column max_review_rounds int not null default 0;
+alter table workflow_run add column lock_version int not null default 0;
+alter table workflow_run add column last_heartbeat_at timestamp null;
+create index idx_workflow_run_workflow_version_id on workflow_run (workflow_version_id);
+create index idx_workflow_run_replay_of_run_id on workflow_run (replay_of_run_id);
 
 create table if not exists workflow_node_run (
     id bigint primary key auto_increment,
@@ -124,12 +124,12 @@ create table if not exists processed_workflow_event (
     constraint uk_processed_workflow_event_id unique (event_id)
 );
 
-alter table agent_task add column if not exists workflow_node_run_id bigint null;
-alter table agent_event add column if not exists workflow_node_run_id bigint null;
-alter table artifact add column if not exists workflow_node_run_id bigint null;
-alter table model_invocation add column if not exists workflow_node_run_id bigint null;
+alter table agent_task add column workflow_node_run_id bigint null;
+alter table agent_event add column workflow_node_run_id bigint null;
+alter table artifact add column workflow_node_run_id bigint null;
+alter table model_invocation add column workflow_node_run_id bigint null;
 
-create index if not exists idx_agent_task_workflow_node_run_id on agent_task (workflow_node_run_id);
-create index if not exists idx_agent_event_workflow_node_run_id on agent_event (workflow_node_run_id);
-create index if not exists idx_artifact_workflow_node_run_id on artifact (workflow_node_run_id);
-create index if not exists idx_model_invocation_workflow_node_run_id on model_invocation (workflow_node_run_id);
+create index idx_agent_task_workflow_node_run_id on agent_task (workflow_node_run_id);
+create index idx_agent_event_workflow_node_run_id on agent_event (workflow_node_run_id);
+create index idx_artifact_workflow_node_run_id on artifact (workflow_node_run_id);
+create index idx_model_invocation_workflow_node_run_id on model_invocation (workflow_node_run_id);
