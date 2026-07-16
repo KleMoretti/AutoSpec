@@ -7,16 +7,40 @@ from runtime.node_executor import NodeExecutionEvent
 from runtime.worker import InvalidWorkflowCommandError, StreamMessage
 
 
+DEFAULT_EVENT_STREAM_MAX_LENGTH = 1_000_000
+DEFAULT_DEAD_LETTER_STREAM_MAX_LENGTH = 100_000
+
+
 class RedisWorkflowStreamClient:
-    def __init__(self, redis_client: Any) -> None:
+    def __init__(
+        self,
+        redis_client: Any,
+        event_stream_max_length: int = DEFAULT_EVENT_STREAM_MAX_LENGTH,
+        dead_letter_stream_max_length: int = DEFAULT_DEAD_LETTER_STREAM_MAX_LENGTH,
+    ) -> None:
+        if event_stream_max_length < 1:
+            raise ValueError("event_stream_max_length must be positive")
+        if dead_letter_stream_max_length < 1:
+            raise ValueError("dead_letter_stream_max_length must be positive")
         self._redis = redis_client
+        self._event_stream_max_length = event_stream_max_length
+        self._dead_letter_stream_max_length = dead_letter_stream_max_length
         self._claim_cursors: dict[tuple[str, str, str], str] = {}
 
     @classmethod
-    def from_url(cls, redis_url: str) -> "RedisWorkflowStreamClient":
+    def from_url(
+        cls,
+        redis_url: str,
+        event_stream_max_length: int = DEFAULT_EVENT_STREAM_MAX_LENGTH,
+        dead_letter_stream_max_length: int = DEFAULT_DEAD_LETTER_STREAM_MAX_LENGTH,
+    ) -> "RedisWorkflowStreamClient":
         from redis.asyncio import Redis
 
-        return cls(Redis.from_url(redis_url, decode_responses=False))
+        return cls(
+            Redis.from_url(redis_url, decode_responses=False),
+            event_stream_max_length=event_stream_max_length,
+            dead_letter_stream_max_length=dead_letter_stream_max_length,
+        )
 
     async def close(self) -> None:
         await self._redis.aclose()
@@ -51,7 +75,12 @@ class RedisWorkflowStreamClient:
         return self._decode_read_response(response)
 
     async def publish_event(self, stream: str, event: NodeExecutionEvent) -> None:
-        await self._redis.xadd(stream, {"payload": event.model_dump_json()})
+        await self._redis.xadd(
+            stream,
+            {"payload": event.model_dump_json()},
+            maxlen=self._event_stream_max_length,
+            approximate=True,
+        )
 
     async def acknowledge(self, stream: str, group: str, message_id: str) -> None:
         await self._redis.xack(stream, group, message_id)
@@ -77,6 +106,8 @@ class RedisWorkflowStreamClient:
                     default=self._json_default,
                 ),
             },
+            maxlen=self._dead_letter_stream_max_length,
+            approximate=True,
         )
 
     async def claim_stale_commands(

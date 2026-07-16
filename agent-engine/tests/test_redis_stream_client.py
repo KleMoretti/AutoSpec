@@ -25,8 +25,8 @@ class FakeRedis:
         self.calls.append(("xreadgroup", kwargs))
         return self.read_response
 
-    async def xadd(self, stream, fields):
-        self.calls.append(("xadd", stream, fields))
+    async def xadd(self, stream, fields, **kwargs):
+        self.calls.append(("xadd", stream, fields, kwargs))
         return b"1710000000001-0"
 
     async def xack(self, stream, group, message_id):
@@ -86,7 +86,7 @@ async def test_read_commands_decodes_stream_message():
 @pytest.mark.asyncio
 async def test_publish_and_acknowledge_use_stream_commands():
     redis = FakeRedis()
-    client = RedisWorkflowStreamClient(redis)
+    client = RedisWorkflowStreamClient(redis, event_stream_max_length=250)
 
     await client.publish_event("events", event())
     await client.acknowledge("commands", "workers", "171-0")
@@ -94,13 +94,14 @@ async def test_publish_and_acknowledge_use_stream_commands():
     xadd = redis.calls[0]
     assert xadd[0:2] == ("xadd", "events")
     assert '"event_type":"NODE_SUCCEEDED"' in xadd[2]["payload"]
+    assert xadd[3] == {"maxlen": 250, "approximate": True}
     assert redis.calls[1] == ("xack", "commands", "workers", "171-0")
 
 
 @pytest.mark.asyncio
 async def test_publish_dead_letter_preserves_source_and_original_fields_safely():
     redis = FakeRedis()
-    client = RedisWorkflowStreamClient(redis)
+    client = RedisWorkflowStreamClient(redis, dead_letter_stream_max_length=50)
     message = StreamMessage("171-0", {"payload": "{not-json", "trace_id": "t-1"})
 
     await client.publish_dead_letter(
@@ -119,6 +120,7 @@ async def test_publish_dead_letter_preserves_source_and_original_fields_safely()
         "original_fields": '{"payload":"{not-json","trace_id":"t-1"}',
     }
     assert "exception" not in fields
+    assert redis.calls[0][3] == {"maxlen": 50, "approximate": True}
 
 
 @pytest.mark.asyncio
