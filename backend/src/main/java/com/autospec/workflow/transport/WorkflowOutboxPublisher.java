@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -19,15 +20,32 @@ public class WorkflowOutboxPublisher {
     private final WorkflowOutboxMapper outboxMapper;
     private final WorkflowCommandPublisher commandPublisher;
     private final OutboxRetryPolicy retryPolicy;
+    private final WorkflowTransportMetrics metrics;
 
     public WorkflowOutboxPublisher(
             WorkflowOutboxMapper outboxMapper,
             WorkflowCommandPublisher commandPublisher,
             OutboxRetryPolicy retryPolicy
     ) {
+        this(
+                outboxMapper,
+                commandPublisher,
+                retryPolicy,
+                WorkflowTransportMetrics.isolated()
+        );
+    }
+
+    @Autowired
+    public WorkflowOutboxPublisher(
+            WorkflowOutboxMapper outboxMapper,
+            WorkflowCommandPublisher commandPublisher,
+            OutboxRetryPolicy retryPolicy,
+            WorkflowTransportMetrics metrics
+    ) {
         this.outboxMapper = outboxMapper;
         this.commandPublisher = commandPublisher;
         this.retryPolicy = retryPolicy;
+        this.metrics = metrics;
     }
 
     public int publishPending(int limit) {
@@ -45,6 +63,7 @@ public class WorkflowOutboxPublisher {
         );
         int published = 0;
         for (WorkflowOutbox outbox : pending) {
+            long publishStartedAt = System.nanoTime();
             try {
                 commandPublisher.publish(
                         COMMAND_STREAM,
@@ -52,9 +71,15 @@ public class WorkflowOutboxPublisher {
                         outbox.getPayloadJson()
                 );
             } catch (RuntimeException exception) {
+                metrics.recordOutboxPublishFailure();
                 scheduleRetry(outbox, now, exception);
                 continue;
+            } finally {
+                metrics.recordOutboxPublishDuration(
+                        System.nanoTime() - publishStartedAt
+                );
             }
+            metrics.recordOutboxPublishSuccess();
             int updated = outboxMapper.update(null, new UpdateWrapper<WorkflowOutbox>()
                     .eq("id", outbox.getId())
                     .eq("status", "PENDING")
@@ -82,6 +107,7 @@ public class WorkflowOutboxPublisher {
                 .set("next_retry_at", nextRetryAt)
                 .set("updated_at", now));
         if (updated == 1) {
+            metrics.recordOutboxRetry();
             LOGGER.warn(
                     "Scheduled outbox retry: eventId={}, retryCount={}, nextRetryAt={}, errorClass={}",
                     outbox.getEventId(),

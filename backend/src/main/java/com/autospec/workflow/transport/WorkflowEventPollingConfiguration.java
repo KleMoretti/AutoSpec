@@ -65,7 +65,8 @@ public class WorkflowEventPollingConfiguration {
             WorkflowEventConsumer eventConsumer,
             @Value("${autospec.workflow.events.polling.consumer-name:control-plane}") String consumerName,
             @Value("${autospec.workflow.events.polling.batch-size:10}") int batchSize,
-            @Value("${autospec.workflow.events.polling.claim-min-idle:30s}") String claimMinIdle
+            @Value("${autospec.workflow.events.polling.claim-min-idle:30s}") String claimMinIdle,
+            ObjectProvider<WorkflowTransportMetrics> metricsProvider
     ) {
         Duration parsedClaimMinIdle = DurationStyle.detectAndParse(claimMinIdle);
         return new WorkflowEventPoller(
@@ -73,7 +74,8 @@ public class WorkflowEventPollingConfiguration {
                 eventConsumer::consume,
                 consumerName,
                 batchSize,
-                parsedClaimMinIdle
+                parsedClaimMinIdle,
+                metricsProvider.getIfAvailable(WorkflowTransportMetrics::isolated)
         );
     }
 
