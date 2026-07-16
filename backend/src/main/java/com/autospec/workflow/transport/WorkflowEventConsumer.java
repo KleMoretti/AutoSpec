@@ -11,7 +11,6 @@ import com.autospec.workflow.runtime.WorkflowApprovalCoordinator;
 import com.autospec.workflow.runtime.WorkflowArtifactProjector;
 import com.autospec.workflow.runtime.WorkflowFailureDecisionService;
 import com.autospec.workflow.runtime.ReviewerReworkCoordinator;
-import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -119,17 +118,14 @@ public class WorkflowEventConsumer {
     @Transactional
     public WorkflowEventOutcome consume(String payloadJson) {
         WorkflowExecutionEvent event = parse(payloadJson);
-        if (processedEventMapper.selectCount(new QueryWrapper<ProcessedWorkflowEvent>()
-                .eq("event_id", event.eventId())) > 0) {
-            recordDuplicate(event.workflowRunId());
-            return WorkflowEventOutcome.DUPLICATE;
-        }
-
         ProcessedWorkflowEvent processed = new ProcessedWorkflowEvent();
         processed.setEventId(event.eventId());
         processed.setEventType(event.eventType());
         processed.setProcessedAt(LocalDateTime.now());
-        processedEventMapper.insert(processed);
+        if (processedEventMapper.insertIfAbsent(processed) == 0) {
+            recordDuplicate(event.workflowRunId());
+            return WorkflowEventOutcome.DUPLICATE;
+        }
 
         int updated = apply(event);
         if (updated == 0) {

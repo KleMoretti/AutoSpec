@@ -4,14 +4,27 @@ import com.autospec.entity.ProcessedWorkflowEvent;
 import com.autospec.entity.WorkflowNodeRun;
 import com.autospec.mapper.ProcessedWorkflowEventMapper;
 import com.autospec.mapper.WorkflowNodeRunMapper;
+import com.autospec.mapper.WorkflowRunMapper;
+import com.autospec.workflow.runtime.ReviewerReworkCoordinator;
 import com.autospec.workflow.runtime.RetryPolicyEvaluator;
+import com.autospec.workflow.runtime.WorkflowArtifactProjector;
 import com.autospec.workflow.runtime.WorkflowFailureDecisionService;
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.ibatis.mapping.Environment;
+import org.apache.ibatis.session.Configuration;
+import org.apache.ibatis.session.SqlSession;
+import org.apache.ibatis.session.SqlSessionFactory;
+import org.apache.ibatis.session.SqlSessionFactoryBuilder;
+import org.apache.ibatis.transaction.jdbc.JdbcTransactionFactory;
+import org.h2.jdbcx.JdbcDataSource;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
+import java.sql.Connection;
+import java.sql.Statement;
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -27,15 +40,27 @@ class WorkflowEventConsumerTest {
     void ignoresAnAlreadyProcessedEventId() {
         ProcessedWorkflowEventMapper processedMapper = mock(ProcessedWorkflowEventMapper.class);
         WorkflowNodeRunMapper nodeMapper = mock(WorkflowNodeRunMapper.class);
+        WorkflowRunMapper runMapper = mock(WorkflowRunMapper.class);
         WorkflowRunReconciliationTrigger trigger = mock(WorkflowRunReconciliationTrigger.class);
-        when(processedMapper.selectCount(any())).thenReturn(1L);
-        WorkflowEventConsumer consumer = consumer(processedMapper, nodeMapper, trigger);
+        when(processedMapper.insertIfAbsent(any(ProcessedWorkflowEvent.class))).thenReturn(0);
+        WorkflowEventConsumer consumer = new WorkflowEventConsumer(
+                processedMapper,
+                nodeMapper,
+                trigger,
+                mock(WorkflowFailureDecisionService.class),
+                new ObjectMapper(),
+                null,
+                WorkflowArtifactProjector.none(),
+                ReviewerReworkCoordinator.none(),
+                runMapper
+        );
 
         WorkflowEventOutcome outcome = consumer.consume(successPayload());
 
         assertThat(outcome).isEqualTo(WorkflowEventOutcome.DUPLICATE);
         verify(nodeMapper, never()).update(any(), any());
         verify(trigger, never()).reconcile(any(Long.class));
+        verify(runMapper).update(eq(null), any());
     }
 
     @Test
@@ -43,15 +68,14 @@ class WorkflowEventConsumerTest {
         ProcessedWorkflowEventMapper processedMapper = mock(ProcessedWorkflowEventMapper.class);
         WorkflowNodeRunMapper nodeMapper = mock(WorkflowNodeRunMapper.class);
         WorkflowRunReconciliationTrigger trigger = mock(WorkflowRunReconciliationTrigger.class);
-        when(processedMapper.selectCount(any())).thenReturn(0L);
-        when(processedMapper.insert(any(ProcessedWorkflowEvent.class))).thenReturn(1);
+        when(processedMapper.insertIfAbsent(any(ProcessedWorkflowEvent.class))).thenReturn(1);
         when(nodeMapper.update(any(), any())).thenReturn(1);
         WorkflowEventConsumer consumer = consumer(processedMapper, nodeMapper, trigger);
 
         WorkflowEventOutcome outcome = consumer.consume(successPayload());
 
         assertThat(outcome).isEqualTo(WorkflowEventOutcome.ACCEPTED);
-        verify(processedMapper).insert(any(ProcessedWorkflowEvent.class));
+        verify(processedMapper).insertIfAbsent(any(ProcessedWorkflowEvent.class));
         verify(trigger).reconcile(7L);
     }
 
@@ -60,8 +84,7 @@ class WorkflowEventConsumerTest {
         ProcessedWorkflowEventMapper processedMapper = mock(ProcessedWorkflowEventMapper.class);
         WorkflowNodeRunMapper nodeMapper = mock(WorkflowNodeRunMapper.class);
         WorkflowRunReconciliationTrigger trigger = mock(WorkflowRunReconciliationTrigger.class);
-        when(processedMapper.selectCount(any())).thenReturn(0L);
-        when(processedMapper.insert(any(ProcessedWorkflowEvent.class))).thenReturn(1);
+        when(processedMapper.insertIfAbsent(any(ProcessedWorkflowEvent.class))).thenReturn(1);
         when(nodeMapper.update(any(), any())).thenReturn(0);
         WorkflowEventConsumer consumer = consumer(processedMapper, nodeMapper, trigger);
 
@@ -76,8 +99,7 @@ class WorkflowEventConsumerTest {
         ProcessedWorkflowEventMapper processedMapper = mock(ProcessedWorkflowEventMapper.class);
         WorkflowNodeRunMapper nodeMapper = mock(WorkflowNodeRunMapper.class);
         WorkflowRunReconciliationTrigger trigger = mock(WorkflowRunReconciliationTrigger.class);
-        when(processedMapper.selectCount(any())).thenReturn(0L);
-        when(processedMapper.insert(any(ProcessedWorkflowEvent.class))).thenReturn(1);
+        when(processedMapper.insertIfAbsent(any(ProcessedWorkflowEvent.class))).thenReturn(1);
         when(nodeMapper.update(any(), any())).thenReturn(1);
         WorkflowEventConsumer consumer = consumer(processedMapper, nodeMapper, trigger);
 
@@ -97,8 +119,7 @@ class WorkflowEventConsumerTest {
         nodeRun.setId(11L);
         nodeRun.setAttempt(1);
         LocalDateTime retryAt = LocalDateTime.of(2026, 7, 13, 12, 0, 1);
-        when(processedMapper.selectCount(any())).thenReturn(0L);
-        when(processedMapper.insert(any(ProcessedWorkflowEvent.class))).thenReturn(1);
+        when(processedMapper.insertIfAbsent(any(ProcessedWorkflowEvent.class))).thenReturn(1);
         when(nodeMapper.selectById(11L)).thenReturn(nodeRun);
         when(nodeMapper.update(any(), any())).thenReturn(1);
         when(failureDecisions.decide(eq(nodeRun), eq("MODEL_TIMEOUT"), any()))
@@ -119,6 +140,45 @@ class WorkflowEventConsumerTest {
         assertThat(values.getParamNameValuePairs().values())
                 .contains("RETRY_WAIT", retryAt, "MODEL_TIMEOUT");
         verify(trigger).reconcile(7L);
+    }
+
+    @Test
+    void atomicInsertSqlSupportsH2MysqlMode() throws Exception {
+        JdbcDataSource dataSource = new JdbcDataSource();
+        dataSource.setURL("jdbc:h2:mem:workflow-event-" + UUID.randomUUID()
+                + ";MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1");
+        try (Connection connection = dataSource.getConnection();
+             Statement statement = connection.createStatement()) {
+            statement.execute("""
+                    CREATE TABLE processed_workflow_event (
+                        id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                        event_id VARCHAR(128) NOT NULL UNIQUE,
+                        event_type VARCHAR(64) NOT NULL,
+                        processed_at TIMESTAMP NOT NULL
+                    )
+                    """);
+        }
+
+        Environment environment = new Environment(
+                "h2-mysql-mode",
+                new JdbcTransactionFactory(),
+                dataSource
+        );
+        Configuration configuration = new Configuration(environment);
+        configuration.addMapper(ProcessedWorkflowEventMapper.class);
+        SqlSessionFactory sessionFactory = new SqlSessionFactoryBuilder().build(configuration);
+        ProcessedWorkflowEvent event = new ProcessedWorkflowEvent();
+        event.setEventId("event-1");
+        event.setEventType("NODE_SUCCEEDED");
+        event.setProcessedAt(LocalDateTime.now());
+
+        try (SqlSession session = sessionFactory.openSession(true)) {
+            ProcessedWorkflowEventMapper mapper =
+                    session.getMapper(ProcessedWorkflowEventMapper.class);
+
+            assertThat(mapper.insertIfAbsent(event)).isEqualTo(1);
+            assertThat(mapper.insertIfAbsent(event)).isZero();
+        }
     }
 
     private WorkflowEventConsumer consumer(
