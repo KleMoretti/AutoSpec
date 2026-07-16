@@ -7,9 +7,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.data.domain.Range;
 import org.springframework.data.redis.connection.stream.PendingMessages;
 import org.springframework.data.redis.connection.stream.PendingMessagesSummary;
-import org.springframework.data.redis.core.RedisCallback;
 
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import java.util.UUID;
@@ -91,20 +89,19 @@ class RedisWorkflowTransportIT extends RedisIntegrationTestSupport {
         assertThat(redisTemplate.opsForStream().pending(stream, group)
                 .getPendingMessagesPerConsumer()).containsEntry(stalledConsumer, 1L);
 
-        Object autoClaimReply = redisTemplate.execute((RedisCallback<Object>) connection ->
-                connection.commands().execute(
-                        "XAUTOCLAIM",
-                        raw(stream),
-                        raw(group),
-                        raw(recoveryConsumer),
-                        raw("0"),
-                        raw("0-0"),
-                        raw("COUNT"),
-                        raw("1")
-                )
+        List<WorkflowStreamEventMessage> reclaimed = client.claimStale(
+                stream,
+                group,
+                recoveryConsumer,
+                Duration.ZERO,
+                1
         );
 
-        assertThat(autoClaimReply).isNotNull();
+        assertThat(reclaimed).singleElement()
+                .satisfies(message -> {
+                    assertThat(message.messageId()).isEqualTo(stalledMessage.messageId());
+                    assertThat(message.payloadJson()).isEqualTo(payload);
+                });
         PendingMessages pending = redisTemplate.opsForStream().pending(
                 stream,
                 group,
@@ -177,10 +174,6 @@ class RedisWorkflowTransportIT extends RedisIntegrationTestSupport {
 
     private static String uniqueName(String prefix) {
         return prefix + ":" + UUID.randomUUID();
-    }
-
-    private static byte[] raw(String value) {
-        return value.getBytes(StandardCharsets.UTF_8);
     }
 
     private record ConsumerRaceResult(

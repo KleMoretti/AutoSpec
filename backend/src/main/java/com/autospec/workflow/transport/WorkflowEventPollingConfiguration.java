@@ -64,9 +64,17 @@ public class WorkflowEventPollingConfiguration {
             WorkflowEventStreamClient streamClient,
             WorkflowEventConsumer eventConsumer,
             @Value("${autospec.workflow.events.polling.consumer-name:control-plane}") String consumerName,
-            @Value("${autospec.workflow.events.polling.batch-size:10}") int batchSize
+            @Value("${autospec.workflow.events.polling.batch-size:10}") int batchSize,
+            @Value("${autospec.workflow.events.polling.claim-min-idle:30s}") String claimMinIdle
     ) {
-        return new WorkflowEventPoller(streamClient, eventConsumer::consume, consumerName, batchSize);
+        Duration parsedClaimMinIdle = DurationStyle.detectAndParse(claimMinIdle);
+        return new WorkflowEventPoller(
+                streamClient,
+                eventConsumer::consume,
+                consumerName,
+                batchSize,
+                parsedClaimMinIdle
+        );
     }
 
     @Bean

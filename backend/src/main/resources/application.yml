@@ -71,5 +71,6 @@ autospec:
         consumer-name: ${WORKFLOW_EVENT_CONSUMER_NAME:control-plane}
         batch-size: ${WORKFLOW_EVENT_BATCH_SIZE:10}
         block-timeout: ${WORKFLOW_EVENT_BLOCK_TIMEOUT:1s}
+        claim-min-idle: ${WORKFLOW_EVENT_CLAIM_MIN_IDLE:30s}
         fixed-delay: ${WORKFLOW_EVENT_FIXED_DELAY:1000}
         initial-delay: ${WORKFLOW_EVENT_INITIAL_DELAY:1000}
