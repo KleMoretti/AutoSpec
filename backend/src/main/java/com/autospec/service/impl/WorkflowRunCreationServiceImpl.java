@@ -15,6 +15,7 @@ import com.autospec.workflow.runtime.WorkflowHandlerCatalog;
 import com.autospec.workflow.runtime.WorkflowRunReconciliationService;
 import com.autospec.workflow.runtime.WorkflowSnapshotParser;
 import com.autospec.workflow.spec.WorkflowNodeDocument;
+import com.autospec.workflow.transport.WorkflowAdmissionGuard;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -37,6 +38,7 @@ public class WorkflowRunCreationServiceImpl implements WorkflowRunCreationServic
     private final DagCompiler dagCompiler;
     private final WorkflowHandlerCatalog handlerCatalog;
     private final WorkflowRunReconciliationService reconciliationService;
+    private final WorkflowAdmissionGuard admissionGuard;
     private final ObjectMapper objectMapper;
 
     public WorkflowRunCreationServiceImpl(
@@ -48,6 +50,7 @@ public class WorkflowRunCreationServiceImpl implements WorkflowRunCreationServic
             DagCompiler dagCompiler,
             WorkflowHandlerCatalog handlerCatalog,
             WorkflowRunReconciliationService reconciliationService,
+            WorkflowAdmissionGuard admissionGuard,
             ObjectMapper objectMapper
     ) {
         this.versionMapper = versionMapper;
@@ -58,6 +61,7 @@ public class WorkflowRunCreationServiceImpl implements WorkflowRunCreationServic
         this.dagCompiler = dagCompiler;
         this.handlerCatalog = handlerCatalog;
         this.reconciliationService = reconciliationService;
+        this.admissionGuard = admissionGuard;
         this.objectMapper = objectMapper;
     }
 
@@ -74,6 +78,7 @@ public class WorkflowRunCreationServiceImpl implements WorkflowRunCreationServic
         if (duplicate != null) {
             return duplicate;
         }
+        admissionGuard.admit();
         WorkflowVersion version = versionMapper.selectById(command.workflowVersionId());
         if (version == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Workflow version not found");

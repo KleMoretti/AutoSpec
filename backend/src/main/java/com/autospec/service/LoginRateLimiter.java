@@ -1,5 +1,6 @@
 package com.autospec.service;
 
+import com.autospec.exception.RetryAfterResponseStatusException;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -7,7 +8,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ResponseStatusException;
@@ -126,8 +126,7 @@ public class LoginRateLimiter {
         return new RetryAfterResponseStatusException(
                 HttpStatus.TOO_MANY_REQUESTS,
                 "Too many login attempts",
-                retryAfterSeconds,
-                null
+                retryAfterSeconds
         );
     }
 
@@ -138,24 +137,5 @@ public class LoginRateLimiter {
                 1,
                 cause
         );
-    }
-
-    private static final class RetryAfterResponseStatusException extends ResponseStatusException {
-        private final HttpHeaders headers = new HttpHeaders();
-
-        private RetryAfterResponseStatusException(
-                HttpStatus status,
-                String reason,
-                long retryAfterSeconds,
-                Throwable cause
-        ) {
-            super(status, reason, cause);
-            headers.set(HttpHeaders.RETRY_AFTER, Long.toString(retryAfterSeconds));
-        }
-
-        @Override
-        public HttpHeaders getHeaders() {
-            return headers;
-        }
     }
 }

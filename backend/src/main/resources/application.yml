@@ -79,6 +79,11 @@ autospec:
       event-stream: ${WORKFLOW_EVENT_STREAM:autospec.workflow.events}
       consumer-group: ${WORKFLOW_EVENT_CONSUMER_GROUP:autospec-control-plane}
   workflow:
+    admission:
+      enabled: ${WORKFLOW_ADMISSION_ENABLED:true}
+      max-pending-outbox: ${WORKFLOW_ADMISSION_MAX_PENDING_OUTBOX:10000}
+      max-oldest-outbox-age: ${WORKFLOW_ADMISSION_MAX_OLDEST_OUTBOX_AGE:5m}
+      retry-after: ${WORKFLOW_ADMISSION_RETRY_AFTER:5s}
     available-handlers: ${WORKFLOW_AVAILABLE_HANDLERS:FixtureAgent:v1,ProductManagerAgent:v1,ArchitectAgent:v1,BackendEngineerAgent:v1,BackendEngineerAgent:v2,FrontendEngineerAgent:v1,ReviewerAgent:v1,EvaluatorAgent:v1,author_agent:v1,reviewer_agent:v1}
     commands:
       stream-max-length: ${WORKFLOW_COMMAND_STREAM_MAX_LENGTH:1000000}
