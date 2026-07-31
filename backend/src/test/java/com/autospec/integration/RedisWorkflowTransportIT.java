@@ -119,6 +119,25 @@ class RedisWorkflowTransportIT extends RedisIntegrationTestSupport {
                 .isZero();
     }
 
+    @Test
+    void commandPublisherApproximatelyBoundsStreamLength() {
+        String stream = uniqueName("workflow:bounded");
+        RedisWorkflowCommandPublisher publisher =
+                new RedisWorkflowCommandPublisher(redisTemplate, 10);
+
+        for (int index = 0; index < 250; index++) {
+            publisher.publish(
+                    stream,
+                    "event-" + index,
+                    "{\"sequence\":" + index + "}"
+            );
+        }
+
+        assertThat(redisTemplate.opsForStream().size(stream))
+                .isPositive()
+                .isLessThanOrEqualTo(110);
+    }
+
     private RedisWorkflowEventStreamClient streamClient() {
         return new RedisWorkflowEventStreamClient(redisTemplate, READ_BLOCK_TIMEOUT);
     }
