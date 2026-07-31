@@ -1,27 +1,43 @@
 package com.autospec.service;
 
 import com.autospec.entity.UserAccount;
+import com.autospec.entity.UserSession;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.Base64;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.HexFormat;
 
 @Service
 public class AuthService {
 
     private final UserAccountService userAccountService;
+    private final UserSessionService userSessionService;
+    private final Duration sessionTtl;
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
     private final SecureRandom secureRandom = new SecureRandom();
-    private final Map<String, Long> sessions = new ConcurrentHashMap<>();
 
-    public AuthService(UserAccountService userAccountService) {
+    public AuthService(
+            UserAccountService userAccountService,
+            UserSessionService userSessionService,
+            @Value("${autospec.auth.session.ttl:12h}") Duration sessionTtl
+    ) {
+        if (sessionTtl.isZero() || sessionTtl.isNegative()) {
+            throw new IllegalArgumentException("Session TTL must be positive");
+        }
         this.userAccountService = userAccountService;
+        this.userSessionService = userSessionService;
+        this.sessionTtl = sessionTtl;
     }
 
     @Transactional
@@ -51,30 +67,55 @@ public class AuthService {
         return user;
     }
 
+    @Transactional
     public String issueSession(UserAccount user) {
         byte[] randomBytes = new byte[32];
         secureRandom.nextBytes(randomBytes);
         String token = Base64.getUrlEncoder().withoutPadding().encodeToString(randomBytes);
-        sessions.put(token, user.getId());
+        LocalDateTime now = LocalDateTime.now();
+        UserSession session = new UserSession();
+        session.setTokenHash(hashToken(token));
+        session.setUserId(user.getId());
+        session.setExpiresAt(now.plus(sessionTtl));
+        session.setCreatedAt(now);
+        userSessionService.save(session);
         return token;
     }
 
+    @Transactional
     public Long requireSessionUserId(String sessionToken) {
         if (sessionToken == null || sessionToken.isBlank()) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing session token");
         }
-        Long userId = sessions.get(sessionToken);
-        if (userId == null) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid session token");
-        }
+        LocalDateTime now = LocalDateTime.now();
+        UserSession session = userSessionService.lambdaQuery()
+                .eq(UserSession::getTokenHash, hashToken(sessionToken))
+                .isNull(UserSession::getRevokedAt)
+                .gt(UserSession::getExpiresAt, now)
+                .oneOpt()
+                .orElseThrow(() -> invalidSession());
         boolean enabled = userAccountService.lambdaQuery()
-                .eq(UserAccount::getId, userId)
+                .eq(UserAccount::getId, session.getUserId())
                 .eq(UserAccount::getEnabled, true)
                 .exists();
         if (!enabled) {
-            sessions.remove(sessionToken);
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid session token");
+            session.setRevokedAt(now);
+            userSessionService.updateById(session);
+            throw invalidSession();
         }
-        return userId;
+        return session.getUserId();
+    }
+
+    private String hashToken(String token) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            return HexFormat.of().formatHex(digest.digest(token.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException ex) {
+            throw new IllegalStateException("SHA-256 is unavailable", ex);
+        }
+    }
+
+    private ResponseStatusException invalidSession() {
+        return new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid session token");
     }
 }
