@@ -5,6 +5,7 @@ profile. It adds:
 
 - Prometheus scraping the backend and both Python Worker metric endpoints;
 - provisioned Grafana with the `AutoSpec Operations` dashboard;
+- Tempo receiving OTLP/HTTP traces from the Java backend and Python Workers;
 - Prometheus alerts for Outbox and Redis Pending backlogs, dead letters,
   Worker health and failure rate, HTTP P99 latency, and HTTP 5xx failure rate.
 
@@ -20,6 +21,8 @@ the value is missing.
 $env:MYSQL_PASSWORD = "<local database password>"
 $env:MYSQL_ROOT_PASSWORD = "<local root password>"
 $env:GRAFANA_ADMIN_PASSWORD = "<strong local Grafana password>"
+$env:BACKEND_TRACING_ENABLED = "true"
+$env:WORKER_TRACING_ENABLED = "true"
 docker compose --profile monitoring up -d
 ```
 
@@ -30,9 +33,19 @@ The UIs bind to loopback by default:
 
 - Grafana: `http://127.0.0.1:3000`
 - Prometheus: `http://127.0.0.1:9090`
+- Tempo API: `http://127.0.0.1:3200`
+- OTLP/HTTP ingest: `http://127.0.0.1:4318/v1/traces`
 
 Use `GRAFANA_BIND_ADDRESS` or `PROMETHEUS_BIND_ADDRESS` only when remote access
-is intentional and protected by an authenticated reverse proxy.
+is intentional and protected by an authenticated reverse proxy. Tempo and its
+unauthenticated OTLP receivers use `TEMPO_BIND_ADDRESS` and are also restricted
+to loopback by default.
+
+Grafana provisions `AutoSpec Tempo`; open **Explore**, choose that data source,
+and search by `service.name`, workflow attributes, or a trace ID copied from a
+correlated log line. Tracing remains disabled in the default Compose run, so the
+backend and Workers do not retry an unavailable collector when the monitoring
+profile is not active.
 
 To stop and remove the monitoring containers without deleting metric or
 dashboard state:
@@ -103,6 +116,8 @@ password variables:
     $env:MYSQL_PASSWORD = "compose-validation-only"
     $env:MYSQL_ROOT_PASSWORD = "compose-validation-only"
     $env:GRAFANA_ADMIN_PASSWORD = "compose-validation-only"
+    $env:BACKEND_TRACING_ENABLED = "true"
+    $env:WORKER_TRACING_ENABLED = "true"
     docker compose --profile monitoring config --quiet
 }
 
