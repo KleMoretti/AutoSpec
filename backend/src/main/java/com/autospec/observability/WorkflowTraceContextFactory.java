@@ -48,6 +48,14 @@ public class WorkflowTraceContextFactory {
         return !ZERO_TRACE_ID.equals(parts[1]) && !ZERO_SPAN_ID.equals(parts[2]);
     }
 
+    public static String extractTraceId(String traceparent) {
+        return isValidTraceparent(traceparent) ? traceparent.split("-")[1] : null;
+    }
+
+    public static String extractSpanId(String traceparent) {
+        return isValidTraceparent(traceparent) ? traceparent.split("-")[2] : null;
+    }
+
     private String traceId(String correlationId) {
         String normalized = correlationId.replace("-", "").toLowerCase(Locale.ROOT);
         if (normalized.matches("[0-9a-f]{32}") && !ZERO_TRACE_ID.equals(normalized)) {

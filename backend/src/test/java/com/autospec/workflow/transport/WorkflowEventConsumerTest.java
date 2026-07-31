@@ -20,11 +20,14 @@ import org.apache.ibatis.transaction.jdbc.JdbcTransactionFactory;
 import org.h2.jdbcx.JdbcDataSource;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.slf4j.MDC;
 
 import java.sql.Connection;
 import java.sql.Statement;
 import java.time.LocalDateTime;
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -77,6 +80,32 @@ class WorkflowEventConsumerTest {
         assertThat(outcome).isEqualTo(WorkflowEventOutcome.ACCEPTED);
         verify(processedMapper).insertIfAbsent(any(ProcessedWorkflowEvent.class));
         verify(trigger).reconcile(7L);
+    }
+
+    @Test
+    void exposesTraceContextWhileApplyingAnEventAndClearsItAfterward() {
+        ProcessedWorkflowEventMapper processedMapper = mock(ProcessedWorkflowEventMapper.class);
+        WorkflowNodeRunMapper nodeMapper = mock(WorkflowNodeRunMapper.class);
+        WorkflowRunReconciliationTrigger trigger = mock(WorkflowRunReconciliationTrigger.class);
+        AtomicReference<Map<String, String>> contextDuringUpdate = new AtomicReference<>();
+        when(processedMapper.insertIfAbsent(any(ProcessedWorkflowEvent.class))).thenReturn(1);
+        when(nodeMapper.update(any(), any())).thenAnswer(invocation -> {
+            contextDuringUpdate.set(MDC.getCopyOfContextMap());
+            return 1;
+        });
+        WorkflowEventConsumer consumer = consumer(processedMapper, nodeMapper, trigger);
+
+        WorkflowEventOutcome outcome = consumer.consume(tracedSuccessPayload());
+
+        assertThat(outcome).isEqualTo(WorkflowEventOutcome.ACCEPTED);
+        assertThat(contextDuringUpdate.get())
+                .containsEntry("traceId", "0123456789abcdef0123456789abcdef")
+                .containsEntry("spanId", "0123456789abcdef")
+                .containsEntry("correlationId", "correlation-7")
+                .containsEntry("workflowRunId", "7")
+                .containsEntry("nodeRunId", "11")
+                .containsEntry("executionId", "7:fixture:1:1");
+        assertThat(MDC.getCopyOfContextMap()).isNullOrEmpty();
     }
 
     @Test
@@ -214,6 +243,16 @@ class WorkflowEventConsumerTest {
         return successPayload()
                 .replace("7:fixture:1:1:succeeded", "7:fixture:1:1:heartbeat:1")
                 .replace("NODE_SUCCEEDED", "NODE_HEARTBEAT");
+    }
+
+    private String tracedSuccessPayload() {
+        return successPayload().replace(
+                "\"output_payload\":{\"doubled\":6}",
+                "\"output_payload\":{\"doubled\":6},"
+                        + "\"correlation_id\":\"correlation-7\","
+                        + "\"traceparent\":\"00-0123456789abcdef0123456789abcdef-"
+                        + "0123456789abcdef-01\""
+        );
     }
 
     private String failurePayload() {

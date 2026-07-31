@@ -37,4 +37,16 @@ class WorkflowTraceContextFactoryTest {
                 "00-123e4567e89b12d3a456426614174000-0000000000000000-01"
         )).isFalse();
     }
+
+    @Test
+    void extractsTraceAndSpanIdentifiersFromValidTraceparent() {
+        String traceparent = "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01";
+
+        assertThat(WorkflowTraceContextFactory.extractTraceId(traceparent))
+                .isEqualTo("0123456789abcdef0123456789abcdef");
+        assertThat(WorkflowTraceContextFactory.extractSpanId(traceparent))
+                .isEqualTo("0123456789abcdef");
+        assertThat(WorkflowTraceContextFactory.extractTraceId("invalid")).isNull();
+        assertThat(WorkflowTraceContextFactory.extractSpanId(null)).isNull();
+    }
 }

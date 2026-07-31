@@ -6,6 +6,7 @@ import com.autospec.entity.WorkflowRun;
 import com.autospec.mapper.ProcessedWorkflowEventMapper;
 import com.autospec.mapper.WorkflowNodeRunMapper;
 import com.autospec.mapper.WorkflowRunMapper;
+import com.autospec.observability.WorkflowLogContext;
 import com.autospec.workflow.runtime.RetryPolicyEvaluator;
 import com.autospec.workflow.runtime.WorkflowApprovalCoordinator;
 import com.autospec.workflow.runtime.WorkflowArtifactProjector;
@@ -14,11 +15,15 @@ import com.autospec.workflow.runtime.ReviewerReworkCoordinator;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 
 public class WorkflowEventConsumer {
+    private static final Logger LOGGER = LoggerFactory.getLogger(WorkflowEventConsumer.class);
+
     private final ProcessedWorkflowEventMapper processedEventMapper;
     private final WorkflowNodeRunMapper nodeRunMapper;
     private final WorkflowRunMapper runMapper;
@@ -118,6 +123,20 @@ public class WorkflowEventConsumer {
     @Transactional
     public WorkflowEventOutcome consume(String payloadJson) {
         WorkflowExecutionEvent event = parse(payloadJson);
+        try (WorkflowLogContext ignored = WorkflowLogContext.open(
+                event.correlationId(),
+                event.traceparent(),
+                event.workflowRunId(),
+                event.nodeRunId(),
+                event.executionId()
+        )) {
+            WorkflowEventOutcome outcome = consume(event);
+            logOutcome(event, outcome);
+            return outcome;
+        }
+    }
+
+    private WorkflowEventOutcome consume(WorkflowExecutionEvent event) {
         ProcessedWorkflowEvent processed = new ProcessedWorkflowEvent();
         processed.setEventId(event.eventId());
         processed.setEventType(event.eventType());
@@ -135,6 +154,22 @@ public class WorkflowEventConsumer {
             reconciliationTrigger.reconcile(event.workflowRunId());
         }
         return WorkflowEventOutcome.ACCEPTED;
+    }
+
+    private void logOutcome(WorkflowExecutionEvent event, WorkflowEventOutcome outcome) {
+        if ("NODE_HEARTBEAT".equals(event.eventType())) {
+            LOGGER.debug(
+                    "workflow event consumed outcome={} eventType={}",
+                    outcome,
+                    event.eventType()
+            );
+            return;
+        }
+        LOGGER.info(
+                "workflow event consumed outcome={} eventType={}",
+                outcome,
+                event.eventType()
+        );
     }
 
     private int apply(WorkflowExecutionEvent event) {
