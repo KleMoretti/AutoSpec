@@ -37,6 +37,16 @@ logging:
     correlation: "[${spring.application.name:},%X{traceId:-},%X{spanId:-},%X{correlationId:-},%X{workflowRunId:-},%X{nodeRunId:-},%X{executionId:-}] "
 
 management:
+  tracing:
+    enabled: ${BACKEND_TRACING_ENABLED:false}
+    propagation:
+      type: w3c
+    sampling:
+      probability: ${BACKEND_TRACING_SAMPLING_PROBABILITY:1.0}
+  otlp:
+    tracing:
+      endpoint: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:http://localhost:4318/v1/traces}
+      timeout: ${BACKEND_OTLP_TRACING_TIMEOUT:5s}
   endpoints:
     web:
       exposure:

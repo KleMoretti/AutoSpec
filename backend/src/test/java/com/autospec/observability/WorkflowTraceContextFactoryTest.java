@@ -1,5 +1,10 @@
 package com.autospec.observability;
 
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.SpanContext;
+import io.opentelemetry.api.trace.TraceFlags;
+import io.opentelemetry.api.trace.TraceState;
+import io.opentelemetry.context.Scope;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -48,5 +53,26 @@ class WorkflowTraceContextFactoryTest {
                 .isEqualTo("0123456789abcdef");
         assertThat(WorkflowTraceContextFactory.extractTraceId("invalid")).isNull();
         assertThat(WorkflowTraceContextFactory.extractSpanId(null)).isNull();
+    }
+
+    @Test
+    void propagatesTheCurrentOpenTelemetrySpanWhenAvailable() {
+        SpanContext parent = SpanContext.createFromRemoteParent(
+                "0123456789abcdef0123456789abcdef",
+                "0123456789abcdef",
+                TraceFlags.getSampled(),
+                TraceState.builder().put("autospec", "backend").build()
+        );
+        WorkflowTraceContextFactory.Context context;
+
+        try (Scope ignored = Span.wrap(parent).makeCurrent()) {
+            context = new WorkflowTraceContextFactory().create("correlation-7");
+        }
+
+        assertThat(context.correlationId()).isEqualTo("correlation-7");
+        assertThat(context.traceparent()).isEqualTo(
+                "00-0123456789abcdef0123456789abcdef-0123456789abcdef-01"
+        );
+        assertThat(context.tracestate()).isEqualTo("autospec=backend");
     }
 }

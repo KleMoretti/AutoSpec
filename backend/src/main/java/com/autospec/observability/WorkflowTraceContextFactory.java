@@ -1,13 +1,18 @@
 package com.autospec.observability;
 
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.SpanContext;
+import io.opentelemetry.api.trace.propagation.W3CTraceContextPropagator;
 import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
+import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
@@ -33,6 +38,21 @@ public class WorkflowTraceContextFactory {
         String resolvedCorrelationId = correlationId == null || correlationId.isBlank()
                 ? UUID.randomUUID().toString()
                 : correlationId.strip();
+        SpanContext currentContext = Span.current().getSpanContext();
+        if (currentContext.isValid()) {
+            Map<String, String> carrier = new HashMap<>();
+            W3CTraceContextPropagator.getInstance().inject(
+                    io.opentelemetry.context.Context.current(),
+                    carrier,
+                    Map::put
+            );
+            String tracestate = carrier.get("tracestate");
+            return new Context(
+                    resolvedCorrelationId,
+                    carrier.get("traceparent"),
+                    tracestate == null || tracestate.isBlank() ? null : tracestate
+            );
+        }
         return new Context(
                 resolvedCorrelationId,
                 "00-" + traceId(resolvedCorrelationId) + "-" + spanId() + "-01",
