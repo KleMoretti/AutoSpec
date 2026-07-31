@@ -1,5 +1,6 @@
 package com.autospec.workflow.transport;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -15,6 +16,7 @@ public class OutboxRetryPolicy {
     private final double jitterRatio;
     private final DoubleSupplier random;
 
+    @Autowired
     public OutboxRetryPolicy(
             @Value("${autospec.workflow.outbox.retry.base-delay:1s}") Duration baseDelay,
             @Value("${autospec.workflow.outbox.retry.max-delay:1m}") Duration maxDelay,
