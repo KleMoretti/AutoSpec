@@ -12,6 +12,8 @@ public interface WorkflowRunService extends IService<WorkflowRun> {
 
     List<WorkflowRun> listByProjectId(Long projectId, int limit, int offset);
 
+    List<WorkflowRun> listByProjectIdAfterId(Long projectId, Long afterId, int limit);
+
     WorkflowRun cancelRunningRun(Long projectId, Long runId);
 
     int timeoutRunningRunsBefore(LocalDateTime cutoff);

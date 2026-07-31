@@ -358,6 +358,27 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+  /api/projects/{projectId}/workflow-runs/page:
+    get:
+      summary: List workflow run history using a stable ascending id cursor.
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/SessionToken'
+        - $ref: '#/components/parameters/PaginationLimit'
+        - $ref: '#/components/parameters/PaginationCursor'
+      responses:
+        '200':
+          description: Cursor page of workflow runs.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowRunCursorPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /api/projects/{projectId}/workflow-runs/{runId}/cancel:
     post:
       summary: Cancel a running workflow run.
@@ -802,6 +823,13 @@ components:
         type: integer
         minimum: 0
         default: 0
+    PaginationCursor:
+      name: cursor
+      in: query
+      required: false
+      description: Opaque cursor returned by the previous page; ordering is ascending by id.
+      schema:
+        type: string
   responses:
     BadRequest:
       description: Invalid request.
@@ -1092,6 +1120,19 @@ components:
           type: string
           format: date-time
           nullable: true
+    WorkflowRunCursorPage:
+      type: object
+      required: [items, hasMore]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowRunResponse'
+        nextCursor:
+          type: string
+          nullable: true
+        hasMore:
+          type: boolean
     AuditEventResponse:
       type: object
       required: [id, projectId, eventType, entityType, message, createdAt]

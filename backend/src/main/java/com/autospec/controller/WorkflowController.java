@@ -1,8 +1,10 @@
 package com.autospec.controller;
 
-import com.autospec.dto.WorkflowSnapshotResponse;
-import com.autospec.dto.WorkflowRunResponse;
+import com.autospec.dto.CursorPageResponse;
+import com.autospec.dto.CursorPaginationRequest;
 import com.autospec.dto.PaginationRequest;
+import com.autospec.dto.WorkflowRunResponse;
+import com.autospec.dto.WorkflowSnapshotResponse;
 import com.autospec.entity.WorkflowRun;
 import com.autospec.service.AuditEventService;
 import com.autospec.service.ProjectAccessService;
@@ -74,6 +76,40 @@ public class WorkflowController {
                 .stream()
                 .map(WorkflowRunResponse::from)
                 .toList();
+    }
+
+    @GetMapping("/{projectId}/workflow-runs/page")
+    public CursorPageResponse<WorkflowRunResponse> workflowRunPage(
+            @PathVariable Long projectId,
+            @RequestHeader(value = "X-AutoSpec-Session-Token", required = false) String sessionToken,
+            @RequestParam(defaultValue = "50") Integer limit,
+            @RequestParam(required = false) String cursor
+    ) {
+        CursorPaginationRequest pagination = CursorPaginationRequest.of(limit, cursor);
+        projectAccessService.requireProjectRole(
+                projectId,
+                projectAccessService.resolveUserId(sessionToken),
+                "OWNER",
+                "EDITOR",
+                "VIEWER"
+        );
+        List<WorkflowRun> fetched = workflowRunService.listByProjectIdAfterId(
+                projectId,
+                pagination.afterId(),
+                pagination.fetchLimit()
+        );
+        boolean hasMore = fetched.size() > pagination.limit();
+        List<WorkflowRun> page = hasMore
+                ? fetched.subList(0, pagination.limit())
+                : fetched;
+        String nextCursor = hasMore
+                ? CursorPaginationRequest.encode(page.get(page.size() - 1).getId())
+                : null;
+        return new CursorPageResponse<>(
+                page.stream().map(WorkflowRunResponse::from).toList(),
+                nextCursor,
+                hasMore
+        );
     }
 
     @PostMapping("/{projectId}/workflow-runs/{runId}/cancel")

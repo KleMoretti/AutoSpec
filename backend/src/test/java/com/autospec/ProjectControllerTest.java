@@ -1151,6 +1151,54 @@ class ProjectControllerTest {
     }
 
     @Test
+    void workflowRunCursorPageRemainsStableAcrossConcurrentInserts() throws Exception {
+        String token = loginToken();
+        long projectId = createProject(token, "Workflow Cursor Project", "Build cursor history.");
+        workflowRun(projectId, "cursor-run-1");
+        workflowRun(projectId, "cursor-run-2");
+        workflowRun(projectId, "cursor-run-3");
+
+        String firstPageJson = mockMvc.perform(get(
+                                "/api/projects/{projectId}/workflow-runs/page?limit=2",
+                                projectId
+                        )
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(2))
+                .andExpect(jsonPath("$.items[0].idempotencyKey").value("cursor-run-1"))
+                .andExpect(jsonPath("$.items[1].idempotencyKey").value("cursor-run-2"))
+                .andExpect(jsonPath("$.hasMore").value(true))
+                .andExpect(jsonPath("$.nextCursor").isString())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String cursor = objectMapper.readTree(firstPageJson).path("nextCursor").asText();
+
+        workflowRun(projectId, "cursor-run-4");
+
+        mockMvc.perform(get(
+                                "/api/projects/{projectId}/workflow-runs/page?limit=2&cursor={cursor}",
+                                projectId,
+                                cursor
+                        )
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(2))
+                .andExpect(jsonPath("$.items[0].idempotencyKey").value("cursor-run-3"))
+                .andExpect(jsonPath("$.items[1].idempotencyKey").value("cursor-run-4"))
+                .andExpect(jsonPath("$.hasMore").value(false))
+                .andExpect(jsonPath("$.nextCursor").doesNotExist());
+
+        mockMvc.perform(get(
+                                "/api/projects/{projectId}/workflow-runs/page?cursor=invalid!",
+                                projectId
+                        )
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+    }
+
+    @Test
     void runningWorkflowRunCanBeCancelled() throws Exception {
         String token = loginToken();
         long projectId = createProject(token, "Cancelable Workflow Project", "Build cancellable workflow orchestration.");

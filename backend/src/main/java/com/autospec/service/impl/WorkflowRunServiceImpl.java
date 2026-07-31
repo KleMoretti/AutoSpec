@@ -3,6 +3,7 @@ package com.autospec.service.impl;
 import com.autospec.entity.WorkflowRun;
 import com.autospec.mapper.WorkflowRunMapper;
 import com.autospec.service.WorkflowRunService;
+import com.baomidou.mybatisplus.extension.conditions.query.LambdaQueryChainWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -29,6 +30,18 @@ public class WorkflowRunServiceImpl extends ServiceImpl<WorkflowRunMapper, Workf
                 .eq(WorkflowRun::getProjectId, projectId)
                 .orderByAsc(WorkflowRun::getId)
                 .last("limit " + limit + " offset " + offset)
+                .list();
+    }
+
+    @Override
+    public List<WorkflowRun> listByProjectIdAfterId(Long projectId, Long afterId, int limit) {
+        LambdaQueryChainWrapper<WorkflowRun> query = lambdaQuery()
+                .eq(WorkflowRun::getProjectId, projectId);
+        if (afterId != null) {
+            query.gt(WorkflowRun::getId, afterId);
+        }
+        return query.orderByAsc(WorkflowRun::getId)
+                .last("limit " + limit)
                 .list();
     }
 
