@@ -1,6 +1,7 @@
 package com.autospec.integration;
 
 import com.autospec.dto.WorkflowOutboxBacklogSnapshot;
+import com.autospec.dto.PaginationRequest;
 import com.autospec.entity.Project;
 import com.autospec.entity.WorkflowNodeRun;
 import com.autospec.entity.WorkflowOutbox;
@@ -9,6 +10,7 @@ import com.autospec.mapper.WorkflowNodeRunMapper;
 import com.autospec.mapper.WorkflowOutboxMapper;
 import com.autospec.mapper.WorkflowRunMapper;
 import com.autospec.service.ProjectService;
+import com.autospec.service.WorkflowDeadLetterService;
 import com.autospec.workflow.runtime.MybatisWorkflowSchedulingGateway;
 import com.autospec.workflow.runtime.QueuedNodeCommand;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
@@ -47,6 +49,9 @@ class MySqlOutboxIT extends MySqlIntegrationTestSupport {
     private WorkflowOutboxMapper outboxMapper;
 
     @Autowired
+    private WorkflowDeadLetterService deadLetterService;
+
+    @Autowired
     private MybatisWorkflowSchedulingGateway gateway;
 
     @Autowired
@@ -55,7 +60,7 @@ class MySqlOutboxIT extends MySqlIntegrationTestSupport {
     @Test
     void flywayCreatesRuntimeTablesAndPublishIndexInMySql() {
         Integer migrationApplied = jdbcTemplate.queryForObject(
-                "select count(*) from flyway_schema_history where version = '72' and success = 1",
+                "select count(*) from flyway_schema_history where version = '73' and success = 1",
                 Integer.class
         );
         Integer publishIndex = jdbcTemplate.queryForObject(
@@ -74,6 +79,16 @@ class MySqlOutboxIT extends MySqlIntegrationTestSupport {
         assertThat(jdbcTemplate.queryForObject(
                 """
                         select count(*)
+                        from information_schema.statistics
+                        where table_schema = database()
+                          and table_name = 'workflow_outbox'
+                          and index_name = 'idx_workflow_outbox_aggregate_status_id'
+                        """,
+                Integer.class
+        )).isEqualTo(3);
+        assertThat(jdbcTemplate.queryForObject(
+                """
+                        select count(*)
                         from information_schema.columns
                         where table_schema = database()
                           and table_name = 'workflow_outbox'
@@ -86,6 +101,33 @@ class MySqlOutboxIT extends MySqlIntegrationTestSupport {
                         """,
                 Integer.class
         )).isEqualTo(4);
+    }
+
+    @Test
+    void deadLetterManagementUsesMySqlCompareAndSetTransitions() {
+        WorkflowNodeRun nodeRun = persistPendingNode();
+        long workflowRunId = nodeRun.getWorkflowRunId();
+        WorkflowOutbox replayCandidate = persistDeadLetter(workflowRunId, nodeRun.getId());
+        WorkflowOutbox closeCandidate = persistDeadLetter(workflowRunId, nodeRun.getId());
+
+        assertThat(deadLetterService.listByWorkflowRunId(
+                workflowRunId,
+                "DEAD_LETTER",
+                new PaginationRequest(10, 0)
+        )).extracting(WorkflowOutbox::getId)
+                .contains(replayCandidate.getId(), closeCandidate.getId());
+
+        WorkflowOutbox replayed = deadLetterService.replay(workflowRunId, replayCandidate.getId());
+        WorkflowOutbox replayedFromDatabase = outboxMapper.selectById(replayCandidate.getId());
+        assertThat(replayed.getEventId()).isEqualTo(replayCandidate.getEventId());
+        assertThat(replayedFromDatabase.getStatus()).isEqualTo("PENDING");
+        assertThat(replayedFromDatabase.getRetryCount()).isZero();
+        assertThat(replayedFromDatabase.getNextRetryAt()).isNull();
+
+        deadLetterService.close(workflowRunId, closeCandidate.getId());
+        WorkflowOutbox closedFromDatabase = outboxMapper.selectById(closeCandidate.getId());
+        assertThat(closedFromDatabase.getStatus()).isEqualTo("CLOSED");
+        assertThat(closedFromDatabase.getClosedAt()).isNotNull();
     }
 
     @Test
@@ -187,6 +229,24 @@ class MySqlOutboxIT extends MySqlIntegrationTestSupport {
     private long outboxCount(String eventId) {
         return outboxMapper.selectCount(new LambdaQueryWrapper<WorkflowOutbox>()
                 .eq(WorkflowOutbox::getEventId, eventId));
+    }
+
+    private WorkflowOutbox persistDeadLetter(long workflowRunId, long nodeRunId) {
+        LocalDateTime now = LocalDateTime.now();
+        WorkflowOutbox outbox = new WorkflowOutbox();
+        outbox.setEventId(UUID.randomUUID().toString());
+        outbox.setAggregateId(Long.toString(workflowRunId));
+        outbox.setEventType("EXECUTE_NODE");
+        outbox.setPayloadJson("{\"node_run_id\":" + nodeRunId + "}");
+        outbox.setStatus("DEAD_LETTER");
+        outbox.setRetryCount(5);
+        outbox.setLastErrorType("IllegalStateException");
+        outbox.setLastErrorAt(now);
+        outbox.setDeadLetteredAt(now);
+        outbox.setCreatedAt(now);
+        outbox.setUpdatedAt(now);
+        outboxMapper.insert(outbox);
+        return outbox;
     }
 
     private static final class ForcedRollbackException extends RuntimeException {
