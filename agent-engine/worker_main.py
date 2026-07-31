@@ -19,6 +19,7 @@ from runtime.worker import COMMAND_DLQ_STREAM, WorkflowStreamWorker
 from runtime.worker_metrics import WorkerMetrics
 from runtime.worker_runner import WorkflowWorkerRunner
 from runtime.workflow_log_context import install_workflow_log_filter
+from runtime.worker_tracing import configure_worker_tracer
 
 
 def build_runner(
@@ -49,6 +50,7 @@ def build_runner(
         NodeExecutor(build_production_registry()),
         heartbeat_interval_seconds=float(os.getenv("WORKER_HEARTBEAT_SECONDS", "10")),
         metrics=metrics,
+        tracer=configure_worker_tracer(),
     )
     return WorkflowWorkerRunner(
         client,

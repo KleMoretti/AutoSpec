@@ -7,6 +7,9 @@ from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+from opentelemetry import trace
+from opentelemetry.trace import SpanKind, Status, StatusCode, Tracer
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 from pydantic import ValidationError
 
 from runtime.node_executor import NodeCommand, NodeExecutionEvent, NodeExecutor
@@ -58,6 +61,7 @@ class WorkflowStreamWorker:
         consumer_group: str = WORKER_GROUP,
         heartbeat_interval_seconds: float = 10.0,
         metrics: WorkerMetricsRecorder = NO_OP_WORKER_METRICS,
+        tracer: Tracer | None = None,
     ) -> None:
         self._client = client
         self._executor = executor
@@ -66,30 +70,64 @@ class WorkflowStreamWorker:
         self._consumer_group = consumer_group
         self._heartbeat_interval_seconds = heartbeat_interval_seconds
         self._metrics = metrics
+        self._tracer = tracer or trace.get_tracer("autospec.agent-worker")
 
     async def process(self, message: StreamMessage) -> NodeExecutionEvent:
         command = self._parse_command(message)
-        with bind_workflow_log_context(command):
-            try:
-                heartbeat_task = asyncio.create_task(self._publish_heartbeats(command))
+        parent_context = TraceContextTextMapPropagator().extract(
+            {
+                key: value
+                for key, value in {
+                    "traceparent": command.traceparent,
+                    "tracestate": command.tracestate,
+                }.items()
+                if value is not None
+            }
+        )
+        with self._tracer.start_as_current_span(
+            "workflow.node.execute",
+            context=parent_context,
+            kind=SpanKind.CONSUMER,
+            attributes={
+                "messaging.system": "redis",
+                "messaging.message.id": command.event_id,
+                "autospec.workflow.run.id": command.workflow_run_id,
+                "autospec.workflow.node.run.id": command.node_run_id,
+                "autospec.workflow.node.id": command.node_id,
+                "autospec.workflow.execution.id": command.execution_id,
+                "autospec.workflow.handler.key": command.handler_key,
+                "autospec.workflow.handler.version": command.handler_version,
+                "autospec.correlation.id": command.correlation_id or "",
+            },
+        ) as span:
+            with bind_workflow_log_context(command):
                 try:
-                    event = await self._executor.execute(command)
-                finally:
-                    heartbeat_task.cancel()
-                    with suppress(asyncio.CancelledError):
-                        await heartbeat_task
-                await self._client.publish_event(self._event_stream, event)
-                await self._client.acknowledge(
-                    self._command_stream, self._consumer_group, message.message_id
+                    heartbeat_task = asyncio.create_task(
+                        self._publish_heartbeats(command)
+                    )
+                    try:
+                        event = await self._executor.execute(command)
+                    finally:
+                        heartbeat_task.cancel()
+                        with suppress(asyncio.CancelledError):
+                            await heartbeat_task
+                    await self._client.publish_event(self._event_stream, event)
+                    await self._client.acknowledge(
+                        self._command_stream, self._consumer_group, message.message_id
+                    )
+                except Exception:
+                    LOGGER.exception("workflow command processing failed")
+                    raise
+                span.set_attribute("autospec.workflow.event.type", event.event_type)
+                if event.event_type == "NODE_FAILED":
+                    span.set_status(
+                        Status(StatusCode.ERROR, event.error_code or "NODE_FAILED")
+                    )
+                LOGGER.info(
+                    "workflow command processed event_type=%s",
+                    event.event_type,
                 )
-            except Exception:
-                LOGGER.exception("workflow command processing failed")
-                raise
-            LOGGER.info(
-                "workflow command processed event_type=%s",
-                event.event_type,
-            )
-            return event
+                return event
 
     async def _publish_heartbeats(self, command: NodeCommand) -> None:
         sequence = 0

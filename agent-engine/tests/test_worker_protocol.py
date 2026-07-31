@@ -2,6 +2,10 @@ import json
 import asyncio
 
 import pytest
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+from opentelemetry.trace import SpanKind
 
 from runtime.handler_registry import HandlerRegistry
 from runtime.node_executor import NodeExecutionEvent
@@ -115,6 +119,39 @@ async def test_worker_binds_trace_context_during_execution_and_restores_it():
         "executionId": "7:fixture:1:1",
     }
     assert workflow_log_context() == {}
+
+
+@pytest.mark.asyncio
+async def test_worker_span_continues_remote_w3c_trace():
+    exporter = InMemorySpanExporter()
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    client = FakeStreamClient()
+    worker = WorkflowStreamWorker(
+        client,
+        StubExecutor(success_event()),
+        tracer=provider.get_tracer("test.agent-worker"),
+    )
+
+    try:
+        await worker.process(message())
+    finally:
+        provider.shutdown()
+
+    spans = exporter.get_finished_spans()
+    assert len(spans) == 1
+    span = spans[0]
+    assert span.name == "workflow.node.execute"
+    assert span.kind == SpanKind.CONSUMER
+    assert span.context.trace_id == int(
+        "123e4567e89b12d3a456426614174000",
+        16,
+    )
+    assert span.parent.span_id == int("123e4567e89b12d3", 16)
+    assert span.attributes["messaging.system"] == "redis"
+    assert span.attributes["autospec.workflow.run.id"] == 7
+    assert span.attributes["autospec.workflow.node.run.id"] == 11
+    assert span.attributes["autospec.workflow.event.type"] == "NODE_SUCCEEDED"
 
 
 @pytest.mark.asyncio
