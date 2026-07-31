@@ -63,6 +63,7 @@ services:
       WORKFLOW_OUTBOX_ENABLED: "true"
       WORKFLOW_EVENT_POLLING_ENABLED: "true"
       WORKFLOW_EVENT_CONSUMER_NAME: control-plane
+      WORKFLOW_BACKLOG_METRICS_ENABLED: "true"
       WORKFLOW_RECOVERY_ENABLED: "true"
     ports:
       - "${BACKEND_PORT:-8080}:8080"

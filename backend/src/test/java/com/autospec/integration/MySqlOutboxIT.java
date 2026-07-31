@@ -1,5 +1,6 @@
 package com.autospec.integration;
 
+import com.autospec.dto.WorkflowOutboxBacklogSnapshot;
 import com.autospec.entity.Project;
 import com.autospec.entity.WorkflowNodeRun;
 import com.autospec.entity.WorkflowOutbox;
@@ -97,6 +98,28 @@ class MySqlOutboxIT extends MySqlIntegrationTestSupport {
 
         assertThat(nodeRunMapper.selectById(nodeRun.getId()).getStatus()).isEqualTo("PENDING");
         assertThat(outboxCount(command.eventId())).isZero();
+    }
+
+    @Test
+    void pendingBacklogProjectionUsesMySqlAggregation() {
+        WorkflowOutboxBacklogSnapshot before = outboxMapper.selectPendingBacklog();
+        long previousCount = before.getPendingCount();
+        LocalDateTime createdAt = LocalDateTime.now().minusMinutes(2);
+        WorkflowOutbox pending = new WorkflowOutbox();
+        pending.setEventId("metrics-" + UUID.randomUUID());
+        pending.setAggregateId("metrics");
+        pending.setEventType("EXECUTE_NODE");
+        pending.setPayloadJson("{}");
+        pending.setStatus("PENDING");
+        pending.setRetryCount(0);
+        pending.setCreatedAt(createdAt);
+        pending.setUpdatedAt(createdAt);
+        outboxMapper.insert(pending);
+
+        WorkflowOutboxBacklogSnapshot snapshot = outboxMapper.selectPendingBacklog();
+
+        assertThat(snapshot.getPendingCount()).isEqualTo(previousCount + 1);
+        assertThat(snapshot.getOldestCreatedAt()).isBeforeOrEqualTo(createdAt.plusSeconds(1));
     }
 
     private WorkflowNodeRun persistPendingNode() {

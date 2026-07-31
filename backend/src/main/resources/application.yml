@@ -49,6 +49,13 @@ management:
 autospec:
   agent-engine:
     base-url: ${AGENT_ENGINE_BASE_URL:http://localhost:8000}
+  observability:
+    workflow-backlog:
+      enabled: ${WORKFLOW_BACKLOG_METRICS_ENABLED:false}
+      fixed-delay: ${WORKFLOW_BACKLOG_METRICS_FIXED_DELAY:15000}
+      initial-delay: ${WORKFLOW_BACKLOG_METRICS_INITIAL_DELAY:5000}
+      event-stream: ${WORKFLOW_EVENT_STREAM:autospec.workflow.events}
+      consumer-group: ${WORKFLOW_EVENT_CONSUMER_GROUP:autospec-control-plane}
   workflow:
     available-handlers: ${WORKFLOW_AVAILABLE_HANDLERS:FixtureAgent:v1,ProductManagerAgent:v1,ArchitectAgent:v1,BackendEngineerAgent:v1,BackendEngineerAgent:v2,FrontendEngineerAgent:v1,ReviewerAgent:v1,EvaluatorAgent:v1,author_agent:v1,reviewer_agent:v1}
     commands:
