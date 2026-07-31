@@ -3,6 +3,7 @@ package com.autospec;
 import com.autospec.entity.UserAccount;
 import com.autospec.entity.UserSession;
 import com.autospec.service.AuthService;
+import com.autospec.service.LoginRateLimiter;
 import com.autospec.service.UserAccountService;
 import com.autospec.service.UserSessionService;
 import org.junit.jupiter.api.Test;
@@ -36,6 +37,9 @@ class AuthServiceTest {
     private MockMvc mockMvc;
 
     @Autowired
+    private LoginRateLimiter loginRateLimiter;
+
+    @Autowired
     private UserAccountService userAccountService;
 
     @Autowired
@@ -63,6 +67,7 @@ class AuthServiceTest {
         AuthService secondInstance = new AuthService(
                 userAccountService,
                 userSessionService,
+                loginRateLimiter,
                 Duration.ofHours(12)
         );
         assertThat(secondInstance.requireSessionUserId(token)).isEqualTo(user.getId());

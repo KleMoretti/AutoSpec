@@ -40,6 +40,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
   /api/auth/logout:
     post:
       summary: Revoke the current persistent session token.
@@ -809,6 +811,17 @@ components:
             $ref: '#/components/schemas/ApiErrorResponse'
     Unauthorized:
       description: Missing or invalid session token.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiErrorResponse'
+    TooManyRequests:
+      description: Login attempt rate limit exceeded.
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+            minimum: 1
       content:
         application/json:
           schema:

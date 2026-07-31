@@ -23,6 +23,7 @@ public class AuthService {
 
     private final UserAccountService userAccountService;
     private final UserSessionService userSessionService;
+    private final LoginRateLimiter loginRateLimiter;
     private final Duration sessionTtl;
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
     private final SecureRandom secureRandom = new SecureRandom();
@@ -30,6 +31,7 @@ public class AuthService {
     public AuthService(
             UserAccountService userAccountService,
             UserSessionService userSessionService,
+            LoginRateLimiter loginRateLimiter,
             @Value("${autospec.auth.session.ttl:12h}") Duration sessionTtl
     ) {
         if (sessionTtl.isZero() || sessionTtl.isNegative()) {
@@ -37,6 +39,7 @@ public class AuthService {
         }
         this.userAccountService = userAccountService;
         this.userSessionService = userSessionService;
+        this.loginRateLimiter = loginRateLimiter;
         this.sessionTtl = sessionTtl;
     }
 
@@ -57,6 +60,11 @@ public class AuthService {
     }
 
     public UserAccount login(String username, String password) {
+        return login(username, password, "unknown");
+    }
+
+    public UserAccount login(String username, String password, String clientAddress) {
+        loginRateLimiter.checkAndRecord(username, clientAddress);
         UserAccount user = userAccountService.lambdaQuery()
                 .eq(UserAccount::getUsername, username)
                 .oneOpt()
@@ -64,6 +72,7 @@ public class AuthService {
         if (!Boolean.TRUE.equals(user.getEnabled()) || !passwordEncoder.matches(password, user.getPasswordHash())) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid credentials");
         }
+        loginRateLimiter.reset(username, clientAddress);
         return user;
     }
 

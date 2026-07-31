@@ -11,6 +11,11 @@ spring:
     enabled: true
     locations: classpath:db/migration
 
+autospec:
+  auth:
+    login-rate-limit:
+      enabled: false
+
 mybatis-plus:
   configuration:
     map-underscore-to-camel-case: true

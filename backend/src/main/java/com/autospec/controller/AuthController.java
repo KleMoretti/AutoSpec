@@ -3,6 +3,7 @@ package com.autospec.controller;
 import com.autospec.dto.LoginRequest;
 import com.autospec.dto.LoginResponse;
 import com.autospec.service.AuthService;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -22,9 +23,9 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public LoginResponse login(@RequestBody LoginRequest request) {
+    public LoginResponse login(@RequestBody LoginRequest request, HttpServletRequest httpRequest) {
         authService.ensureDemoOwner();
-        var user = authService.login(request.username(), request.password());
+        var user = authService.login(request.username(), request.password(), httpRequest.getRemoteAddr());
         return LoginResponse.from(user, authService.issueSession(user));
     }
 

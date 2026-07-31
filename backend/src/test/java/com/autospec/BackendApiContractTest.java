@@ -102,6 +102,8 @@ class BackendApiContractTest {
                 .contains("latestOpenReviewIssueDescription")
                 .contains("PaginationLimit")
                 .contains("PaginationOffset")
+                .contains("TooManyRequests")
+                .contains("Retry-After")
                 .contains("X-AutoSpec-Session-Token")
                 .contains("Idempotency-Key");
     }
