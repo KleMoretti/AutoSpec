@@ -10,6 +10,7 @@ from runtime.worker import (
     StreamMessage,
     WorkflowStreamWorker,
 )
+from runtime.workflow_log_context import workflow_log_context
 
 
 class FakeStreamClient:
@@ -88,6 +89,32 @@ async def test_worker_publishes_terminal_event_before_acknowledging_command():
     assert client.acknowledged == [
         ("autospec.workflow.commands", "autospec-workers", "1710000000000-0")
     ]
+
+
+@pytest.mark.asyncio
+async def test_worker_binds_trace_context_during_execution_and_restores_it():
+    class ContextCapturingExecutor:
+        def __init__(self):
+            self.context = None
+
+        async def execute(self, _command):
+            self.context = workflow_log_context()
+            return success_event()
+
+    client = FakeStreamClient()
+    executor = ContextCapturingExecutor()
+    worker = WorkflowStreamWorker(client, executor)
+
+    await worker.process(message())
+
+    assert executor.context == {
+        "traceId": "123e4567e89b12d3a456426614174000",
+        "correlationId": "123e4567-e89b-12d3-a456-426614174000",
+        "workflowRunId": "7",
+        "nodeRunId": "11",
+        "executionId": "7:fixture:1:1",
+    }
+    assert workflow_log_context() == {}
 
 
 @pytest.mark.asyncio

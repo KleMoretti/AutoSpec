@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import asyncio
+import logging
 from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -10,12 +11,15 @@ from pydantic import ValidationError
 
 from runtime.node_executor import NodeCommand, NodeExecutionEvent, NodeExecutor
 from runtime.worker_metrics import NO_OP_WORKER_METRICS, WorkerMetricsRecorder
+from runtime.workflow_log_context import bind_workflow_log_context
 
 
 COMMAND_STREAM = "autospec.workflow.commands"
 COMMAND_DLQ_STREAM = "autospec.workflow.commands.dlq"
 EVENT_STREAM = "autospec.workflow.events"
 WORKER_GROUP = "autospec-workers"
+
+LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -65,18 +69,27 @@ class WorkflowStreamWorker:
 
     async def process(self, message: StreamMessage) -> NodeExecutionEvent:
         command = self._parse_command(message)
-        heartbeat_task = asyncio.create_task(self._publish_heartbeats(command))
-        try:
-            event = await self._executor.execute(command)
-        finally:
-            heartbeat_task.cancel()
-            with suppress(asyncio.CancelledError):
-                await heartbeat_task
-        await self._client.publish_event(self._event_stream, event)
-        await self._client.acknowledge(
-            self._command_stream, self._consumer_group, message.message_id
-        )
-        return event
+        with bind_workflow_log_context(command):
+            try:
+                heartbeat_task = asyncio.create_task(self._publish_heartbeats(command))
+                try:
+                    event = await self._executor.execute(command)
+                finally:
+                    heartbeat_task.cancel()
+                    with suppress(asyncio.CancelledError):
+                        await heartbeat_task
+                await self._client.publish_event(self._event_stream, event)
+                await self._client.acknowledge(
+                    self._command_stream, self._consumer_group, message.message_id
+                )
+            except Exception:
+                LOGGER.exception("workflow command processing failed")
+                raise
+            LOGGER.info(
+                "workflow command processed event_type=%s",
+                event.event_type,
+            )
+            return event
 
     async def _publish_heartbeats(self, command: NodeCommand) -> None:
         sequence = 0

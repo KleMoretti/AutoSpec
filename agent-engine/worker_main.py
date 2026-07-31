@@ -18,6 +18,7 @@ from runtime.redis_stream_client import (
 from runtime.worker import COMMAND_DLQ_STREAM, WorkflowStreamWorker
 from runtime.worker_metrics import WorkerMetrics
 from runtime.worker_runner import WorkflowWorkerRunner
+from runtime.workflow_log_context import install_workflow_log_filter
 
 
 def build_runner(
@@ -72,8 +73,14 @@ async def run() -> None:
 def main() -> None:
     logging.basicConfig(
         level=os.getenv("LOG_LEVEL", "INFO").upper(),
-        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+        format=(
+            "%(asctime)s %(levelname)s %(name)s "
+            "traceId=%(traceId)s correlationId=%(correlationId)s "
+            "workflowRunId=%(workflowRunId)s nodeRunId=%(nodeRunId)s "
+            "executionId=%(executionId)s %(message)s"
+        ),
     )
+    install_workflow_log_filter()
     metrics = WorkerMetrics()
     start_http_server(
         port=int(os.getenv("WORKER_METRICS_PORT", "9100")),
