@@ -2,13 +2,17 @@ package com.autospec.workflow.runtime;
 
 import com.autospec.entity.WorkflowNodeRun;
 import com.autospec.entity.WorkflowOutbox;
+import com.autospec.entity.WorkflowRun;
 import com.autospec.mapper.WorkflowNodeRunMapper;
 import com.autospec.mapper.WorkflowOutboxMapper;
+import com.autospec.mapper.WorkflowRunMapper;
+import com.autospec.observability.WorkflowTraceContextFactory;
 import com.autospec.workflow.transport.WorkflowRunReconciliationTrigger;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,6 +29,25 @@ public class WorkflowRecoveryService {
     private final WorkflowOutboxMapper outboxMapper;
     private final ObjectMapper objectMapper;
     private final WorkflowRunReconciliationTrigger reconciliationTrigger;
+    private final WorkflowRunMapper runMapper;
+    private final WorkflowTraceContextFactory traceContextFactory;
+
+    @Autowired
+    public WorkflowRecoveryService(
+            WorkflowNodeRunMapper nodeRunMapper,
+            WorkflowOutboxMapper outboxMapper,
+            ObjectMapper objectMapper,
+            WorkflowRunReconciliationTrigger reconciliationTrigger,
+            WorkflowRunMapper runMapper,
+            WorkflowTraceContextFactory traceContextFactory
+    ) {
+        this.nodeRunMapper = nodeRunMapper;
+        this.outboxMapper = outboxMapper;
+        this.objectMapper = objectMapper;
+        this.reconciliationTrigger = reconciliationTrigger;
+        this.runMapper = runMapper;
+        this.traceContextFactory = traceContextFactory;
+    }
 
     public WorkflowRecoveryService(
             WorkflowNodeRunMapper nodeRunMapper,
@@ -32,10 +55,14 @@ public class WorkflowRecoveryService {
             ObjectMapper objectMapper,
             WorkflowRunReconciliationTrigger reconciliationTrigger
     ) {
-        this.nodeRunMapper = nodeRunMapper;
-        this.outboxMapper = outboxMapper;
-        this.objectMapper = objectMapper;
-        this.reconciliationTrigger = reconciliationTrigger;
+        this(
+                nodeRunMapper,
+                outboxMapper,
+                objectMapper,
+                reconciliationTrigger,
+                null,
+                new WorkflowTraceContextFactory()
+        );
     }
 
     @Transactional
@@ -169,8 +196,16 @@ public class WorkflowRecoveryService {
     }
 
     private WorkflowOutbox compensationCommand(WorkflowNodeRun queued, LocalDateTime now) {
+        WorkflowRun run = runMapper == null ? null : runMapper.selectById(queued.getWorkflowRunId());
+        String correlationId = run == null
+                ? Long.toString(queued.getWorkflowRunId())
+                : run.getCorrelationId();
         QueuedNodeCommand command = QueuedNodeCommand.fromNodeRun(
-                UUID.randomUUID().toString(), queued, queued.getExecutionId(), objectMapper
+                UUID.randomUUID().toString(),
+                queued,
+                queued.getExecutionId(),
+                traceContextFactory.create(correlationId),
+                objectMapper
         );
         WorkflowOutbox outbox = new WorkflowOutbox();
         outbox.setEventId(command.eventId());

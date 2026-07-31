@@ -21,6 +21,7 @@ class WorkflowRunReconciliationServiceTest {
         WorkflowReconciler reconciler = mock(WorkflowReconciler.class);
         WorkflowRun run = new WorkflowRun();
         run.setId(7L);
+        run.setCorrelationId("correlation-7");
         run.setWorkflowSnapshotJson("""
                 {
                   "workflow_key":"autospec-v5",
@@ -43,7 +44,11 @@ class WorkflowRunReconciliationServiceTest {
         service.reconcile(7L);
 
         ArgumentCaptor<CompiledWorkflow> graph = ArgumentCaptor.forClass(CompiledWorkflow.class);
-        verify(reconciler).reconcile(org.mockito.ArgumentMatchers.eq(7L), graph.capture());
+        verify(reconciler).reconcile(
+                org.mockito.ArgumentMatchers.eq(7L),
+                org.mockito.ArgumentMatchers.eq("correlation-7"),
+                graph.capture()
+        );
         assertThat(graph.getValue().maxParallelNodes()).isEqualTo(2);
         assertThat(graph.getValue().topologicalLayers()).containsExactly(
                 java.util.List.of("architect"),
@@ -66,6 +71,7 @@ class WorkflowRunReconciliationServiceTest {
                 .hasMessageContaining("404");
         verify(reconciler, never()).reconcile(
                 org.mockito.ArgumentMatchers.anyLong(),
+                org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.any(CompiledWorkflow.class)
         );
     }

@@ -28,6 +28,9 @@ def command(**overrides):
         "handler_version": "v1",
         "timeout_ms": 1000,
         "input_payload": {"value": 3},
+        "correlation_id": "123e4567-e89b-12d3-a456-426614174000",
+        "traceparent": "00-123e4567e89b12d3a456426614174000-123e4567e89b12d3-01",
+        "tracestate": "autospec=backend",
     }
     payload.update(overrides)
     return NodeCommand.model_validate(payload)
@@ -57,6 +60,9 @@ async def test_executor_validates_input_and_output_and_returns_success_event():
     assert event.execution_id == "7:fixture:1:1"
     assert event.output_payload == {"doubled": 6}
     assert event.error_code is None
+    assert event.correlation_id == "123e4567-e89b-12d3-a456-426614174000"
+    assert event.traceparent == command().traceparent
+    assert event.tracestate == "autospec=backend"
 
 
 @pytest.mark.asyncio

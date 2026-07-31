@@ -52,6 +52,9 @@ def message():
                     "handler_version": "v1",
                     "timeout_ms": 1000,
                     "input_payload": {"value": 3},
+                    "correlation_id": "123e4567-e89b-12d3-a456-426614174000",
+                    "traceparent": "00-123e4567e89b12d3a456426614174000-123e4567e89b12d3-01",
+                    "tracestate": "autospec=backend",
                 }
             )
         },
@@ -142,6 +145,22 @@ async def test_worker_safely_classifies_invalid_json_without_acknowledging():
 
 
 @pytest.mark.asyncio
+async def test_worker_safely_classifies_invalid_trace_context():
+    client = FakeStreamClient()
+    worker = WorkflowStreamWorker(client, StubExecutor(success_event()))
+    payload = json.loads(message().fields["payload"])
+    payload["traceparent"] = "00-invalid"
+
+    with pytest.raises(InvalidWorkflowCommandError) as error:
+        await worker.process(
+            StreamMessage(message_id="1-0", fields={"payload": json.dumps(payload)})
+        )
+
+    assert error.value.error_type == "SCHEMA_VALIDATION"
+    assert client.acknowledged == []
+
+
+@pytest.mark.asyncio
 async def test_worker_publishes_heartbeat_before_terminal_event_for_long_execution():
     class SlowExecutor:
         async def execute(self, _command):
@@ -160,4 +179,11 @@ async def test_worker_publishes_heartbeat_before_terminal_event_for_long_executi
     event_types = [published.event_type for _, published in client.published]
     assert event_types[-1] == "NODE_SUCCEEDED"
     assert "NODE_HEARTBEAT" in event_types[:-1]
+    heartbeat = next(
+        published
+        for _, published in client.published
+        if published.event_type == "NODE_HEARTBEAT"
+    )
+    assert heartbeat.correlation_id == "123e4567-e89b-12d3-a456-426614174000"
+    assert heartbeat.traceparent.endswith("-123e4567e89b12d3-01")
     assert len(client.acknowledged) == 1

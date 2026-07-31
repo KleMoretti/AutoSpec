@@ -2,15 +2,39 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import re
 from time import perf_counter
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from runtime.handler_registry import HandlerRegistry, UnknownHandlerError
 
 
-class NodeCommand(BaseModel):
+TRACEPARENT_PATTERN = re.compile(
+    r"^(?!ff-)[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$"
+)
+
+
+class TraceContextEnvelope(BaseModel):
+    correlation_id: str | None = Field(default=None, min_length=1, max_length=128)
+    traceparent: str | None = None
+    tracestate: str | None = Field(default=None, max_length=512)
+
+    @field_validator("traceparent")
+    @classmethod
+    def validate_traceparent(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        if not TRACEPARENT_PATTERN.fullmatch(value):
+            raise ValueError("traceparent must be a valid W3C trace parent")
+        _, trace_id, span_id, _ = value.split("-")
+        if trace_id == "0" * 32 or span_id == "0" * 16:
+            raise ValueError("traceparent IDs must not be all zeroes")
+        return value
+
+
+class NodeCommand(TraceContextEnvelope):
     event_id: str = Field(min_length=1)
     workflow_run_id: int
     node_run_id: int
@@ -24,7 +48,7 @@ class NodeCommand(BaseModel):
     input_payload: dict[str, Any] = Field(default_factory=dict)
 
 
-class NodeExecutionEvent(BaseModel):
+class NodeExecutionEvent(TraceContextEnvelope):
     event_id: str
     source_event_id: str
     event_type: Literal["NODE_HEARTBEAT", "NODE_SUCCEEDED", "NODE_FAILED"]
@@ -90,6 +114,9 @@ class NodeExecutor:
             execution_id=command.execution_id,
             duration_ms=self._duration_ms(started),
             output_payload=validated_output.model_dump(mode="json"),
+            correlation_id=command.correlation_id,
+            traceparent=command.traceparent,
+            tracestate=command.tracestate,
         )
 
     async def _invoke(self, handler, validated_input: BaseModel) -> Any:
@@ -118,6 +145,9 @@ class NodeExecutor:
             duration_ms=self._duration_ms(started),
             error_code=error_code,
             error_message=error_message,
+            correlation_id=command.correlation_id,
+            traceparent=command.traceparent,
+            tracestate=command.tracestate,
         )
 
     def _duration_ms(self, started: float) -> int:

@@ -66,8 +66,11 @@ class WorkflowRecoveryServiceTest {
         WorkflowOutbox outbox = inserted.getValue();
         assertThat(outbox.getEventType()).isEqualTo("EXECUTE_NODE");
         assertThat(outbox.getStatus()).isEqualTo("PENDING");
-        assertThat(new ObjectMapper().readTree(outbox.getPayloadJson()).get("node_run_id").asLong())
-                .isEqualTo(12L);
+        var payload = new ObjectMapper().readTree(outbox.getPayloadJson());
+        assertThat(payload.get("node_run_id").asLong()).isEqualTo(12L);
+        assertThat(payload.get("correlation_id").asText()).isEqualTo("7");
+        assertThat(payload.get("traceparent").asText())
+                .matches("00-[0-9a-f]{32}-[0-9a-f]{16}-01");
         assertThat(result.compensatedCommands()).isEqualTo(1);
     }
 

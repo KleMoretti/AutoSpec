@@ -51,7 +51,7 @@ public class WorkflowRunReconciliationService implements WorkflowRunReconciliati
         CompiledWorkflow graph = dagCompiler.compile(
                 snapshotParser.parse(run.getWorkflowSnapshotJson())
         );
-        workflowReconciler.reconcile(workflowRunId, graph);
+        workflowReconciler.reconcile(workflowRunId, run.getCorrelationId(), graph);
         completeIfTerminal(run, graph);
     }
 

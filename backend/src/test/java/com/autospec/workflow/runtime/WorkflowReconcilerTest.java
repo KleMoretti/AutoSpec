@@ -1,6 +1,7 @@
 package com.autospec.workflow.runtime;
 
 import com.autospec.entity.WorkflowNodeRun;
+import com.autospec.observability.WorkflowTraceContextFactory;
 import com.autospec.workflow.spec.WorkflowNodeDocument;
 import com.autospec.workflow.spec.WorkflowSpecDocument;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -32,6 +33,9 @@ class WorkflowReconcilerTest {
             assertThat(command.handlerVersion()).isEqualTo("v1");
             assertThat(command.timeoutMs()).isEqualTo(30000);
             assertThat(command.inputPayload().isObject()).isTrue();
+            assertThat(command.correlationId()).isEqualTo("7");
+            assertThat(WorkflowTraceContextFactory.isValidTraceparent(command.traceparent()))
+                    .isTrue();
         });
     }
 

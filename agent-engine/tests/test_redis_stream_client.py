@@ -51,6 +51,8 @@ def event():
         execution_id="7:fixture:1:1",
         duration_ms=12,
         output_payload={"doubled": 6},
+        correlation_id="123e4567-e89b-12d3-a456-426614174000",
+        traceparent="00-123e4567e89b12d3a456426614174000-123e4567e89b12d3-01",
     )
 
 
@@ -94,6 +96,8 @@ async def test_publish_and_acknowledge_use_stream_commands():
     xadd = redis.calls[0]
     assert xadd[0:2] == ("xadd", "events")
     assert '"event_type":"NODE_SUCCEEDED"' in xadd[2]["payload"]
+    assert '"correlation_id":"123e4567-e89b-12d3-a456-426614174000"' in xadd[2]["payload"]
+    assert '"traceparent":"00-123e4567e89b12d3a456426614174000-123e4567e89b12d3-01"' in xadd[2]["payload"]
     assert xadd[3] == {"maxlen": 250, "approximate": True}
     assert redis.calls[1] == ("xack", "commands", "workers", "171-0")
 

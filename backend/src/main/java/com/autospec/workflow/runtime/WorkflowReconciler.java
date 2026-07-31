@@ -1,6 +1,7 @@
 package com.autospec.workflow.runtime;
 
 import com.autospec.entity.WorkflowNodeRun;
+import com.autospec.observability.WorkflowTraceContextFactory;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -18,6 +19,7 @@ public class WorkflowReconciler {
     private final ObjectMapper objectMapper;
     private final WorkflowApprovalCoordinator approvalCoordinator;
     private final WorkflowNodeInputAssembler inputAssembler;
+    private final WorkflowTraceContextFactory traceContextFactory;
 
     @Autowired
     public WorkflowReconciler(
@@ -25,13 +27,32 @@ public class WorkflowReconciler {
             NodeReadinessEvaluator readinessEvaluator,
             ObjectMapper objectMapper,
             WorkflowApprovalCoordinator approvalCoordinator,
-            WorkflowNodeInputAssembler inputAssembler
+            WorkflowNodeInputAssembler inputAssembler,
+            WorkflowTraceContextFactory traceContextFactory
     ) {
         this.gateway = gateway;
         this.readinessEvaluator = readinessEvaluator;
         this.objectMapper = objectMapper;
         this.approvalCoordinator = approvalCoordinator;
         this.inputAssembler = inputAssembler;
+        this.traceContextFactory = traceContextFactory;
+    }
+
+    public WorkflowReconciler(
+            WorkflowSchedulingGateway gateway,
+            NodeReadinessEvaluator readinessEvaluator,
+            ObjectMapper objectMapper,
+            WorkflowApprovalCoordinator approvalCoordinator,
+            WorkflowNodeInputAssembler inputAssembler
+    ) {
+        this(
+                gateway,
+                readinessEvaluator,
+                objectMapper,
+                approvalCoordinator,
+                inputAssembler,
+                new WorkflowTraceContextFactory()
+        );
     }
 
     public WorkflowReconciler(
@@ -39,10 +60,26 @@ public class WorkflowReconciler {
             NodeReadinessEvaluator readinessEvaluator,
             ObjectMapper objectMapper
     ) {
-        this(gateway, readinessEvaluator, objectMapper, WorkflowApprovalCoordinator.none(), null);
+        this(
+                gateway,
+                readinessEvaluator,
+                objectMapper,
+                WorkflowApprovalCoordinator.none(),
+                null,
+                new WorkflowTraceContextFactory()
+        );
     }
 
     public ReconciliationResult reconcile(long workflowRunId, CompiledWorkflow graph) {
+        return reconcile(workflowRunId, Long.toString(workflowRunId), graph);
+    }
+
+    public ReconciliationResult reconcile(
+            long workflowRunId,
+            String correlationId,
+            CompiledWorkflow graph
+    ) {
+        WorkflowTraceContextFactory.Context traceContext = traceContextFactory.create(correlationId);
         List<WorkflowNodeRun> runs = gateway.listNodeRuns(workflowRunId);
         Map<String, WorkflowNodeRun> latestRuns = new LinkedHashMap<>();
         for (WorkflowNodeRun run : runs) {
@@ -76,7 +113,11 @@ public class WorkflowReconciler {
             String executionId = workflowRunId + ":" + nodeId + ":"
                     + nodeRun.getRevision() + ":" + nodeRun.getAttempt();
             QueuedNodeCommand command = QueuedNodeCommand.fromNodeRun(
-                    UUID.randomUUID().toString(), nodeRun, executionId, objectMapper
+                    UUID.randomUUID().toString(),
+                    nodeRun,
+                    executionId,
+                    traceContext,
+                    objectMapper
             );
             if (gateway.reserveAndAppendCommand(nodeRun, command)) {
                 queued.add(nodeId);

@@ -94,6 +94,9 @@ class WorkflowStreamWorker:
                 attempt=command.attempt,
                 execution_id=command.execution_id,
                 duration_ms=round(sequence * self._heartbeat_interval_seconds * 1000),
+                correlation_id=command.correlation_id,
+                traceparent=command.traceparent,
+                tracestate=command.tracestate,
             )
             await self._client.publish_event(self._event_stream, heartbeat)
             self._metrics.pulse()
