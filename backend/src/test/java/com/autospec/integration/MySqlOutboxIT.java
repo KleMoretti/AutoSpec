@@ -55,7 +55,7 @@ class MySqlOutboxIT extends MySqlIntegrationTestSupport {
     @Test
     void flywayCreatesRuntimeTablesAndPublishIndexInMySql() {
         Integer migrationApplied = jdbcTemplate.queryForObject(
-                "select count(*) from flyway_schema_history where version = '71' and success = 1",
+                "select count(*) from flyway_schema_history where version = '72' and success = 1",
                 Integer.class
         );
         Integer publishIndex = jdbcTemplate.queryForObject(
@@ -71,6 +71,21 @@ class MySqlOutboxIT extends MySqlIntegrationTestSupport {
 
         assertThat(migrationApplied).isEqualTo(1);
         assertThat(publishIndex).isGreaterThan(0);
+        assertThat(jdbcTemplate.queryForObject(
+                """
+                        select count(*)
+                        from information_schema.columns
+                        where table_schema = database()
+                          and table_name = 'workflow_outbox'
+                          and column_name in (
+                              'last_error_type',
+                              'last_error_at',
+                              'dead_lettered_at',
+                              'closed_at'
+                          )
+                        """,
+                Integer.class
+        )).isEqualTo(4);
     }
 
     @Test

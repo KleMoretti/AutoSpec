@@ -16,6 +16,8 @@ public class WorkflowTransportMetrics {
             "autospec.workflow.outbox.publish.failures";
     public static final String OUTBOX_RETRIES =
             "autospec.workflow.outbox.retries";
+    public static final String OUTBOX_DEAD_LETTERS =
+            "autospec.workflow.outbox.dead.letters";
     public static final String OUTBOX_PUBLISH_DURATION =
             "autospec.workflow.outbox.publish.duration";
     public static final String REDIS_STREAM_FRESH =
@@ -30,6 +32,7 @@ public class WorkflowTransportMetrics {
     private final Counter outboxPublishSuccesses;
     private final Counter outboxPublishFailures;
     private final Counter outboxRetries;
+    private final Counter outboxDeadLetters;
     private final Timer outboxPublishDuration;
     private final Counter freshEvents;
     private final Counter reclaimedEvents;
@@ -51,6 +54,11 @@ public class WorkflowTransportMetrics {
                 registry,
                 OUTBOX_RETRIES,
                 "Workflow outbox retries successfully scheduled"
+        );
+        this.outboxDeadLetters = counter(
+                registry,
+                OUTBOX_DEAD_LETTERS,
+                "Workflow outbox commands moved to dead letter status"
         );
         this.outboxPublishDuration = Timer.builder(OUTBOX_PUBLISH_DURATION)
                 .description("Time spent publishing a workflow outbox command to Redis")
@@ -91,6 +99,10 @@ public class WorkflowTransportMetrics {
 
     void recordOutboxRetry() {
         outboxRetries.increment();
+    }
+
+    void recordOutboxDeadLetter() {
+        outboxDeadLetters.increment();
     }
 
     void recordOutboxPublishDuration(long durationNanos) {

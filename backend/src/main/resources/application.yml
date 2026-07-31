@@ -69,6 +69,7 @@ autospec:
         base-delay: ${WORKFLOW_OUTBOX_RETRY_BASE_DELAY:1s}
         max-delay: ${WORKFLOW_OUTBOX_RETRY_MAX_DELAY:1m}
         jitter-ratio: ${WORKFLOW_OUTBOX_RETRY_JITTER_RATIO:0.2}
+        max-attempts: ${WORKFLOW_OUTBOX_RETRY_MAX_ATTEMPTS:5}
     recovery:
       enabled: ${WORKFLOW_RECOVERY_ENABLED:false}
       lease-timeout: ${WORKFLOW_RECOVERY_LEASE_TIMEOUT:30s}

@@ -67,10 +67,41 @@ class WorkflowOutboxPublisherTest {
                 (UpdateWrapper<WorkflowOutbox>) updates.getAllValues().get(1);
         assertThat(retryUpdate.getSqlSet())
                 .contains("retry_count = retry_count + 1")
-                .contains("next_retry_at");
+                .contains("next_retry_at")
+                .contains("last_error_type")
+                .contains("last_error_at");
         assertThat(publishedUpdate.getSqlSet())
                 .contains("status")
                 .contains("published_at");
+    }
+
+    @Test
+    void movesCommandToDeadLetterAfterMaximumAttempts() {
+        WorkflowOutboxMapper mapper = mock(WorkflowOutboxMapper.class);
+        WorkflowCommandPublisher commandPublisher = mock(WorkflowCommandPublisher.class);
+        WorkflowOutbox outbox = pendingOutbox();
+        outbox.setRetryCount(4);
+        when(mapper.selectList(any())).thenReturn(List.of(outbox));
+        when(mapper.update(any(), any())).thenReturn(1);
+        org.mockito.Mockito.doThrow(new IllegalStateException("redis unavailable"))
+                .when(commandPublisher)
+                .publish(any(), any(), any());
+        WorkflowOutboxPublisher publisher = publisher(mapper, commandPublisher);
+
+        assertThat(publisher.publishPending(10)).isZero();
+
+        ArgumentCaptor<com.baomidou.mybatisplus.core.conditions.Wrapper<WorkflowOutbox>> update =
+                ArgumentCaptor.forClass(com.baomidou.mybatisplus.core.conditions.Wrapper.class);
+        verify(mapper).update(org.mockito.ArgumentMatchers.isNull(), update.capture());
+        UpdateWrapper<WorkflowOutbox> deadLetterUpdate =
+                (UpdateWrapper<WorkflowOutbox>) update.getValue();
+        assertThat(deadLetterUpdate.getSqlSet())
+                .contains("retry_count = retry_count + 1")
+                .contains("next_retry_at")
+                .contains("dead_lettered_at")
+                .contains("last_error_type");
+        assertThat(deadLetterUpdate.getParamNameValuePairs().values())
+                .contains("DEAD_LETTER", "IllegalStateException");
     }
 
     private WorkflowOutbox pendingOutbox() {
