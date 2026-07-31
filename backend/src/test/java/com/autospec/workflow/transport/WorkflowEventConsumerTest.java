@@ -5,12 +5,20 @@ import com.autospec.entity.WorkflowNodeRun;
 import com.autospec.mapper.ProcessedWorkflowEventMapper;
 import com.autospec.mapper.WorkflowNodeRunMapper;
 import com.autospec.mapper.WorkflowRunMapper;
+import com.autospec.observability.WorkflowEventTracer;
 import com.autospec.workflow.runtime.ReviewerReworkCoordinator;
 import com.autospec.workflow.runtime.RetryPolicyEvaluator;
 import com.autospec.workflow.runtime.WorkflowArtifactProjector;
 import com.autospec.workflow.runtime.WorkflowFailureDecisionService;
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.opentelemetry.api.OpenTelemetry;
+import io.opentelemetry.api.trace.SpanKind;
+import io.opentelemetry.context.propagation.ContextPropagators;
+import io.opentelemetry.sdk.OpenTelemetrySdk;
+import io.opentelemetry.sdk.testing.exporter.InMemorySpanExporter;
+import io.opentelemetry.sdk.trace.SdkTracerProvider;
+import io.opentelemetry.sdk.trace.export.SimpleSpanProcessor;
 import org.apache.ibatis.mapping.Environment;
 import org.apache.ibatis.session.Configuration;
 import org.apache.ibatis.session.SqlSession;
@@ -106,6 +114,62 @@ class WorkflowEventConsumerTest {
                 .containsEntry("nodeRunId", "11")
                 .containsEntry("executionId", "7:fixture:1:1");
         assertThat(MDC.getCopyOfContextMap()).isNullOrEmpty();
+    }
+
+    @Test
+    void continuesWorkerTraceWhileConsumingAnEvent() {
+        InMemorySpanExporter exporter = InMemorySpanExporter.create();
+        SdkTracerProvider provider = SdkTracerProvider.builder()
+                .addSpanProcessor(SimpleSpanProcessor.create(exporter))
+                .build();
+        OpenTelemetry openTelemetry = OpenTelemetrySdk.builder()
+                .setTracerProvider(provider)
+                .setPropagators(ContextPropagators.create(
+                        io.opentelemetry.api.trace.propagation
+                                .W3CTraceContextPropagator.getInstance()
+                ))
+                .build();
+        ProcessedWorkflowEventMapper processedMapper = mock(ProcessedWorkflowEventMapper.class);
+        WorkflowNodeRunMapper nodeMapper = mock(WorkflowNodeRunMapper.class);
+        WorkflowRunReconciliationTrigger trigger = mock(WorkflowRunReconciliationTrigger.class);
+        when(processedMapper.insertIfAbsent(any(ProcessedWorkflowEvent.class))).thenReturn(1);
+        when(nodeMapper.update(any(), any())).thenReturn(1);
+        WorkflowEventConsumer consumer = new WorkflowEventConsumer(
+                processedMapper,
+                nodeMapper,
+                trigger,
+                mock(WorkflowFailureDecisionService.class),
+                new ObjectMapper(),
+                null,
+                WorkflowArtifactProjector.none(),
+                ReviewerReworkCoordinator.none(),
+                null,
+                new WorkflowEventTracer(openTelemetry)
+        );
+
+        java.util.List<io.opentelemetry.sdk.trace.data.SpanData> spans;
+        try {
+            assertThat(consumer.consume(tracedSuccessPayload()))
+                    .isEqualTo(WorkflowEventOutcome.ACCEPTED);
+            spans = exporter.getFinishedSpanItems();
+        } finally {
+            provider.close();
+        }
+
+        assertThat(spans).singleElement().satisfies(span -> {
+            assertThat(span.getName()).isEqualTo("workflow.event.consume");
+            assertThat(span.getKind()).isEqualTo(SpanKind.CONSUMER);
+            assertThat(span.getSpanContext().getTraceId())
+                    .isEqualTo("0123456789abcdef0123456789abcdef");
+            assertThat(span.getParentSpanContext().getSpanId())
+                    .isEqualTo("0123456789abcdef");
+            assertThat(span.getAttributes().asMap()).containsEntry(
+                    io.opentelemetry.api.common.AttributeKey.stringKey(
+                            "autospec.workflow.event.outcome"
+                    ),
+                    "ACCEPTED"
+            );
+        });
     }
 
     @Test

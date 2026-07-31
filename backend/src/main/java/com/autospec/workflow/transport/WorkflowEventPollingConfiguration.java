@@ -3,11 +3,13 @@ package com.autospec.workflow.transport;
 import com.autospec.mapper.ProcessedWorkflowEventMapper;
 import com.autospec.mapper.WorkflowNodeRunMapper;
 import com.autospec.mapper.WorkflowRunMapper;
+import com.autospec.observability.WorkflowEventTracer;
 import com.autospec.workflow.runtime.WorkflowFailureDecisionService;
 import com.autospec.workflow.runtime.WorkflowApprovalCoordinator;
 import com.autospec.workflow.runtime.WorkflowArtifactProjector;
 import com.autospec.workflow.runtime.ReviewerReworkCoordinator;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.opentelemetry.api.OpenTelemetry;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.convert.DurationStyle;
@@ -37,6 +39,7 @@ public class WorkflowEventPollingConfiguration {
             ObjectProvider<WorkflowApprovalCoordinator> approvalCoordinatorProvider,
             ObjectProvider<WorkflowArtifactProjector> artifactProjectorProvider,
             ObjectProvider<ReviewerReworkCoordinator> reworkCoordinatorProvider,
+            ObjectProvider<OpenTelemetry> openTelemetryProvider,
             ObjectMapper objectMapper
     ) {
         return new WorkflowEventConsumer(
@@ -46,7 +49,10 @@ public class WorkflowEventPollingConfiguration {
                 approvalCoordinatorProvider.getIfAvailable(WorkflowApprovalCoordinator::none),
                 artifactProjectorProvider.getIfAvailable(WorkflowArtifactProjector::none),
                 reworkCoordinatorProvider.getIfAvailable(ReviewerReworkCoordinator::none),
-                runMapperProvider.getIfAvailable()
+                runMapperProvider.getIfAvailable(),
+                new WorkflowEventTracer(
+                        openTelemetryProvider.getIfAvailable(OpenTelemetry::noop)
+                )
         );
     }
 

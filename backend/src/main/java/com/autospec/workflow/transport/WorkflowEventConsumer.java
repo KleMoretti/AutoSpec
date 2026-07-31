@@ -6,6 +6,7 @@ import com.autospec.entity.WorkflowRun;
 import com.autospec.mapper.ProcessedWorkflowEventMapper;
 import com.autospec.mapper.WorkflowNodeRunMapper;
 import com.autospec.mapper.WorkflowRunMapper;
+import com.autospec.observability.WorkflowEventTracer;
 import com.autospec.observability.WorkflowLogContext;
 import com.autospec.workflow.runtime.RetryPolicyEvaluator;
 import com.autospec.workflow.runtime.WorkflowApprovalCoordinator;
@@ -33,6 +34,7 @@ public class WorkflowEventConsumer {
     private final WorkflowApprovalCoordinator approvalCoordinator;
     private final WorkflowArtifactProjector artifactProjector;
     private final ReviewerReworkCoordinator reworkCoordinator;
+    private final WorkflowEventTracer eventTracer;
 
     public WorkflowEventConsumer(
             ProcessedWorkflowEventMapper processedEventMapper,
@@ -89,6 +91,32 @@ public class WorkflowEventConsumer {
             ReviewerReworkCoordinator reworkCoordinator,
             WorkflowRunMapper runMapper
     ) {
+        this(
+                processedEventMapper,
+                nodeRunMapper,
+                reconciliationTrigger,
+                failureDecisionService,
+                objectMapper,
+                approvalCoordinator,
+                artifactProjector,
+                reworkCoordinator,
+                runMapper,
+                WorkflowEventTracer.noop()
+        );
+    }
+
+    public WorkflowEventConsumer(
+            ProcessedWorkflowEventMapper processedEventMapper,
+            WorkflowNodeRunMapper nodeRunMapper,
+            WorkflowRunReconciliationTrigger reconciliationTrigger,
+            WorkflowFailureDecisionService failureDecisionService,
+            ObjectMapper objectMapper,
+            WorkflowApprovalCoordinator approvalCoordinator,
+            WorkflowArtifactProjector artifactProjector,
+            ReviewerReworkCoordinator reworkCoordinator,
+            WorkflowRunMapper runMapper,
+            WorkflowEventTracer eventTracer
+    ) {
         this.processedEventMapper = processedEventMapper;
         this.nodeRunMapper = nodeRunMapper;
         this.runMapper = runMapper;
@@ -98,6 +126,7 @@ public class WorkflowEventConsumer {
         this.approvalCoordinator = approvalCoordinator;
         this.artifactProjector = artifactProjector;
         this.reworkCoordinator = reworkCoordinator;
+        this.eventTracer = eventTracer;
     }
 
     public WorkflowEventConsumer(
@@ -123,16 +152,23 @@ public class WorkflowEventConsumer {
     @Transactional
     public WorkflowEventOutcome consume(String payloadJson) {
         WorkflowExecutionEvent event = parse(payloadJson);
-        try (WorkflowLogContext ignored = WorkflowLogContext.open(
+        WorkflowEventTracer.TraceScope traceScope = eventTracer.start(event);
+        try (traceScope; WorkflowLogContext ignored = WorkflowLogContext.open(
                 event.correlationId(),
                 event.traceparent(),
                 event.workflowRunId(),
                 event.nodeRunId(),
                 event.executionId()
         )) {
-            WorkflowEventOutcome outcome = consume(event);
-            logOutcome(event, outcome);
-            return outcome;
+            try {
+                WorkflowEventOutcome outcome = consume(event);
+                traceScope.outcome(outcome);
+                logOutcome(event, outcome);
+                return outcome;
+            } catch (RuntimeException exception) {
+                traceScope.error(exception);
+                throw exception;
+            }
         }
     }
 

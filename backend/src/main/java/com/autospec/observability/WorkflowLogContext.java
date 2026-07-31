@@ -1,5 +1,7 @@
 package com.autospec.observability;
 
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.SpanContext;
 import org.slf4j.MDC;
 
 import java.util.LinkedHashMap;
@@ -27,8 +29,19 @@ public final class WorkflowLogContext implements AutoCloseable {
         for (String key : KEYS) {
             previousValues.put(key, MDC.get(key));
         }
-        put("traceId", WorkflowTraceContextFactory.extractTraceId(traceparent));
-        put("spanId", WorkflowTraceContextFactory.extractSpanId(traceparent));
+        SpanContext currentContext = Span.current().getSpanContext();
+        put(
+                "traceId",
+                currentContext.isValid()
+                        ? currentContext.getTraceId()
+                        : WorkflowTraceContextFactory.extractTraceId(traceparent)
+        );
+        put(
+                "spanId",
+                currentContext.isValid()
+                        ? currentContext.getSpanId()
+                        : WorkflowTraceContextFactory.extractSpanId(traceparent)
+        );
         put("correlationId", correlationId);
         put("workflowRunId", Long.toString(workflowRunId));
         put("nodeRunId", Long.toString(nodeRunId));
