@@ -11,6 +11,25 @@ groups:
           summary: AutoSpec Outbox backlog is growing
           description: More than 100 Outbox messages have remained unpublished for 5 minutes.
 
+      - alert: AutoSpecOutboxOldestMessageTooOld
+        expr: max(autospec_workflow_outbox_oldest_age_seconds) > 300
+        for: 5m
+        labels:
+          severity: critical
+          component: outbox
+        annotations:
+          summary: AutoSpec Outbox publication is stalled
+          description: The oldest unpublished Outbox message has been waiting for more than 5 minutes.
+
+      - alert: AutoSpecOutboxCommandDeadLettered
+        expr: increase(autospec_workflow_outbox_dead_letters_total[5m]) > 0
+        labels:
+          severity: critical
+          component: outbox
+        annotations:
+          summary: AutoSpec moved an Outbox command to dead letter
+          description: At least one command exhausted its Outbox publication retries in the last 5 minutes.
+
       - alert: AutoSpecRedisPendingBacklog
         expr: max(autospec_redis_stream_pending) > 100
         for: 5m
@@ -20,6 +39,71 @@ groups:
         annotations:
           summary: AutoSpec Redis consumer group has a pending backlog
           description: More than 100 Redis Stream messages have remained pending for 5 minutes.
+
+      - alert: AutoSpecRedisPendingMessageTooOld
+        expr: max(autospec_redis_stream_oldest_idle_seconds) > 120
+        for: 5m
+        labels:
+          severity: critical
+          component: redis-streams
+        annotations:
+          summary: AutoSpec Redis pending message is stale
+          description: The oldest pending workflow event has been idle for more than 2 minutes.
+
+      - alert: AutoSpecWorkflowBacklogMetricsCollectionFailed
+        expr: increase(autospec_workflow_backlog_collection_failures_total[5m]) > 0
+        labels:
+          severity: warning
+          component: observability
+        annotations:
+          summary: AutoSpec backlog metrics collection failed
+          description: MySQL or Redis backlog collection failed during the last 5 minutes; backlog gauges may be stale.
+
+      - alert: AutoSpecWorkerTargetDown
+        expr: up{job="autospec-worker"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: worker
+        annotations:
+          summary: AutoSpec Worker metrics target is down
+          description: Prometheus has been unable to scrape {{ $labels.instance }} for 2 minutes.
+
+      - alert: AutoSpecWorkerHeartbeatStale
+        expr: autospec_worker_active == 1 and autospec_worker_heartbeat_delay_seconds > 60
+        for: 2m
+        labels:
+          severity: critical
+          component: worker
+        annotations:
+          summary: AutoSpec Worker heartbeat is stale
+          description: Worker {{ $labels.instance }} has reported no progress or heartbeat for more than 1 minute.
+
+      - alert: AutoSpecWorkerFailureRateTooHigh
+        expr: |
+          (
+            sum(rate(autospec_worker_commands_total{outcome=~"failed|dead_lettered"}[5m]))
+            /
+            clamp_min(sum(rate(autospec_worker_commands_total[5m])), 0.001)
+          ) > 0.05
+          and
+          sum(increase(autospec_worker_commands_total[5m])) >= 20
+        for: 5m
+        labels:
+          severity: critical
+          component: worker
+        annotations:
+          summary: AutoSpec Worker command failure rate is above 5 percent
+          description: Worker failures and poison-message dead letters exceeded 5 percent with at least 20 commands in 5 minutes.
+
+      - alert: AutoSpecWorkflowEventHandlerFailed
+        expr: increase(autospec_workflow_event_handler_failures_total[5m]) > 0
+        labels:
+          severity: critical
+          component: control-plane
+        annotations:
+          summary: AutoSpec workflow event handling failed
+          description: At least one workflow result event failed before acknowledgement in the last 5 minutes.
 
       - alert: AutoSpecHttpP99TooHigh
         expr: |

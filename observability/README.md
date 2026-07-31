@@ -5,8 +5,8 @@ profile. It adds:
 
 - Prometheus scraping the backend and both Python Worker metric endpoints;
 - provisioned Grafana with the `AutoSpec Operations` dashboard;
-- Prometheus alerts for Outbox and Redis Pending backlogs, HTTP P99 latency,
-  and HTTP 5xx failure rate.
+- Prometheus alerts for Outbox and Redis Pending backlogs, dead letters,
+  Worker health and failure rate, HTTP P99 latency, and HTTP 5xx failure rate.
 
 ## Start the monitoring profile
 
@@ -58,12 +58,14 @@ the corresponding Java or Python instrumentation is enabled:
 | Outbox | `autospec_workflow_outbox_pending` | Implemented |
 | Outbox | `autospec_workflow_outbox_oldest_age_seconds` | Implemented |
 | Outbox | `autospec_workflow_outbox_publish_failures_total` | Implemented |
+| Outbox | `autospec_workflow_outbox_dead_letters_total` | Implemented |
 | Redis Streams | `autospec_redis_stream_pending` | Implemented |
 | Redis Streams | `autospec_redis_stream_oldest_idle_seconds` | Implemented |
 | Redis Streams | `autospec_redis_stream_reclaimed_total` | Implemented |
 | Worker | `autospec_worker_active` | Implemented |
 | Worker | `autospec_worker_inflight` | Implemented |
 | Worker | `autospec_worker_heartbeat_delay_seconds` | Implemented |
+| Worker | `autospec_worker_commands_total{outcome}` | Implemented |
 | Model | `autospec_model_invocations_total{status}` | Reserved |
 | Model | `autospec_model_invocation_duration_seconds_bucket` | Reserved |
 | Model | `autospec_model_tokens_total` | Reserved |
@@ -77,7 +79,14 @@ internal Compose network; no host port is published.
 Default thresholds are intentionally conservative starting points:
 
 - Outbox pending messages: more than 100 for 5 minutes;
+- oldest Outbox message: more than 5 minutes old for 5 minutes;
+- any new Outbox dead letter in 5 minutes;
 - Redis Pending messages: more than 100 for 5 minutes;
+- oldest Redis Pending message: more than 2 minutes idle for 5 minutes;
+- Worker scrape target down or active Worker heartbeat stale for 2 minutes;
+- Worker failure/dead-letter rate: more than 5 percent for 5 minutes, with at
+  least 20 commands in the measurement window;
+- any backlog collection or workflow event-handler failure in 5 minutes;
 - backend HTTP P99: more than 2 seconds for 10 minutes;
 - backend HTTP 5xx rate: more than 5 percent for 5 minutes.
 
