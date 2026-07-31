@@ -21,6 +21,7 @@ class BackendApiContractTest {
         assertThat(contract)
                 .contains("openapi: 3.0.3")
                 .contains("/api/contracts/openapi")
+                .contains("/api/auth/logout")
                 .contains("/api/prompts/active")
                 .contains("/api/projects")
                 .contains("  /api/projects/{projectId}:\n")

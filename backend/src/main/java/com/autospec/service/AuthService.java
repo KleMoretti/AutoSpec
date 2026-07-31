@@ -84,9 +84,7 @@ public class AuthService {
 
     @Transactional
     public Long requireSessionUserId(String sessionToken) {
-        if (sessionToken == null || sessionToken.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing session token");
-        }
+        requireToken(sessionToken);
         LocalDateTime now = LocalDateTime.now();
         UserSession session = userSessionService.lambdaQuery()
                 .eq(UserSession::getTokenHash, hashToken(sessionToken))
@@ -104,6 +102,27 @@ public class AuthService {
             throw invalidSession();
         }
         return session.getUserId();
+    }
+
+    @Transactional
+    public void revokeSession(String sessionToken) {
+        requireToken(sessionToken);
+        LocalDateTime now = LocalDateTime.now();
+        boolean revoked = userSessionService.lambdaUpdate()
+                .eq(UserSession::getTokenHash, hashToken(sessionToken))
+                .isNull(UserSession::getRevokedAt)
+                .gt(UserSession::getExpiresAt, now)
+                .set(UserSession::getRevokedAt, now)
+                .update();
+        if (!revoked) {
+            throw invalidSession();
+        }
+    }
+
+    private void requireToken(String sessionToken) {
+        if (sessionToken == null || sessionToken.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Missing session token");
+        }
     }
 
     private String hashToken(String token) {
