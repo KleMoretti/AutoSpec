@@ -50,8 +50,7 @@ The dashboard uses standard Spring Boot Micrometer metrics immediately:
 - `hikaricp_connections_*`
 
 The following AutoSpec metric names are the contract for the application
-instrumentation work. Panels marked **reserved metric** show `No data` until
-the corresponding Java or Python instrumentation is enabled:
+instrumentation:
 
 | Area | Metric | Status |
 | --- | --- | --- |
@@ -66,10 +65,10 @@ the corresponding Java or Python instrumentation is enabled:
 | Worker | `autospec_worker_inflight` | Implemented |
 | Worker | `autospec_worker_heartbeat_delay_seconds` | Implemented |
 | Worker | `autospec_worker_commands_total{outcome}` | Implemented |
-| Model | `autospec_model_invocations_total{status}` | Reserved |
-| Model | `autospec_model_invocation_duration_seconds_bucket` | Reserved |
-| Model | `autospec_model_tokens_total` | Reserved |
-| Model | `autospec_model_cost_total` | Reserved |
+| Model | `autospec_model_invocations_total{provider,model,status}` | Implemented |
+| Model | `autospec_model_invocation_duration_seconds_bucket` | Implemented |
+| Model | `autospec_model_tokens_total{provider,model,token_type}` | Implemented |
+| Model | `autospec_model_cost_total{provider,model}` | Implemented |
 
 Worker metrics listen on container port `9100` and are scraped only over the
 internal Compose network; no host port is published.

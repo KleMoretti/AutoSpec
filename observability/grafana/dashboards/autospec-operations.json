@@ -846,7 +846,7 @@
       },
       "id": 15,
       "panels": [],
-      "title": "Worker and model calls (model metrics reserved)",
+      "title": "Worker and model calls",
       "type": "row"
     },
     {
@@ -992,7 +992,7 @@
         "type": "prometheus",
         "uid": "autospec-prometheus"
       },
-      "description": "Reserved metric: autospec_model_invocations_total{status}",
+      "description": "Success rate of persisted model invocation records.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1001,7 +1001,7 @@
           "mappings": [],
           "max": 1,
           "min": 0,
-          "noValue": "No data (metric reserved)",
+          "noValue": "No model calls",
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -1054,7 +1054,7 @@
           "refId": "A"
         }
       ],
-      "title": "Model success rate (reserved metric)",
+      "title": "Model success rate",
       "type": "stat"
     },
     {
@@ -1062,7 +1062,7 @@
         "type": "prometheus",
         "uid": "autospec-prometheus"
       },
-      "description": "Reserved metric: autospec_model_invocation_duration_seconds_bucket",
+      "description": "P95 duration of persisted model invocations by model.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1082,7 +1082,7 @@
               "mode": "none"
             }
           },
-          "noValue": "No data (metric reserved)",
+          "noValue": "No model calls",
           "unit": "s"
         },
         "overrides": []
@@ -1117,7 +1117,7 @@
           "refId": "A"
         }
       ],
-      "title": "Model latency P95 (reserved metric)",
+      "title": "Model latency P95",
       "type": "timeseries"
     },
     {
@@ -1125,7 +1125,7 @@
         "type": "prometheus",
         "uid": "autospec-prometheus"
       },
-      "description": "Reserved metric: autospec_model_tokens_total",
+      "description": "Input and output token rate reported by model invocations.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1145,7 +1145,7 @@
               "mode": "none"
             }
           },
-          "noValue": "No data (metric reserved)",
+          "noValue": "No token usage",
           "unit": "ops"
         },
         "overrides": []
@@ -1180,7 +1180,7 @@
           "refId": "A"
         }
       ],
-      "title": "Model token rate (reserved metric)",
+      "title": "Model token rate",
       "type": "timeseries"
     },
     {
@@ -1188,7 +1188,7 @@
         "type": "prometheus",
         "uid": "autospec-prometheus"
       },
-      "description": "Reserved metric: autospec_model_cost_total",
+      "description": "Estimated hourly model cost rate based on persisted invocation usage.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -1209,7 +1209,7 @@
             }
           },
           "decimals": 4,
-          "noValue": "No data (metric reserved)",
+          "noValue": "No cost data",
           "unit": "currencyUSD"
         },
         "overrides": []
@@ -1244,7 +1244,7 @@
           "refId": "A"
         }
       ],
-      "title": "Model cost rate (reserved metric)",
+      "title": "Model cost rate",
       "type": "timeseries"
     }
   ],
