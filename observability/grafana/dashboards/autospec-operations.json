@@ -443,14 +443,14 @@
         "type": "prometheus",
         "uid": "autospec-prometheus"
       },
-      "description": "Reserved metric: autospec_workflow_outbox_pending",
+      "description": "Pending commands recorded in the transactional workflow Outbox.",
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "thresholds"
           },
           "mappings": [],
-          "noValue": "No data (metric reserved)",
+          "noValue": "No pending commands",
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -503,7 +503,7 @@
           "refId": "A"
         }
       ],
-      "title": "Outbox pending (reserved metric)",
+      "title": "Outbox pending",
       "type": "stat"
     },
     {
@@ -511,14 +511,14 @@
         "type": "prometheus",
         "uid": "autospec-prometheus"
       },
-      "description": "Reserved metric: autospec_workflow_outbox_oldest_age_seconds",
+      "description": "Age of the oldest command still pending in the workflow Outbox.",
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "thresholds"
           },
           "mappings": [],
-          "noValue": "No data (metric reserved)",
+          "noValue": "No pending commands",
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -571,7 +571,7 @@
           "refId": "A"
         }
       ],
-      "title": "Oldest Outbox message (reserved metric)",
+      "title": "Oldest Outbox message",
       "type": "stat"
     },
     {
@@ -642,14 +642,14 @@
         "type": "prometheus",
         "uid": "autospec-prometheus"
       },
-      "description": "Reserved metric: autospec_redis_stream_pending",
+      "description": "Pending workflow events in the Java control-plane consumer group.",
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "thresholds"
           },
           "mappings": [],
-          "noValue": "No data (metric reserved)",
+          "noValue": "No pending events",
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -702,7 +702,7 @@
           "refId": "A"
         }
       ],
-      "title": "Redis Pending (reserved metric)",
+      "title": "Redis Pending",
       "type": "stat"
     },
     {
@@ -710,14 +710,14 @@
         "type": "prometheus",
         "uid": "autospec-prometheus"
       },
-      "description": "Reserved metric: autospec_redis_stream_oldest_idle_seconds",
+      "description": "Idle time of the oldest pending workflow event by stream id.",
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "thresholds"
           },
           "mappings": [],
-          "noValue": "No data (metric reserved)",
+          "noValue": "No pending events",
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -770,7 +770,7 @@
           "refId": "A"
         }
       ],
-      "title": "Oldest pending idle time (reserved metric)",
+      "title": "Oldest pending idle time",
       "type": "stat"
     },
     {
@@ -846,7 +846,7 @@
       },
       "id": 15,
       "panels": [],
-      "title": "Worker and model calls (reserved metrics)",
+      "title": "Worker and model calls (model metrics reserved)",
       "type": "row"
     },
     {
@@ -854,7 +854,7 @@
         "type": "prometheus",
         "uid": "autospec-prometheus"
       },
-      "description": "Reserved metrics: autospec_worker_active and autospec_worker_inflight",
+      "description": "Active Worker processes and currently executing workflow commands.",
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -874,7 +874,7 @@
               "mode": "none"
             }
           },
-          "noValue": "No data (metric reserved)",
+          "noValue": "No workers",
           "unit": "short"
         },
         "overrides": []
@@ -916,7 +916,7 @@
           "refId": "B"
         }
       ],
-      "title": "Worker activity (reserved metric)",
+      "title": "Worker activity",
       "type": "timeseries"
     },
     {
@@ -924,14 +924,14 @@
         "type": "prometheus",
         "uid": "autospec-prometheus"
       },
-      "description": "Reserved metric: autospec_worker_heartbeat_delay_seconds",
+      "description": "Maximum time since a Worker last made progress or published a heartbeat.",
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "thresholds"
           },
           "mappings": [],
-          "noValue": "No data (metric reserved)",
+          "noValue": "No workers",
           "thresholds": {
             "mode": "absolute",
             "steps": [
@@ -978,13 +978,13 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "max by (worker) (autospec_worker_heartbeat_delay_seconds)",
-          "legendFormat": "{{worker}}",
+          "expr": "max(autospec_worker_heartbeat_delay_seconds)",
+          "legendFormat": "max delay",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Worker heartbeat delay (reserved metric)",
+      "title": "Worker heartbeat delay",
       "type": "stat"
     },
     {

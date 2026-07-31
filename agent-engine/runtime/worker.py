@@ -9,6 +9,7 @@ from typing import Any, Protocol
 from pydantic import ValidationError
 
 from runtime.node_executor import NodeCommand, NodeExecutionEvent, NodeExecutor
+from runtime.worker_metrics import NO_OP_WORKER_METRICS, WorkerMetricsRecorder
 
 
 COMMAND_STREAM = "autospec.workflow.commands"
@@ -52,6 +53,7 @@ class WorkflowStreamWorker:
         event_stream: str = EVENT_STREAM,
         consumer_group: str = WORKER_GROUP,
         heartbeat_interval_seconds: float = 10.0,
+        metrics: WorkerMetricsRecorder = NO_OP_WORKER_METRICS,
     ) -> None:
         self._client = client
         self._executor = executor
@@ -59,6 +61,7 @@ class WorkflowStreamWorker:
         self._event_stream = event_stream
         self._consumer_group = consumer_group
         self._heartbeat_interval_seconds = heartbeat_interval_seconds
+        self._metrics = metrics
 
     async def process(self, message: StreamMessage) -> NodeExecutionEvent:
         command = self._parse_command(message)
@@ -93,6 +96,7 @@ class WorkflowStreamWorker:
                 duration_ms=round(sequence * self._heartbeat_interval_seconds * 1000),
             )
             await self._client.publish_event(self._event_stream, heartbeat)
+            self._metrics.pulse()
 
     def _parse_command(self, message: StreamMessage) -> NodeCommand:
         if "payload" not in message.fields:

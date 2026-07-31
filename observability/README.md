@@ -3,7 +3,7 @@
 The monitoring stack is optional and does not run with the default Compose
 profile. It adds:
 
-- Prometheus scraping the backend at `/actuator/prometheus`;
+- Prometheus scraping the backend and both Python Worker metric endpoints;
 - provisioned Grafana with the `AutoSpec Operations` dashboard;
 - Prometheus alerts for Outbox and Redis Pending backlogs, HTTP P99 latency,
   and HTTP 5xx failure rate.
@@ -55,23 +55,22 @@ the corresponding Java or Python instrumentation is enabled:
 
 | Area | Metric | Status |
 | --- | --- | --- |
-| Outbox | `autospec_workflow_outbox_pending` | Reserved |
-| Outbox | `autospec_workflow_outbox_oldest_age_seconds` | Reserved |
+| Outbox | `autospec_workflow_outbox_pending` | Implemented |
+| Outbox | `autospec_workflow_outbox_oldest_age_seconds` | Implemented |
 | Outbox | `autospec_workflow_outbox_publish_failures_total` | Implemented |
-| Redis Streams | `autospec_redis_stream_pending` | Reserved |
-| Redis Streams | `autospec_redis_stream_oldest_idle_seconds` | Reserved |
+| Redis Streams | `autospec_redis_stream_pending` | Implemented |
+| Redis Streams | `autospec_redis_stream_oldest_idle_seconds` | Implemented |
 | Redis Streams | `autospec_redis_stream_reclaimed_total` | Implemented |
-| Worker | `autospec_worker_active` | Reserved |
-| Worker | `autospec_worker_inflight` | Reserved |
-| Worker | `autospec_worker_heartbeat_delay_seconds` | Reserved |
+| Worker | `autospec_worker_active` | Implemented |
+| Worker | `autospec_worker_inflight` | Implemented |
+| Worker | `autospec_worker_heartbeat_delay_seconds` | Implemented |
 | Model | `autospec_model_invocations_total{status}` | Reserved |
 | Model | `autospec_model_invocation_duration_seconds_bucket` | Reserved |
 | Model | `autospec_model_tokens_total` | Reserved |
 | Model | `autospec_model_cost_total` | Reserved |
 
-If Worker metrics are later exposed by a separate HTTP server, add its internal
-Compose target to `observability/prometheus/prometheus.yml`. Dashboard queries
-do not need to change.
+Worker metrics listen on container port `9100` and are scraped only over the
+internal Compose network; no host port is published.
 
 ## Alert thresholds
 

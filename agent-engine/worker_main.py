@@ -6,6 +6,8 @@ import os
 import socket
 from uuid import uuid4
 
+from prometheus_client import start_http_server
+
 from runtime.node_executor import NodeExecutor
 from runtime.production_handlers import build_production_registry
 from runtime.redis_stream_client import (
@@ -14,14 +16,18 @@ from runtime.redis_stream_client import (
     RedisWorkflowStreamClient,
 )
 from runtime.worker import COMMAND_DLQ_STREAM, WorkflowStreamWorker
+from runtime.worker_metrics import WorkerMetrics
 from runtime.worker_runner import WorkflowWorkerRunner
 
 
-def build_runner() -> tuple[WorkflowWorkerRunner, RedisWorkflowStreamClient]:
+def build_runner(
+    metrics: WorkerMetrics | None = None,
+) -> tuple[WorkflowWorkerRunner, RedisWorkflowStreamClient]:
     redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
     consumer_name = os.getenv(
         "WORKER_NAME", f"{socket.gethostname()}-{os.getpid()}-{uuid4().hex[:8]}"
     )
+    metrics = metrics or WorkerMetrics()
     client = RedisWorkflowStreamClient.from_url(
         redis_url,
         event_stream_max_length=int(
@@ -41,6 +47,7 @@ def build_runner() -> tuple[WorkflowWorkerRunner, RedisWorkflowStreamClient]:
         client,
         NodeExecutor(build_production_registry()),
         heartbeat_interval_seconds=float(os.getenv("WORKER_HEARTBEAT_SECONDS", "10")),
+        metrics=metrics,
     )
     return WorkflowWorkerRunner(
         client,
@@ -50,6 +57,7 @@ def build_runner() -> tuple[WorkflowWorkerRunner, RedisWorkflowStreamClient]:
         claim_idle_ms=int(os.getenv("WORKER_CLAIM_IDLE_MS", "30000")),
         read_block_ms=int(os.getenv("WORKER_READ_BLOCK_MS", "5000")),
         batch_size=int(os.getenv("WORKER_BATCH_SIZE", "10")),
+        metrics=metrics,
     ), client
 
 
@@ -66,7 +74,24 @@ def main() -> None:
         level=os.getenv("LOG_LEVEL", "INFO").upper(),
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
     )
-    asyncio.run(run())
+    metrics = WorkerMetrics()
+    start_http_server(
+        port=int(os.getenv("WORKER_METRICS_PORT", "9100")),
+        addr=os.getenv("WORKER_METRICS_HOST", "127.0.0.1"),
+        registry=metrics.registry,
+    )
+    runner, client = build_runner(metrics)
+    asyncio.run(run_with(runner, client))
+
+
+async def run_with(
+    runner: WorkflowWorkerRunner,
+    client: RedisWorkflowStreamClient,
+) -> None:
+    try:
+        await runner.run_forever()
+    finally:
+        await client.close()
 
 
 if __name__ == "__main__":
