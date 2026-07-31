@@ -11,6 +11,7 @@ public record ArtifactResponse(
         String content,
         String format,
         Integer version,
+        Integer lockVersion,
         String status,
         String sourceAgent,
         Long parentArtifactId,
@@ -20,7 +21,7 @@ public record ArtifactResponse(
 ) {
 
     public ArtifactResponse(Long id, String type, String title, String content, String format, Integer version) {
-        this(id, type, title, content, format, version, null, null, null, null, null, null);
+        this(id, type, title, content, format, version, 0, null, null, null, null, null, null);
     }
 
     public static ArtifactResponse from(Artifact artifact) {
@@ -31,6 +32,7 @@ public record ArtifactResponse(
                 artifact.getContent(),
                 artifact.getFormat(),
                 artifact.getVersion(),
+                artifact.getLockVersion(),
                 artifact.getStatus(),
                 artifact.getSourceAgent(),
                 artifact.getParentArtifactId(),

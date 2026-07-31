@@ -181,7 +181,12 @@ public class ProjectController {
             @Valid @RequestBody UpdateArtifactRequest request
     ) {
         requireEditor(projectId, sessionToken);
-        return ArtifactResponse.from(artifactVersionService.updateDraft(projectId, artifactId, request.content()));
+        return ArtifactResponse.from(artifactVersionService.updateDraft(
+                projectId,
+                artifactId,
+                request.content(),
+                request.expectedLockVersion()
+        ));
     }
 
     @GetMapping("/{projectId}/artifacts/{artifactId}/versions")

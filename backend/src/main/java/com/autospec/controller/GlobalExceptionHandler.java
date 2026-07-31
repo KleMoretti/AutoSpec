@@ -1,6 +1,7 @@
 package com.autospec.controller;
 
 import com.autospec.dto.ApiErrorResponse;
+import com.autospec.exception.OptimisticLockConflictException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -15,6 +16,22 @@ import java.util.Map;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    @ExceptionHandler(OptimisticLockConflictException.class)
+    public ResponseEntity<ApiErrorResponse> handleOptimisticLockConflict(
+            OptimisticLockConflictException ex,
+            HttpServletRequest request
+    ) {
+        return ResponseEntity
+                .status(HttpStatus.CONFLICT)
+                .body(ApiErrorResponse.of(
+                        "OPTIMISTIC_LOCK_CONFLICT",
+                        HttpStatus.CONFLICT.value(),
+                        ex.getMessage(),
+                        request.getRequestURI(),
+                        ex.getDetails()
+                ));
+    }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiErrorResponse> handleValidation(

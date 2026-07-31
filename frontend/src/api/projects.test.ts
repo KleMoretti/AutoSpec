@@ -119,7 +119,7 @@ describe('project api client', () => {
       );
 
     await expect(generatePrd(7)).resolves.toMatchObject({ status: 'PRD_REVIEW' });
-    await expect(updateArtifact(7, 3, '{"title":"PRD"}')).resolves.toMatchObject({ version: 2 });
+    await expect(updateArtifact(7, 3, '{"title":"PRD"}', 0)).resolves.toMatchObject({ version: 2 });
     await expect(approveArtifact(7, 3)).resolves.toMatchObject({ status: 'APPROVED' });
     await expect(continueGeneration(7)).resolves.toMatchObject({ status: 'COMPLETED' });
     await expect(getEventHistory(7)).resolves.toHaveLength(1);
@@ -130,7 +130,7 @@ describe('project api client', () => {
     expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/projects/7/artifacts/3', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content: '{"title":"PRD"}' })
+      body: JSON.stringify({ content: '{"title":"PRD"}', expectedLockVersion: 0 })
     });
     expect(fetchMock).toHaveBeenNthCalledWith(3, '/api/projects/7/artifacts/3/approve', { method: 'POST' });
     expect(fetchMock).toHaveBeenNthCalledWith(4, '/api/projects/7/continue', { method: 'POST' });

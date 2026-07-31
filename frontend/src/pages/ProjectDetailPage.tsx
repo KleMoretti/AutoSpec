@@ -191,10 +191,11 @@ function ProjectDetailPage() {
       return;
     }
     try {
-      await updateArtifact(projectId, latestPrd.id, content);
+      await updateArtifact(projectId, latestPrd.id, content, latestPrd.lockVersion);
       message.success('PRD saved');
       await loadProject();
     } catch (saveError) {
+      await loadProject().catch(() => undefined);
       message.error(saveError instanceof Error ? saveError.message : 'PRD save failed');
     }
   }

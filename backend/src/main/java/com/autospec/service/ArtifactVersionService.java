@@ -2,8 +2,11 @@ package com.autospec.service;
 
 import com.autospec.entity.Artifact;
 import com.autospec.entity.Project;
+import com.autospec.exception.OptimisticLockConflictException;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -27,29 +30,72 @@ public class ArtifactVersionService {
         this.knowledgeIndexService = knowledgeIndexService;
     }
 
-    @Transactional
-    public Artifact updateDraft(Long projectId, Long artifactId, String content) {
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    public Artifact updateDraft(Long projectId, Long artifactId, String content, int expectedLockVersion) {
         Artifact current = requireProjectArtifact(projectId, artifactId);
+        Artifact latest = latestVersion(projectId, current.getType());
+        if (!current.getId().equals(latest.getId())) {
+            throw conflict(current, expectedLockVersion, latest);
+        }
+
+        boolean claimed = artifactService.lambdaUpdate()
+                .eq(Artifact::getId, artifactId)
+                .eq(Artifact::getProjectId, projectId)
+                .eq(Artifact::getLockVersion, expectedLockVersion)
+                .setSql("lock_version = lock_version + 1")
+                .set(Artifact::getUpdatedAt, LocalDateTime.now())
+                .update();
+        if (!claimed) {
+            Artifact refreshed = requireProjectArtifact(projectId, artifactId);
+            throw conflict(refreshed, expectedLockVersion, latestVersion(projectId, current.getType()));
+        }
+
         Artifact next = new Artifact();
         next.setProjectId(projectId);
         next.setType(current.getType());
         next.setTitle(current.getTitle());
         next.setContent(content);
         next.setFormat(current.getFormat());
-        next.setVersion(nextVersion(projectId, current.getType()));
+        next.setVersion(latest.getVersion() + 1);
+        next.setLockVersion(0);
         next.setStatus("PENDING_REVIEW");
         next.setSourceAgent("HUMAN_EDITOR");
         next.setParentArtifactId(current.getId());
-        artifactService.save(next);
+        try {
+            artifactService.save(next);
+        } catch (DuplicateKeyException duplicateVersion) {
+            Artifact refreshed = requireProjectArtifact(projectId, artifactId);
+            throw conflict(refreshed, expectedLockVersion, latestVersion(projectId, current.getType()));
+        }
         return next;
     }
 
-    @Transactional
+    @Transactional(isolation = Isolation.READ_COMMITTED)
     public Artifact approve(Long projectId, Long artifactId) {
         Artifact artifact = requireProjectArtifact(projectId, artifactId);
+        Artifact latest = latestVersion(projectId, artifact.getType());
+        if (!artifact.getId().equals(latest.getId())) {
+            throw conflict(artifact, artifact.getLockVersion(), latest);
+        }
+        LocalDateTime now = LocalDateTime.now();
+        boolean approved = artifactService.lambdaUpdate()
+                .eq(Artifact::getId, artifactId)
+                .eq(Artifact::getProjectId, projectId)
+                .eq(Artifact::getLockVersion, artifact.getLockVersion())
+                .ne(Artifact::getStatus, "APPROVED")
+                .set(Artifact::getStatus, "APPROVED")
+                .set(Artifact::getApprovedAt, now)
+                .set(Artifact::getUpdatedAt, now)
+                .setSql("lock_version = lock_version + 1")
+                .update();
+        if (!approved) {
+            Artifact refreshed = requireProjectArtifact(projectId, artifactId);
+            throw conflict(refreshed, artifact.getLockVersion(), latestVersion(projectId, artifact.getType()));
+        }
         artifact.setStatus("APPROVED");
-        artifact.setApprovedAt(LocalDateTime.now());
-        artifactService.updateById(artifact);
+        artifact.setApprovedAt(now);
+        artifact.setUpdatedAt(now);
+        artifact.setLockVersion(artifact.getLockVersion() + 1);
         knowledgeIndexService.indexApprovedArtifact(artifact);
         if ("PRD".equals(artifact.getType())) {
             Project project = requireProject(projectId);
@@ -83,16 +129,30 @@ public class ArtifactVersionService {
         return artifact;
     }
 
-    private int nextVersion(Long projectId, String type) {
+    private Artifact latestVersion(Long projectId, String type) {
         return artifactService.lambdaQuery()
                 .eq(Artifact::getProjectId, projectId)
                 .eq(Artifact::getType, type)
-                .list()
-                .stream()
-                .map(Artifact::getVersion)
-                .filter(version -> version != null)
-                .max(Integer::compareTo)
-                .orElse(0) + 1;
+                .orderByDesc(Artifact::getVersion)
+                .orderByDesc(Artifact::getId)
+                .last("limit 1")
+                .oneOpt()
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Artifact not found"));
+    }
+
+    private OptimisticLockConflictException conflict(
+            Artifact current,
+            int expectedLockVersion,
+            Artifact latest
+    ) {
+        return new OptimisticLockConflictException(
+                "artifact",
+                current.getId(),
+                expectedLockVersion,
+                current.getLockVersion(),
+                latest.getId(),
+                latest.getVersion()
+        );
     }
 
     private Project requireProject(Long projectId) {

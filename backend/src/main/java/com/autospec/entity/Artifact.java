@@ -26,6 +26,8 @@ public class Artifact {
 
     private Integer version;
 
+    private Integer lockVersion = 0;
+
     private String status;
 
     private String sourceAgent;

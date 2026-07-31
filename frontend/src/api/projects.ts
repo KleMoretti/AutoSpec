@@ -51,6 +51,7 @@ export interface ArtifactResponse {
   content: string;
   format: string;
   version: number;
+  lockVersion: number;
   status?: ArtifactStatus;
   sourceAgent?: string;
   parentArtifactId?: number;
@@ -137,12 +138,13 @@ export async function generatePrd(projectId: number): Promise<GenerateProjectRes
 export async function updateArtifact(
   projectId: number,
   artifactId: number,
-  content: string
+  content: string,
+  expectedLockVersion: number
 ): Promise<ArtifactResponse> {
   return request(`/api/projects/${projectId}/artifacts/${artifactId}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ content })
+    body: JSON.stringify({ content, expectedLockVersion })
   });
 }
 

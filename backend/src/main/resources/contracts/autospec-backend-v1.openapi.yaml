@@ -624,6 +624,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/OptimisticLockConflict'
   /api/projects/{projectId}/artifacts/{artifactId}/versions:
     get:
       summary: List artifact version history.
@@ -872,6 +874,26 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ApiErrorResponse'
+    OptimisticLockConflict:
+      description: The resource changed after the client loaded it.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiErrorResponse'
+          example:
+            code: OPTIMISTIC_LOCK_CONFLICT
+            status: 409
+            message: The artifact was modified by another request
+            path: /api/projects/1/artifacts/10
+            timestamp: '2026-07-31T12:00:00Z'
+            fieldErrors: {}
+            details:
+              resourceType: artifact
+              resourceId: '10'
+              expectedLockVersion: '0'
+              currentLockVersion: '1'
+              latestResourceId: '11'
+              latestResourceVersion: '2'
     BadGateway:
       description: External Agent Engine failed or returned invalid output.
       content:
@@ -1471,6 +1493,9 @@ components:
           type: string
         version:
           type: integer
+        lockVersion:
+          type: integer
+          minimum: 0
         status:
           type: string
         sourceAgent:
@@ -1494,11 +1519,14 @@ components:
           nullable: true
     UpdateArtifactRequest:
       type: object
-      required: [content]
+      required: [content, expectedLockVersion]
       properties:
         content:
           type: string
           minLength: 1
+        expectedLockVersion:
+          type: integer
+          minimum: 0
     ApproveArtifactResponse:
       type: object
       required: [id, status, version]
@@ -1553,7 +1581,7 @@ components:
               type: string
     ApiErrorResponse:
       type: object
-      required: [code, status, message, path, timestamp, fieldErrors]
+      required: [code, status, message, path, timestamp, fieldErrors, details]
       properties:
         code:
           type: string
@@ -1567,6 +1595,10 @@ components:
           type: string
           format: date-time
         fieldErrors:
+          type: object
+          additionalProperties:
+            type: string
+        details:
           type: object
           additionalProperties:
             type: string

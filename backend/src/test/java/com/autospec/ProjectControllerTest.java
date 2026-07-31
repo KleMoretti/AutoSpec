@@ -362,7 +362,7 @@ class ProjectControllerTest {
         mockMvc.perform(put("/api/projects/{projectId}/artifacts/{artifactId}", projectId, prd.getId())
                         .header(SESSION_HEADER, viewerToken)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"content\":\"{\\\"project_name\\\":\\\"Viewer Edit\\\"}\"}"))
+                        .content("{\"content\":\"{\\\"project_name\\\":\\\"Viewer Edit\\\"}\",\"expectedLockVersion\":0}"))
                 .andExpect(status().isForbidden());
 
         mockMvc.perform(post("/api/projects/{projectId}/generate-v4", projectId)
@@ -761,10 +761,12 @@ class ProjectControllerTest {
                         .header(SESSION_HEADER, token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(java.util.Map.of(
-                                "content", "{\"project_name\":\"second\"}"
+                                "content", "{\"project_name\":\"second\"}",
+                                "expectedLockVersion", 0
                         ))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.version").value(2))
+                .andExpect(jsonPath("$.lockVersion").value(0))
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
@@ -774,7 +776,8 @@ class ProjectControllerTest {
                         .header(SESSION_HEADER, token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(java.util.Map.of(
-                                "content", "{\"project_name\":\"third\"}"
+                                "content", "{\"project_name\":\"third\"}",
+                                "expectedLockVersion", 0
                         ))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.version").value(3))
@@ -1148,6 +1151,51 @@ class ProjectControllerTest {
                         .header(SESSION_HEADER, token))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+    }
+
+    @Test
+    void staleArtifactEditReturnsLatestVersionDetails() throws Exception {
+        String token = loginToken();
+        long projectId = createProject(token, "Artifact Lock Project", "Protect concurrent artifact edits.");
+        Artifact original = artifact(projectId, "PRD", "Concurrent PRD", "{\"project_name\":\"original\"}");
+
+        String firstResponse = mockMvc.perform(put("/api/projects/{projectId}/artifacts/{artifactId}", projectId, original.getId())
+                        .header(SESSION_HEADER, token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(java.util.Map.of(
+                                "content", "{\"project_name\":\"first editor\"}",
+                                "expectedLockVersion", 0
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.version").value(2))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        long latestArtifactId = objectMapper.readTree(firstResponse).get("id").asLong();
+
+        mockMvc.perform(post("/api/projects/{projectId}/artifacts/{artifactId}/approve", projectId, original.getId())
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("OPTIMISTIC_LOCK_CONFLICT"))
+                .andExpect(jsonPath("$.details.latestResourceId").value(Long.toString(latestArtifactId)));
+
+        mockMvc.perform(put("/api/projects/{projectId}/artifacts/{artifactId}", projectId, original.getId())
+                        .header(SESSION_HEADER, token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(java.util.Map.of(
+                                "content", "{\"project_name\":\"stale editor\"}",
+                                "expectedLockVersion", 0
+                        ))))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("OPTIMISTIC_LOCK_CONFLICT"))
+                .andExpect(jsonPath("$.details.expectedLockVersion").value("0"))
+                .andExpect(jsonPath("$.details.currentLockVersion").value("1"))
+                .andExpect(jsonPath("$.details.latestResourceId").value(Long.toString(latestArtifactId)))
+                .andExpect(jsonPath("$.details.latestResourceVersion").value("2"));
+
+        assertThat(artifactService.listVersionsByProjectIdAndType(projectId, "PRD", 10, 0))
+                .hasSize(2);
+        assertThat(artifactService.getById(original.getId()).getLockVersion()).isEqualTo(1);
     }
 
     @Test
