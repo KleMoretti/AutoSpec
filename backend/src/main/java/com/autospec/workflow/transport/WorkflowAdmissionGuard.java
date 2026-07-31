@@ -7,9 +7,12 @@ import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.connection.stream.StreamInfo;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 
+import java.nio.charset.StandardCharsets;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -17,34 +20,44 @@ import java.time.LocalDateTime;
 @Component
 public class WorkflowAdmissionGuard {
     public static final String REJECTIONS = "autospec.workflow.admission.rejections";
+    static final String WORKER_GROUP = "autospec-workers";
 
     private final WorkflowOutboxMapper outboxMapper;
+    private final StringRedisTemplate redisTemplate;
     private final boolean enabled;
     private final long maxPendingOutbox;
     private final Duration maxOldestOutboxAge;
+    private final long maxWorkerBacklog;
     private final long retryAfterSeconds;
     private final Clock clock;
     private final Counter pendingCountRejections;
     private final Counter oldestAgeRejections;
-    private final Counter unavailableRejections;
+    private final Counter workerBacklogRejections;
+    private final Counter outboxUnavailableRejections;
+    private final Counter workerUnavailableRejections;
 
     @Autowired
     public WorkflowAdmissionGuard(
             WorkflowOutboxMapper outboxMapper,
+            StringRedisTemplate redisTemplate,
             MeterRegistry meterRegistry,
             @Value("${autospec.workflow.admission.enabled:true}") boolean enabled,
             @Value("${autospec.workflow.admission.max-pending-outbox:10000}")
             long maxPendingOutbox,
             @Value("${autospec.workflow.admission.max-oldest-outbox-age:5m}")
             Duration maxOldestOutboxAge,
+            @Value("${autospec.workflow.admission.max-worker-backlog:1000}")
+            long maxWorkerBacklog,
             @Value("${autospec.workflow.admission.retry-after:5s}") Duration retryAfter
     ) {
         this(
                 outboxMapper,
+                redisTemplate,
                 meterRegistry,
                 enabled,
                 maxPendingOutbox,
                 maxOldestOutboxAge,
+                maxWorkerBacklog,
                 retryAfter,
                 Clock.systemDefaultZone()
         );
@@ -52,10 +65,12 @@ public class WorkflowAdmissionGuard {
 
     WorkflowAdmissionGuard(
             WorkflowOutboxMapper outboxMapper,
+            StringRedisTemplate redisTemplate,
             MeterRegistry meterRegistry,
             boolean enabled,
             long maxPendingOutbox,
             Duration maxOldestOutboxAge,
+            long maxWorkerBacklog,
             Duration retryAfter,
             Clock clock
     ) {
@@ -65,18 +80,25 @@ public class WorkflowAdmissionGuard {
         if (maxOldestOutboxAge.isZero() || maxOldestOutboxAge.isNegative()) {
             throw new IllegalArgumentException("Maximum outbox age must be positive");
         }
+        if (maxWorkerBacklog < 1) {
+            throw new IllegalArgumentException("Maximum worker backlog must be positive");
+        }
         if (retryAfter.isZero() || retryAfter.isNegative()) {
             throw new IllegalArgumentException("Workflow Retry-After must be positive");
         }
         this.outboxMapper = outboxMapper;
+        this.redisTemplate = redisTemplate;
         this.enabled = enabled;
         this.maxPendingOutbox = maxPendingOutbox;
         this.maxOldestOutboxAge = maxOldestOutboxAge;
+        this.maxWorkerBacklog = maxWorkerBacklog;
         this.retryAfterSeconds = Math.max(1, (retryAfter.toMillis() + 999) / 1_000);
         this.clock = clock;
         this.pendingCountRejections = counter(meterRegistry, "pending_count");
         this.oldestAgeRejections = counter(meterRegistry, "oldest_age");
-        this.unavailableRejections = counter(meterRegistry, "store_unavailable");
+        this.workerBacklogRejections = counter(meterRegistry, "worker_backlog");
+        this.outboxUnavailableRejections = counter(meterRegistry, "outbox_store_unavailable");
+        this.workerUnavailableRejections = counter(meterRegistry, "worker_store_unavailable");
     }
 
     public void admit() {
@@ -87,7 +109,7 @@ public class WorkflowAdmissionGuard {
         try {
             snapshot = outboxMapper.selectPendingBacklog();
         } catch (RuntimeException exception) {
-            unavailableRejections.increment();
+            outboxUnavailableRejections.increment();
             throw rejected("Workflow admission state is temporarily unavailable", exception);
         }
         long pendingCount = snapshot == null || snapshot.getPendingCount() == null
@@ -101,6 +123,48 @@ public class WorkflowAdmissionGuard {
             oldestAgeRejections.increment();
             throw rejected("Workflow admission paused by stale outbox backlog", null);
         }
+        long workerBacklog;
+        try {
+            workerBacklog = workerBacklog();
+        } catch (RuntimeException exception) {
+            workerUnavailableRejections.increment();
+            throw rejected("Worker admission state is temporarily unavailable", exception);
+        }
+        if (workerBacklog >= maxWorkerBacklog) {
+            workerBacklogRejections.increment();
+            throw rejected("Workflow admission paused by worker command backlog", null);
+        }
+    }
+
+    private long workerBacklog() {
+        Long streamSize = redisTemplate.opsForStream().size(WorkflowOutboxPublisher.COMMAND_STREAM);
+        if (streamSize == null || streamSize == 0) {
+            return 0;
+        }
+        StreamInfo.XInfoGroup group = redisTemplate.opsForStream()
+                .groups(WorkflowOutboxPublisher.COMMAND_STREAM)
+                .stream()
+                .filter(candidate -> WORKER_GROUP.equals(candidate.groupName()))
+                .findFirst()
+                .orElse(null);
+        if (group == null) {
+            return streamSize;
+        }
+        long pending = group.pendingCount() == null ? 0 : group.pendingCount();
+        return Math.addExact(pending, numericValue(group.getRaw().get("lag")));
+    }
+
+    private long numericValue(Object value) {
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        if (value instanceof byte[] bytes) {
+            return Long.parseLong(new String(bytes, StandardCharsets.UTF_8));
+        }
+        if (value != null) {
+            return Long.parseLong(value.toString());
+        }
+        throw new IllegalStateException("Redis worker group lag is unavailable");
     }
 
     private Duration oldestAge(WorkflowOutboxBacklogSnapshot snapshot) {

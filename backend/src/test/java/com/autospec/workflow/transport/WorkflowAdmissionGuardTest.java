@@ -4,6 +4,8 @@ import com.autospec.dto.WorkflowOutboxBacklogSnapshot;
 import com.autospec.mapper.WorkflowOutboxMapper;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
+import org.springframework.data.redis.core.StreamOperations;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
@@ -28,13 +30,20 @@ class WorkflowAdmissionGuardTest {
     @Test
     void rejectsNewRunsWhenOutboxCountOrAgeExceedsTheConfiguredBoundary() {
         WorkflowOutboxMapper mapper = mock(WorkflowOutboxMapper.class);
+        StringRedisTemplate redisTemplate = mock(StringRedisTemplate.class);
+        @SuppressWarnings("unchecked")
+        StreamOperations<String, Object, Object> streamOperations = mock(StreamOperations.class);
+        when(redisTemplate.opsForStream()).thenReturn(streamOperations);
+        when(streamOperations.size(WorkflowOutboxPublisher.COMMAND_STREAM)).thenReturn(0L);
         SimpleMeterRegistry registry = new SimpleMeterRegistry();
         WorkflowAdmissionGuard guard = new WorkflowAdmissionGuard(
                 mapper,
+                redisTemplate,
                 registry,
                 true,
                 10,
                 Duration.ofMinutes(5),
+                100,
                 Duration.ofMillis(2_500),
                 CLOCK
         );
