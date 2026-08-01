@@ -757,6 +757,54 @@ class ProjectControllerTest {
     }
 
     @Test
+    void artifactCursorPageRemainsStableAcrossConcurrentInserts() throws Exception {
+        String token = loginToken();
+        long projectId = createProject(token, "Artifact Cursor Project", "Build cursor artifact history.");
+        artifact(projectId, "PRD", "Artifact 1", "{}");
+        artifact(projectId, "BACKEND_DESIGN", "Artifact 2", "{}");
+        artifact(projectId, "REVIEW_REPORT", "Artifact 3", "{}");
+
+        String firstPageJson = mockMvc.perform(get(
+                                "/api/projects/{projectId}/artifacts/page?limit=2",
+                                projectId
+                        )
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(2))
+                .andExpect(jsonPath("$.items[0].title").value("Artifact 1"))
+                .andExpect(jsonPath("$.items[1].title").value("Artifact 2"))
+                .andExpect(jsonPath("$.hasMore").value(true))
+                .andExpect(jsonPath("$.nextCursor").isString())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String cursor = objectMapper.readTree(firstPageJson).path("nextCursor").asText();
+
+        artifact(projectId, "FRONTEND_DESIGN", "Artifact 4", "{}");
+
+        mockMvc.perform(get(
+                                "/api/projects/{projectId}/artifacts/page?limit=2&cursor={cursor}",
+                                projectId,
+                                cursor
+                        )
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(2))
+                .andExpect(jsonPath("$.items[0].title").value("Artifact 3"))
+                .andExpect(jsonPath("$.items[1].title").value("Artifact 4"))
+                .andExpect(jsonPath("$.hasMore").value(false))
+                .andExpect(jsonPath("$.nextCursor").doesNotExist());
+
+        mockMvc.perform(get(
+                                "/api/projects/{projectId}/artifacts/page?cursor=invalid!",
+                                projectId
+                        )
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+    }
+
+    @Test
     void artifactVersionHistorySupportsBoundedPagination() throws Exception {
         String token = loginToken();
         long projectId = createProject(token, "Artifact Version Project", "Track artifact versions.");

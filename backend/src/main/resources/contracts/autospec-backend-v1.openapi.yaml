@@ -620,6 +620,28 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+  /api/projects/{projectId}/artifacts/page:
+    get:
+      summary: List project artifacts by stable ascending ID cursor.
+      description: New rows are returned only after the previous page's last ID, so inserts do not shift existing pages.
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/SessionToken'
+        - $ref: '#/components/parameters/PaginationLimit'
+        - $ref: '#/components/parameters/PaginationCursor'
+      responses:
+        '200':
+          description: Cursor page of project artifacts.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ArtifactCursorPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /api/projects/{projectId}/artifacts/{artifactId}:
     put:
       summary: Update an artifact by creating a new draft version.
@@ -1615,6 +1637,19 @@ components:
           type: string
           format: date-time
           nullable: true
+    ArtifactCursorPage:
+      type: object
+      required: [items, hasMore]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ArtifactResponse'
+        nextCursor:
+          type: string
+          nullable: true
+        hasMore:
+          type: boolean
     UpdateArtifactRequest:
       type: object
       required: [content, expectedLockVersion]

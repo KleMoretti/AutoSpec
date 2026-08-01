@@ -21,6 +21,16 @@ public class ArtifactServiceImpl extends ServiceImpl<ArtifactMapper, Artifact> i
     }
 
     @Override
+    public List<Artifact> listByProjectIdAfterId(Long projectId, Long afterId, int limit) {
+        return lambdaQuery()
+                .eq(Artifact::getProjectId, projectId)
+                .gt(afterId != null, Artifact::getId, afterId)
+                .orderByAsc(Artifact::getId)
+                .last("limit " + limit)
+                .list();
+    }
+
+    @Override
     public List<Artifact> listVersionsByProjectIdAndType(Long projectId, String type, int limit, int offset) {
         return lambdaQuery()
                 .eq(Artifact::getProjectId, projectId)

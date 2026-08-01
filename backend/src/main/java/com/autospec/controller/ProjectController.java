@@ -5,6 +5,8 @@ import com.autospec.dto.ApproveArtifactResponse;
 import com.autospec.dto.ArtifactResponse;
 import com.autospec.dto.CreateProjectRequest;
 import com.autospec.dto.CreateProjectResponse;
+import com.autospec.dto.CursorPageResponse;
+import com.autospec.dto.CursorPaginationRequest;
 import com.autospec.dto.GenerateProjectResponse;
 import com.autospec.dto.PaginationRequest;
 import com.autospec.dto.ProjectProgressResponse;
@@ -171,6 +173,34 @@ public class ProjectController {
                 .stream()
                 .map(ArtifactResponse::from)
                 .toList();
+    }
+
+    @GetMapping("/{projectId}/artifacts/page")
+    public CursorPageResponse<ArtifactResponse> artifactPage(
+            @PathVariable Long projectId,
+            @RequestHeader(value = "X-AutoSpec-Session-Token", required = false) String sessionToken,
+            @RequestParam(required = false) Integer limit,
+            @RequestParam(required = false) String cursor
+    ) {
+        CursorPaginationRequest pagination = CursorPaginationRequest.of(limit, cursor);
+        requireViewer(projectId, sessionToken);
+        List<Artifact> fetched = artifactService.listByProjectIdAfterId(
+                projectId,
+                pagination.afterId(),
+                pagination.fetchLimit()
+        );
+        boolean hasMore = fetched.size() > pagination.limit();
+        List<Artifact> page = hasMore
+                ? fetched.subList(0, pagination.limit())
+                : fetched;
+        String nextCursor = hasMore
+                ? CursorPaginationRequest.encode(page.get(page.size() - 1).getId())
+                : null;
+        return new CursorPageResponse<>(
+                page.stream().map(ArtifactResponse::from).toList(),
+                nextCursor,
+                hasMore
+        );
     }
 
     @PutMapping("/{projectId}/artifacts/{artifactId}")
