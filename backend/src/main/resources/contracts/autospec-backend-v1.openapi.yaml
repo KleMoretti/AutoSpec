@@ -535,6 +535,28 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+  /api/projects/{projectId}/events/history/page:
+    get:
+      summary: List persisted Agent events by stable ascending ID cursor.
+      description: The cursor resumes after the previous page's last event ID and is unaffected by later inserts.
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/SessionToken'
+        - $ref: '#/components/parameters/PaginationLimit'
+        - $ref: '#/components/parameters/PaginationCursor'
+      responses:
+        '200':
+          description: Cursor page of Agent events.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentEventCursorPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /api/projects/{projectId}/knowledge/sources:
     get:
       summary: List project knowledge sources indexed from artifacts.
@@ -1404,6 +1426,19 @@ components:
         createdAt:
           type: string
           format: date-time
+    AgentEventCursorPage:
+      type: object
+      required: [items, hasMore]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentEventResponse'
+        nextCursor:
+          type: string
+          nullable: true
+        hasMore:
+          type: boolean
     ReviewResponse:
       type: object
       required: [score, issues]

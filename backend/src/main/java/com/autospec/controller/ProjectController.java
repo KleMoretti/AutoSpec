@@ -15,6 +15,7 @@ import com.autospec.dto.RetryTaskResponse;
 import com.autospec.dto.ReviewIssueResponse;
 import com.autospec.dto.ReviewResponse;
 import com.autospec.dto.UpdateArtifactRequest;
+import com.autospec.entity.AgentEvent;
 import com.autospec.entity.AgentTask;
 import com.autospec.entity.Artifact;
 import com.autospec.entity.Project;
@@ -281,6 +282,34 @@ public class ProjectController {
                 .stream()
                 .map(AgentEventResponse::from)
                 .toList();
+    }
+
+    @GetMapping("/{projectId}/events/history/page")
+    public CursorPageResponse<AgentEventResponse> eventHistoryPage(
+            @PathVariable Long projectId,
+            @RequestHeader(value = "X-AutoSpec-Session-Token", required = false) String sessionToken,
+            @RequestParam(required = false) Integer limit,
+            @RequestParam(required = false) String cursor
+    ) {
+        CursorPaginationRequest pagination = CursorPaginationRequest.of(limit, cursor);
+        requireViewer(projectId, sessionToken);
+        List<AgentEvent> fetched = agentEventService.listByProjectIdAfterId(
+                projectId,
+                pagination.afterId(),
+                pagination.fetchLimit()
+        );
+        boolean hasMore = fetched.size() > pagination.limit();
+        List<AgentEvent> page = hasMore
+                ? fetched.subList(0, pagination.limit())
+                : fetched;
+        String nextCursor = hasMore
+                ? CursorPaginationRequest.encode(page.get(page.size() - 1).getId())
+                : null;
+        return new CursorPageResponse<>(
+                page.stream().map(AgentEventResponse::from).toList(),
+                nextCursor,
+                hasMore
+        );
     }
 
     @GetMapping(value = "/{projectId}/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)

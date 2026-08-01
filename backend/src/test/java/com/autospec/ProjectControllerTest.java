@@ -675,6 +675,54 @@ class ProjectControllerTest {
     }
 
     @Test
+    void agentEventCursorPageRemainsStableAcrossConcurrentInserts() throws Exception {
+        String token = loginToken();
+        long projectId = createProject(token, "Agent Event Cursor Project", "Build cursor event history.");
+        agentEvent(projectId, "event-node-1");
+        agentEvent(projectId, "event-node-2");
+        agentEvent(projectId, "event-node-3");
+
+        String firstPageJson = mockMvc.perform(get(
+                                "/api/projects/{projectId}/events/history/page?limit=2",
+                                projectId
+                        )
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(2))
+                .andExpect(jsonPath("$.items[0].nodeName").value("event-node-1"))
+                .andExpect(jsonPath("$.items[1].nodeName").value("event-node-2"))
+                .andExpect(jsonPath("$.hasMore").value(true))
+                .andExpect(jsonPath("$.nextCursor").isString())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String cursor = objectMapper.readTree(firstPageJson).path("nextCursor").asText();
+
+        agentEvent(projectId, "event-node-4");
+
+        mockMvc.perform(get(
+                                "/api/projects/{projectId}/events/history/page?limit=2&cursor={cursor}",
+                                projectId,
+                                cursor
+                        )
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(2))
+                .andExpect(jsonPath("$.items[0].nodeName").value("event-node-3"))
+                .andExpect(jsonPath("$.items[1].nodeName").value("event-node-4"))
+                .andExpect(jsonPath("$.hasMore").value(false))
+                .andExpect(jsonPath("$.nextCursor").doesNotExist());
+
+        mockMvc.perform(get(
+                                "/api/projects/{projectId}/events/history/page?cursor=invalid!",
+                                projectId
+                        )
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+    }
+
+    @Test
     void auditEventHistorySupportsBoundedPagination() throws Exception {
         String token = loginToken();
         long projectId = createProject(token, "Audit Event Page Project", "Build paged audit events.");

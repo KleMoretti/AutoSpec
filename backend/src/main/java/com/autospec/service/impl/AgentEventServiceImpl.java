@@ -41,4 +41,14 @@ public class AgentEventServiceImpl extends ServiceImpl<AgentEventMapper, AgentEv
                 .last("limit " + limit + " offset " + offset)
                 .list();
     }
+
+    @Override
+    public List<AgentEvent> listByProjectIdAfterId(Long projectId, Long afterId, int limit) {
+        return lambdaQuery()
+                .eq(AgentEvent::getProjectId, projectId)
+                .gt(afterId != null, AgentEvent::getId, afterId)
+                .orderByAsc(AgentEvent::getId)
+                .last("limit " + limit)
+                .list();
+    }
 }
