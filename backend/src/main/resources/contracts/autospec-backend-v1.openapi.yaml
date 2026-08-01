@@ -401,6 +401,30 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+  /api/workflow-runs/{runId}/nodes/page:
+    get:
+      summary: List workflow node runs by stable ascending ID cursor.
+      description: New rows are returned only after the last ID from the previous page, avoiding offset drift.
+      parameters:
+        - $ref: '#/components/parameters/RunId'
+        - $ref: '#/components/parameters/SessionToken'
+        - $ref: '#/components/parameters/PaginationLimit'
+        - $ref: '#/components/parameters/PaginationCursor'
+      responses:
+        '200':
+          description: Cursor page of workflow node runs.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowNodeRunCursorPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /api/projects/{projectId}/audit-events:
     get:
       summary: List project audit events.
@@ -1155,6 +1179,80 @@ components:
           nullable: true
         hasMore:
           type: boolean
+    WorkflowNodeRunCursorPage:
+      type: object
+      required: [items, hasMore]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowNodeRunResponse'
+        nextCursor:
+          type: string
+          nullable: true
+        hasMore:
+          type: boolean
+    WorkflowNodeRunResponse:
+      type: object
+      required: [id, workflowRunId, nodeId, revision, attempt, executionId, status, handlerKey, handlerVersion]
+      properties:
+        id:
+          type: integer
+          format: int64
+        workflowRunId:
+          type: integer
+          format: int64
+        nodeId:
+          type: string
+        revision:
+          type: integer
+        attempt:
+          type: integer
+        executionId:
+          type: string
+        status:
+          type: string
+        handlerKey:
+          type: string
+        handlerVersion:
+          type: string
+        timeoutMs:
+          type: integer
+          nullable: true
+        durationMs:
+          type: integer
+          nullable: true
+        inputJson:
+          type: string
+          nullable: true
+        outputJson:
+          type: string
+          nullable: true
+        errorCode:
+          type: string
+          nullable: true
+        errorMessage:
+          type: string
+          nullable: true
+        queuedAt:
+          type: string
+          format: date-time
+          nullable: true
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        heartbeatAt:
+          type: string
+          format: date-time
+          nullable: true
+        finishedAt:
+          type: string
+          format: date-time
+          nullable: true
+        workerId:
+          type: string
+          nullable: true
     AuditEventResponse:
       type: object
       required: [id, projectId, eventType, entityType, message, createdAt]

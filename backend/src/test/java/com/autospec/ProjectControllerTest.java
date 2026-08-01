@@ -42,7 +42,9 @@ import com.autospec.entity.ProjectMember;
 import com.autospec.entity.ReviewIssue;
 import com.autospec.entity.UserAccount;
 import com.autospec.entity.WorkflowRun;
+import com.autospec.entity.WorkflowNodeRun;
 import com.autospec.entity.WorkflowSnapshot;
+import com.autospec.mapper.WorkflowNodeRunMapper;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -130,6 +132,9 @@ class ProjectControllerTest {
 
     @Autowired
     private WorkflowRunService workflowRunService;
+
+    @Autowired
+    private WorkflowNodeRunMapper workflowNodeRunMapper;
 
     @Test
     void loginReturnsDemoSessionUser() throws Exception {
@@ -1247,6 +1252,55 @@ class ProjectControllerTest {
     }
 
     @Test
+    void workflowNodeRunCursorPageRemainsStableAcrossConcurrentInserts() throws Exception {
+        String token = loginToken();
+        long projectId = createProject(token, "Node Cursor Project", "Build cursor node history.");
+        WorkflowRun run = workflowRun(projectId, "node-cursor-run");
+        workflowNodeRun(run.getId(), "node-1");
+        workflowNodeRun(run.getId(), "node-2");
+        workflowNodeRun(run.getId(), "node-3");
+
+        String firstPageJson = mockMvc.perform(get(
+                                "/api/workflow-runs/{runId}/nodes/page?limit=2",
+                                run.getId()
+                        )
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(2))
+                .andExpect(jsonPath("$.items[0].nodeId").value("node-1"))
+                .andExpect(jsonPath("$.items[1].nodeId").value("node-2"))
+                .andExpect(jsonPath("$.hasMore").value(true))
+                .andExpect(jsonPath("$.nextCursor").isString())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String cursor = objectMapper.readTree(firstPageJson).path("nextCursor").asText();
+
+        workflowNodeRun(run.getId(), "node-4");
+
+        mockMvc.perform(get(
+                                "/api/workflow-runs/{runId}/nodes/page?limit=2&cursor={cursor}",
+                                run.getId(),
+                                cursor
+                        )
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(2))
+                .andExpect(jsonPath("$.items[0].nodeId").value("node-3"))
+                .andExpect(jsonPath("$.items[1].nodeId").value("node-4"))
+                .andExpect(jsonPath("$.hasMore").value(false))
+                .andExpect(jsonPath("$.nextCursor").doesNotExist());
+
+        mockMvc.perform(get(
+                                "/api/workflow-runs/{runId}/nodes/page?cursor=invalid!",
+                                run.getId()
+                        )
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+    }
+
+    @Test
     void runningWorkflowRunCanBeCancelled() throws Exception {
         String token = loginToken();
         long projectId = createProject(token, "Cancelable Workflow Project", "Build cancellable workflow orchestration.");
@@ -1411,7 +1465,7 @@ class ProjectControllerTest {
         return authService.issueSession(user);
     }
 
-    private void workflowRun(Long projectId, String idempotencyKey) {
+    private WorkflowRun workflowRun(Long projectId, String idempotencyKey) {
         WorkflowRun run = new WorkflowRun();
         run.setProjectId(projectId);
         run.setOperation("GENERATE_V4");
@@ -1422,6 +1476,21 @@ class ProjectControllerTest {
         run.setStartedAt(LocalDateTime.now().minusSeconds(1));
         run.setCompletedAt(LocalDateTime.now());
         workflowRunService.save(run);
+        return run;
+    }
+
+    private WorkflowNodeRun workflowNodeRun(Long workflowRunId, String nodeId) {
+        WorkflowNodeRun nodeRun = new WorkflowNodeRun();
+        nodeRun.setWorkflowRunId(workflowRunId);
+        nodeRun.setNodeId(nodeId);
+        nodeRun.setRevision(1);
+        nodeRun.setAttempt(1);
+        nodeRun.setExecutionId(workflowRunId + ":" + nodeId + ":1:1");
+        nodeRun.setStatus("SUCCEEDED");
+        nodeRun.setHandlerKey(nodeId);
+        nodeRun.setHandlerVersion("v1");
+        workflowNodeRunMapper.insert(nodeRun);
+        return nodeRun;
     }
 
     private void codeGenerationJob(Long projectId, String status) {

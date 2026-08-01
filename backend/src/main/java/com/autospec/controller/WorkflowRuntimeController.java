@@ -1,5 +1,7 @@
 package com.autospec.controller;
 
+import com.autospec.dto.CursorPageResponse;
+import com.autospec.dto.CursorPaginationRequest;
 import com.autospec.dto.WorkflowNodeRunResponse;
 import com.autospec.dto.WorkflowReplayRequest;
 import com.autospec.dto.WorkflowRunResponse;
@@ -24,6 +26,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -108,6 +111,34 @@ public class WorkflowRuntimeController {
                 .stream()
                 .map(WorkflowNodeRunResponse::from)
                 .toList();
+    }
+
+    @GetMapping("/{runId}/nodes/page")
+    public CursorPageResponse<WorkflowNodeRunResponse> nodePage(
+            @PathVariable Long runId,
+            @RequestHeader(value = "X-AutoSpec-Session-Token", required = false) String sessionToken,
+            @RequestParam(required = false) Integer limit,
+            @RequestParam(required = false) String cursor
+    ) {
+        CursorPaginationRequest pagination = CursorPaginationRequest.of(limit, cursor);
+        WorkflowRun run = requireRun(runId);
+        requireAccess(run, sessionToken, "OWNER", "EDITOR", "VIEWER");
+        List<WorkflowNodeRun> fetched = nodeRunMapper.selectList(new LambdaQueryWrapper<WorkflowNodeRun>()
+                .eq(WorkflowNodeRun::getWorkflowRunId, runId)
+                .gt(pagination.afterId() != null, WorkflowNodeRun::getId, pagination.afterId())
+                .orderByAsc(WorkflowNodeRun::getId)
+                .last("limit " + pagination.fetchLimit()));
+        boolean hasMore = fetched.size() > pagination.limit();
+        List<WorkflowNodeRunResponse> items = fetched.subList(
+                        0,
+                        Math.min(fetched.size(), pagination.limit())
+                ).stream()
+                .map(WorkflowNodeRunResponse::from)
+                .toList();
+        String nextCursor = hasMore
+                ? CursorPaginationRequest.encode(items.get(items.size() - 1).id())
+                : null;
+        return new CursorPageResponse<>(items, nextCursor, hasMore);
     }
 
     @GetMapping("/{runId}/metrics")
