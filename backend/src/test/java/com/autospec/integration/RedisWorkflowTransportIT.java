@@ -7,8 +7,11 @@ import org.junit.jupiter.api.Test;
 import org.springframework.data.domain.Range;
 import org.springframework.data.redis.connection.stream.PendingMessages;
 import org.springframework.data.redis.connection.stream.PendingMessagesSummary;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -21,7 +24,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class RedisWorkflowTransportIT extends RedisIntegrationTestSupport {
 
+    private static final Logger LOGGER = LoggerFactory.getLogger(RedisWorkflowTransportIT.class);
     private static final Duration READ_BLOCK_TIMEOUT = Duration.ofMillis(250);
+    private static final Duration WORKER_CLAIM_IDLE = Duration.ofMillis(100);
+    private static final Duration WORKER_RECOVERY_RTO = Duration.ofSeconds(5);
 
     @Test
     void xaddConsumerCompetitionPendingAndAckUseRealRedis() throws Exception {
@@ -68,7 +74,7 @@ class RedisWorkflowTransportIT extends RedisIntegrationTestSupport {
     }
 
     @Test
-    void xautoclaimTransfersPendingMessageToRecoveryConsumer() {
+    void workerExitBeforeAckIsRecoveredByAnotherConsumerWithinRto() throws Exception {
         String stream = uniqueName("workflow:events");
         String group = uniqueName("control-plane");
         String stalledConsumer = "stalled-worker";
@@ -89,13 +95,16 @@ class RedisWorkflowTransportIT extends RedisIntegrationTestSupport {
         assertThat(redisTemplate.opsForStream().pending(stream, group)
                 .getPendingMessagesPerConsumer()).containsEntry(stalledConsumer, 1L);
 
+        Instant failureAt = Instant.now();
+        Thread.sleep(WORKER_CLAIM_IDLE.plusMillis(25).toMillis());
         List<WorkflowStreamEventMessage> reclaimed = client.claimStale(
                 stream,
                 group,
                 recoveryConsumer,
-                Duration.ZERO,
+                WORKER_CLAIM_IDLE,
                 1
         );
+        Instant detectedAt = Instant.now();
 
         assertThat(reclaimed).singleElement()
                 .satisfies(message -> {
@@ -111,12 +120,34 @@ class RedisWorkflowTransportIT extends RedisIntegrationTestSupport {
         assertThat(pending).hasSize(1);
         assertThat(pending.get(0).getIdAsString()).isEqualTo(stalledMessage.messageId());
         assertThat(pending.get(0).getConsumerName()).isEqualTo(recoveryConsumer);
-        assertThat(pending.get(0).getTotalDeliveryCount()).isGreaterThanOrEqualTo(2);
+        assertThat(pending.get(0).getTotalDeliveryCount()).isEqualTo(2);
+        assertThat(redisTemplate.opsForStream().size(stream)).isEqualTo(1);
 
         client.acknowledge(stream, group, stalledMessage.messageId());
 
-        assertThat(redisTemplate.opsForStream().pending(stream, group).getTotalPendingMessages())
-                .isZero();
+        Instant recoveredAt = Instant.now();
+        long finalPendingCount = redisTemplate.opsForStream()
+                .pending(stream, group)
+                .getTotalPendingMessages();
+        FailureDrillObservation observation = new FailureDrillObservation(
+                Duration.between(failureAt, detectedAt).toMillis(),
+                Duration.between(failureAt, recoveredAt).toMillis(),
+                pending.get(0).getTotalDeliveryCount() - 1,
+                finalPendingCount
+        );
+        LOGGER.info(
+                "failureDrill=worker-exit-before-ack detectionMs={} recoveryMs={} "
+                        + "duplicateDeliveries={} finalPendingCount={}",
+                observation.detectionMillis(),
+                observation.recoveryMillis(),
+                observation.duplicateDeliveries(),
+                observation.finalPendingCount()
+        );
+
+        assertThat(observation.detectionMillis()).isLessThan(WORKER_RECOVERY_RTO.toMillis());
+        assertThat(observation.recoveryMillis()).isLessThan(WORKER_RECOVERY_RTO.toMillis());
+        assertThat(observation.duplicateDeliveries()).isEqualTo(1);
+        assertThat(observation.finalPendingCount()).isZero();
     }
 
     @Test
@@ -199,6 +230,14 @@ class RedisWorkflowTransportIT extends RedisIntegrationTestSupport {
             String winner,
             List<WorkflowStreamEventMessage> winnerMessages,
             List<WorkflowStreamEventMessage> loserMessages
+    ) {
+    }
+
+    private record FailureDrillObservation(
+            long detectionMillis,
+            long recoveryMillis,
+            long duplicateDeliveries,
+            long finalPendingCount
     ) {
     }
 }
