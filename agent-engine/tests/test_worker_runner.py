@@ -1,3 +1,5 @@
+import time
+
 import pytest
 
 from runtime.worker import InvalidWorkflowCommandError, StreamMessage
@@ -39,10 +41,12 @@ class RecordingWorker:
         self.processed = []
         self.invalid_message_ids = set(invalid_message_ids or [])
         self.error = error
+        self.failure_detected_at = None
 
     async def process(self, message):
         self.processed.append(message.message_id)
         if message.message_id in self.invalid_message_ids:
+            self.failure_detected_at = time.perf_counter()
             raise InvalidWorkflowCommandError("INVALID_JSON")
         if self.error:
             raise self.error
@@ -83,7 +87,9 @@ async def test_runner_quarantines_invalid_command_and_continues_batch():
         dead_letter_stream="custom.commands.dlq",
     )
 
+    failure_started_at = time.perf_counter()
     processed = await runner.run_once()
+    recovered_at = time.perf_counter()
 
     assert worker.processed == ["1-0", "2-0"]
     assert client.dead_letters[0][0:3] == (
@@ -96,6 +102,14 @@ async def test_runner_quarantines_invalid_command_and_continues_batch():
         ("autospec.workflow.commands", "autospec-workers", "1-0")
     ]
     assert processed == 2
+    assert worker.failure_detected_at is not None
+    print(
+        "failureDrill=invalid-message "
+        f"detectionMs={round((worker.failure_detected_at - failure_started_at) * 1000)} "
+        f"recoveryMs={round((recovered_at - worker.failure_detected_at) * 1000)} "
+        "deadLetterCount=1 processedCount=2 manualRepairs=0 "
+        "finalState=BATCH_CONTINUED"
+    )
 
 
 @pytest.mark.asyncio
@@ -111,7 +125,15 @@ async def test_runner_does_not_acknowledge_when_dead_letter_publication_fails():
     worker = RecordingWorker(invalid_message_ids={"1-0"})
     runner = WorkflowWorkerRunner(client, worker, consumer_name="worker-1")
 
+    failure_started_at = time.perf_counter()
     with pytest.raises(ConnectionError, match="redis unavailable"):
         await runner.run_once()
+    failure_detected_at = time.perf_counter()
 
     assert client.acknowledged == []
+    print(
+        "failureDrill=invalid-message-dlq-unavailable "
+        f"detectionMs={round((failure_detected_at - failure_started_at) * 1000)} "
+        "recoveryMs=pending acknowledgedCount=0 manualRepairs=0 "
+        "finalState=RETRYABLE"
+    )

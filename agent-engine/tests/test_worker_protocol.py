@@ -1,5 +1,6 @@
 import json
 import asyncio
+import time
 
 import pytest
 from opentelemetry.sdk.trace import TracerProvider
@@ -196,12 +197,15 @@ async def test_worker_exit_after_terminal_publish_replays_same_event_before_ack(
 
     client = ExitBeforeFirstAckClient()
     first_worker = WorkflowStreamWorker(client, StubExecutor(success_event()))
+    failure_started_at = time.perf_counter()
 
     with pytest.raises(ConnectionError, match="worker exited before command ack"):
         await first_worker.process(message())
+    failure_detected_at = time.perf_counter()
 
     recovery_worker = WorkflowStreamWorker(client, StubExecutor(success_event()))
     recovered_event = await recovery_worker.process(message())
+    recovered_at = time.perf_counter()
 
     assert [event.event_id for _, event in client.published] == [
         "7:fixture:1:1:succeeded",
@@ -211,6 +215,13 @@ async def test_worker_exit_after_terminal_publish_replays_same_event_before_ack(
     assert client.acknowledged == [
         ("autospec.workflow.commands", "autospec-workers", "1710000000000-0")
     ]
+    print(
+        "failureDrill=worker-exit-after-terminal-publish "
+        f"detectionMs={round((failure_detected_at - failure_started_at) * 1000)} "
+        f"recoveryMs={round((recovered_at - failure_detected_at) * 1000)} "
+        "duplicateDeliveries=1 eventCount=2 finalAckCount=1 "
+        "manualRepairs=0 finalState=ACKNOWLEDGED"
+    )
 
 
 @pytest.mark.asyncio
