@@ -494,6 +494,28 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+  /api/projects/{projectId}/model-invocations/page:
+    get:
+      summary: List model invocations by stable ascending ID cursor.
+      description: The cursor resumes after the previous page's last invocation ID and is unaffected by later inserts.
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/SessionToken'
+        - $ref: '#/components/parameters/PaginationLimit'
+        - $ref: '#/components/parameters/PaginationCursor'
+      responses:
+        '200':
+          description: Cursor page of model invocation telemetry.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelInvocationCursorPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /api/projects/{projectId}/events:
     get:
       summary: Stream live Agent events for a project.
@@ -1400,6 +1422,19 @@ components:
         errorMessage:
           type: string
           nullable: true
+    ModelInvocationCursorPage:
+      type: object
+      required: [items, hasMore]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ModelInvocationResponse'
+        nextCursor:
+          type: string
+          nullable: true
+        hasMore:
+          type: boolean
     AgentEventResponse:
       type: object
       required: [id, projectId, eventType, nodeName, message, createdAt]

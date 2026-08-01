@@ -578,6 +578,54 @@ class ProjectControllerTest {
     }
 
     @Test
+    void modelInvocationCursorPageRemainsStableAcrossConcurrentInserts() throws Exception {
+        String token = loginToken();
+        long projectId = createProject(token, "Model Invocation Cursor Project", "Build cursor model history.");
+        modelInvocation(projectId, "model-node-1");
+        modelInvocation(projectId, "model-node-2");
+        modelInvocation(projectId, "model-node-3");
+
+        String firstPageJson = mockMvc.perform(get(
+                                "/api/projects/{projectId}/model-invocations/page?limit=2",
+                                projectId
+                        )
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(2))
+                .andExpect(jsonPath("$.items[0].agentNode").value("model-node-1"))
+                .andExpect(jsonPath("$.items[1].agentNode").value("model-node-2"))
+                .andExpect(jsonPath("$.hasMore").value(true))
+                .andExpect(jsonPath("$.nextCursor").isString())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String cursor = objectMapper.readTree(firstPageJson).path("nextCursor").asText();
+
+        modelInvocation(projectId, "model-node-4");
+
+        mockMvc.perform(get(
+                                "/api/projects/{projectId}/model-invocations/page?limit=2&cursor={cursor}",
+                                projectId,
+                                cursor
+                        )
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(2))
+                .andExpect(jsonPath("$.items[0].agentNode").value("model-node-3"))
+                .andExpect(jsonPath("$.items[1].agentNode").value("model-node-4"))
+                .andExpect(jsonPath("$.hasMore").value(false))
+                .andExpect(jsonPath("$.nextCursor").doesNotExist());
+
+        mockMvc.perform(get(
+                                "/api/projects/{projectId}/model-invocations/page?cursor=invalid!",
+                                projectId
+                        )
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+    }
+
+    @Test
     void generationRetrievesOnlySourcesVisibleToProjectOwner() throws Exception {
         String token = loginToken();
         long ownerSourceProjectId = createProject(token, "Owner Source", "Build model routing marketplace.");

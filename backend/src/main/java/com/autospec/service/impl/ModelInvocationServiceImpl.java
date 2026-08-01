@@ -35,4 +35,14 @@ public class ModelInvocationServiceImpl extends ServiceImpl<ModelInvocationMappe
                 .last("limit " + limit + " offset " + offset)
                 .list();
     }
+
+    @Override
+    public List<ModelInvocation> listByProjectIdAfterId(Long projectId, Long afterId, int limit) {
+        return lambdaQuery()
+                .eq(ModelInvocation::getProjectId, projectId)
+                .gt(afterId != null, ModelInvocation::getId, afterId)
+                .orderByAsc(ModelInvocation::getId)
+                .last("limit " + limit)
+                .list();
+    }
 }
