@@ -1,4 +1,5 @@
 import asyncio
+from time import perf_counter
 
 import pytest
 from pydantic import BaseModel
@@ -102,7 +103,7 @@ async def test_executor_classifies_invalid_handler_output():
 
 
 @pytest.mark.asyncio
-async def test_executor_classifies_timeout():
+async def test_executor_times_out_slow_model_within_runtime_budget():
     async def slow_handler(_input):
         await asyncio.sleep(0.05)
         return {"doubled": 6}
@@ -110,7 +111,12 @@ async def test_executor_classifies_timeout():
     registry = HandlerRegistry()
     registry.register("FixtureAgent", "v1", FixtureInput, FixtureOutput, slow_handler)
 
+    started = perf_counter()
     event = await NodeExecutor(registry).execute(command(timeout_ms=10))
+    elapsed_ms = round((perf_counter() - started) * 1000)
 
     assert event.event_type == "NODE_FAILED"
     assert event.error_code == "MODEL_TIMEOUT"
+    assert event.error_message == "node exceeded timeout of 10 ms"
+    assert event.duration_ms < 100
+    assert elapsed_ms < 100

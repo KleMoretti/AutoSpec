@@ -81,7 +81,7 @@ public class WorkflowRunReconciliationService implements WorkflowRunReconciliati
                 .eq(WorkflowRun::getStatus, "RUNNING")
                 .set(WorkflowRun::getStatus, complete ? "COMPLETED" : "FAILED")
                 .set(WorkflowRun::getResponseStatus, complete ? "COMPLETED" : "FAILED")
-                .set(WorkflowRun::getResponsePercent, complete ? 100 : run.getResponsePercent())
+                .set(complete, WorkflowRun::getResponsePercent, 100)
                 .set(WorkflowRun::getCompletedAt, now)
                 .set(WorkflowRun::getUpdatedAt, now));
     }
