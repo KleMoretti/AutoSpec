@@ -182,6 +182,38 @@ async def test_worker_does_not_acknowledge_when_executor_crashes():
 
 
 @pytest.mark.asyncio
+async def test_worker_exit_after_terminal_publish_replays_same_event_before_ack():
+    class ExitBeforeFirstAckClient(FakeStreamClient):
+        def __init__(self):
+            super().__init__()
+            self.ack_attempts = 0
+
+        async def acknowledge(self, stream, group, message_id):
+            self.ack_attempts += 1
+            if self.ack_attempts == 1:
+                raise ConnectionError("worker exited before command ack")
+            await super().acknowledge(stream, group, message_id)
+
+    client = ExitBeforeFirstAckClient()
+    first_worker = WorkflowStreamWorker(client, StubExecutor(success_event()))
+
+    with pytest.raises(ConnectionError, match="worker exited before command ack"):
+        await first_worker.process(message())
+
+    recovery_worker = WorkflowStreamWorker(client, StubExecutor(success_event()))
+    recovered_event = await recovery_worker.process(message())
+
+    assert [event.event_id for _, event in client.published] == [
+        "7:fixture:1:1:succeeded",
+        "7:fixture:1:1:succeeded",
+    ]
+    assert recovered_event.event_id == "7:fixture:1:1:succeeded"
+    assert client.acknowledged == [
+        ("autospec.workflow.commands", "autospec-workers", "1710000000000-0")
+    ]
+
+
+@pytest.mark.asyncio
 async def test_worker_rejects_message_without_payload_without_acknowledging():
     client = FakeStreamClient()
     worker = WorkflowStreamWorker(client, StubExecutor(success_event()))
