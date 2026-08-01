@@ -3,6 +3,8 @@ package com.autospec.integration;
 import com.autospec.entity.WorkflowOutbox;
 import com.autospec.mapper.WorkflowOutboxMapper;
 import com.autospec.workflow.transport.WorkflowOutboxPublisher;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -37,6 +39,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 })
 @ActiveProfiles("integration-test")
 class RedisOutboxRecoveryIT extends MySqlIntegrationTestSupport {
+    private static final Logger LOGGER = LoggerFactory.getLogger(RedisOutboxRecoveryIT.class);
     private static final int REDIS_PORT = 6379;
     private static final Duration RECOVERY_OBJECTIVE = Duration.ofSeconds(10);
     private static final Network NETWORK = Network.newNetwork();
@@ -118,12 +121,28 @@ class RedisOutboxRecoveryIT extends MySqlIntegrationTestSupport {
         assertThat(recoveryMillis).isLessThan(RECOVERY_OBJECTIVE.toMillis());
         assertThat(recovered.getStatus()).isEqualTo("PUBLISHED");
         assertThat(recovered.getPublishedAt()).isNotNull();
-        assertThat(redisTemplate.opsForStream().range(
+        var publishedCommands = redisTemplate.opsForStream().range(
                 WorkflowOutboxPublisher.COMMAND_STREAM,
                 Range.unbounded()
-        )).anySatisfy(record -> assertThat(record.getValue())
+        );
+        assertThat(publishedCommands).isNotEmpty();
+        assertThat(publishedCommands).anySatisfy(record -> assertThat(record.getValue())
                 .containsEntry("event_id", outbox.getEventId())
                 .containsEntry("payload", outbox.getPayloadJson()));
+        assertThat(publishedCommands).allSatisfy(record -> assertThat(record.getValue())
+                .containsEntry("event_id", outbox.getEventId()));
+
+        LOGGER.info(
+                "failureDrill=redis-disconnect detectionMs={} recoveryMs={} "
+                        + "retryAttempts={} commandCount={} duplicateDeliveries={} "
+                        + "manualRepairs=0 finalStatus={}",
+                detectionMillis,
+                recoveryMillis,
+                recovered.getRetryCount(),
+                publishedCommands.size(),
+                Math.max(0, publishedCommands.size() - 1),
+                recovered.getStatus()
+        );
     }
 
     private WorkflowOutbox persistPendingOutbox() {

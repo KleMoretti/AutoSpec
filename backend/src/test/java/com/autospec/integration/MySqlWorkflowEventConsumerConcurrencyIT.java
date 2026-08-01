@@ -17,6 +17,8 @@ import org.apache.ibatis.session.SqlSessionFactory;
 import org.apache.ibatis.session.SqlSessionFactoryBuilder;
 import org.apache.ibatis.transaction.jdbc.JdbcTransactionFactory;
 import org.junit.jupiter.api.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
 import java.sql.Connection;
@@ -39,6 +41,10 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class MySqlWorkflowEventConsumerConcurrencyIT extends MySqlIntegrationTestSupport {
+    private static final Logger LOGGER = LoggerFactory.getLogger(
+            MySqlWorkflowEventConsumerConcurrencyIT.class
+    );
+    private static final long DEDUPLICATION_RTO_MILLIS = TimeUnit.SECONDS.toMillis(10);
 
     @Test
     void concurrentConsumersApplyTheSameEventOnlyOnce() throws Exception {
@@ -54,6 +60,8 @@ class MySqlWorkflowEventConsumerConcurrencyIT extends MySqlIntegrationTestSuppor
         CountDownLatch ready = new CountDownLatch(2);
         CountDownLatch start = new CountDownLatch(1);
         ExecutorService executor = Executors.newFixedThreadPool(2);
+        List<WorkflowEventOutcome> outcomes = List.of();
+        long handlingMillis = -1;
 
         try {
             Future<WorkflowEventOutcome> first = executor.submit(() -> consumeWhenReleased(
@@ -64,12 +72,17 @@ class MySqlWorkflowEventConsumerConcurrencyIT extends MySqlIntegrationTestSuppor
             ));
 
             assertThat(ready.await(10, TimeUnit.SECONDS)).isTrue();
+            long handlingStartedAt = System.nanoTime();
             start.countDown();
 
-            assertThat(List.of(
+            outcomes = List.of(
                     first.get(20, TimeUnit.SECONDS),
                     second.get(20, TimeUnit.SECONDS)
-            )).containsExactlyInAnyOrder(
+            );
+            handlingMillis = TimeUnit.NANOSECONDS.toMillis(
+                    System.nanoTime() - handlingStartedAt
+            );
+            assertThat(outcomes).containsExactlyInAnyOrder(
                     WorkflowEventOutcome.ACCEPTED,
                     WorkflowEventOutcome.DUPLICATE
             );
@@ -78,10 +91,23 @@ class MySqlWorkflowEventConsumerConcurrencyIT extends MySqlIntegrationTestSuppor
             executor.shutdownNow();
         }
 
-        assertThat(processedEventCount(dataSource, eventId)).isEqualTo(1);
+        long finalProcessedRows = processedEventCount(dataSource, eventId);
+        assertThat(handlingMillis).isLessThan(DEDUPLICATION_RTO_MILLIS);
+        assertThat(finalProcessedRows).isEqualTo(1);
         verify(nodeRunMapper, times(1)).update(eq(null), any());
         verify(trigger, times(1)).reconcile(7L);
         verify(runMapper, times(1)).update(eq(null), any());
+
+        LOGGER.info(
+                "failureDrill=duplicate-terminal-event detectionMs={} recoveryMs={} "
+                        + "duplicateDeliveries={} appliedResults={} manualRepairs=0 "
+                        + "finalProcessedRows={}",
+                handlingMillis,
+                handlingMillis,
+                outcomes.stream().filter(WorkflowEventOutcome.DUPLICATE::equals).count(),
+                outcomes.stream().filter(WorkflowEventOutcome.ACCEPTED::equals).count(),
+                finalProcessedRows
+        );
     }
 
     private WorkflowEventOutcome consumeWhenReleased(
