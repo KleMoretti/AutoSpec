@@ -244,6 +244,7 @@ function ProjectDetailPage() {
       message.success('Workflow decision applied');
       await loadProject();
     } catch (decisionError) {
+      await loadProject().catch(() => undefined);
       message.error(decisionError instanceof Error ? decisionError.message : 'Decision failed');
       throw decisionError;
     }

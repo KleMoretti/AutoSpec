@@ -104,7 +104,7 @@ class DynamicWorkflowLifecycleTest {
         Artifact candidate = artifactMapper.selectById(approval.getCandidateArtifactId());
         assertThat(candidate.getStatus()).isEqualTo("PENDING_REVIEW");
 
-        approvalService.decide(approval.getId(), new WorkflowApprovalService.ApprovalDecision(
+        approvalService.decide(approval.getId(), 0, new WorkflowApprovalService.ApprovalDecision(
                 "APPROVE",
                 "accept deterministic PRD",
                 null,

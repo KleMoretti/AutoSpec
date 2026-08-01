@@ -41,6 +41,7 @@ export interface WorkflowApprovalResponse {
   mode: 'BEFORE_NODE' | 'AFTER_NODE' | string;
   allowedActions: WorkflowApprovalDecision[];
   status: 'PENDING' | 'DECIDED' | string;
+  lockVersion: number;
   decision?: WorkflowApprovalDecision;
   candidateArtifactId?: number;
   revisedArtifactId?: number;
@@ -55,6 +56,7 @@ export interface ApprovalDecisionPayload {
   editedContent?: string;
   rollbackNodeId?: string;
   idempotencyKey: string;
+  expectedLockVersion: number;
 }
 
 export async function getWorkflowApprovals(projectId: number): Promise<WorkflowApprovalResponse[]> {

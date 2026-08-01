@@ -335,6 +335,54 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+  /api/projects/{projectId}/workflow-approvals:
+    get:
+      summary: List workflow approvals for a project.
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/SessionToken'
+      responses:
+        '200':
+          description: Workflow approval list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WorkflowApprovalResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/workflow-approvals/{approvalId}/decide:
+    post:
+      summary: Decide a pending workflow approval using optimistic concurrency control.
+      parameters:
+        - $ref: '#/components/parameters/ApprovalId'
+        - $ref: '#/components/parameters/SessionToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApprovalDecisionRequest'
+      responses:
+        '200':
+          description: Persisted approval decision or an idempotent replay of it.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowApprovalResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/OptimisticLockConflict'
   /api/projects/{projectId}/workflow-runs:
     get:
       summary: List workflow run history for a project.
@@ -870,6 +918,13 @@ components:
       schema:
         type: integer
         format: int64
+    ApprovalId:
+      name: approvalId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
     ExportFileId:
       name: exportFileId
       in: path
@@ -1123,6 +1178,79 @@ components:
           items:
             type: object
             additionalProperties: true
+    WorkflowApprovalResponse:
+      type: object
+      required: [id, workflowRunId, nodeRunId, mode, allowedActions, status, lockVersion]
+      properties:
+        id:
+          type: integer
+          format: int64
+        workflowRunId:
+          type: integer
+          format: int64
+        nodeRunId:
+          type: integer
+          format: int64
+        nodeId:
+          type: string
+          nullable: true
+        mode:
+          type: string
+          enum: [BEFORE_NODE, AFTER_NODE]
+        allowedActions:
+          type: array
+          items:
+            type: string
+            enum: [APPROVE, REJECT, EDIT_AND_APPROVE, ROLLBACK_TO_NODE, CANCEL_WORKFLOW]
+        status:
+          type: string
+        decision:
+          type: string
+          nullable: true
+        candidateArtifactId:
+          type: integer
+          format: int64
+          nullable: true
+        revisedArtifactId:
+          type: integer
+          format: int64
+          nullable: true
+        lockVersion:
+          type: integer
+          minimum: 0
+        decisionReason:
+          type: string
+          nullable: true
+        decidedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+          nullable: true
+    ApprovalDecisionRequest:
+      type: object
+      required: [decision, idempotencyKey, expectedLockVersion]
+      properties:
+        decision:
+          type: string
+          enum: [APPROVE, REJECT, EDIT_AND_APPROVE, ROLLBACK_TO_NODE, CANCEL_WORKFLOW]
+        reason:
+          type: string
+          nullable: true
+        editedContent:
+          type: string
+          nullable: true
+        rollbackNodeId:
+          type: string
+          nullable: true
+        idempotencyKey:
+          type: string
+          minLength: 1
+        expectedLockVersion:
+          type: integer
+          minimum: 0
     KnowledgeSourceResponse:
       type: object
       required: [artifactId, artifactType, title, artifactVersion, content]

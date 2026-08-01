@@ -5,6 +5,7 @@ import com.autospec.entity.WorkflowApproval;
 import com.autospec.entity.WorkflowNodeRun;
 import com.autospec.entity.WorkflowRun;
 import com.autospec.entity.WorkflowTransition;
+import com.autospec.exception.OptimisticLockConflictException;
 import com.autospec.mapper.ArtifactMapper;
 import com.autospec.mapper.WorkflowApprovalMapper;
 import com.autospec.mapper.WorkflowNodeRunMapper;
@@ -22,6 +23,7 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -190,15 +192,25 @@ public class WorkflowApprovalServiceImpl implements WorkflowApprovalService {
     }
 
     @Override
-    @Transactional
-    public WorkflowApproval decide(long approvalId, ApprovalDecision command) {
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    public WorkflowApproval decide(
+            long approvalId,
+            int expectedLockVersion,
+            ApprovalDecision command
+    ) {
         WorkflowApproval approval = getById(approvalId);
         validateIdempotency(command.idempotencyKey());
         if (!"PENDING".equals(approval.getStatus())) {
             if (command.idempotencyKey().equals(approval.getIdempotencyKey())) {
                 return approval;
             }
+            if (expectedLockVersion != valueOrZero(approval.getLockVersion())) {
+                throw optimisticConflict(approval, expectedLockVersion);
+            }
             throw conflict("Workflow approval already decided");
+        }
+        if (expectedLockVersion != valueOrZero(approval.getLockVersion())) {
+            throw optimisticConflict(approval, expectedLockVersion);
         }
 
         WorkflowRun run = requireRun(approval.getWorkflowRunId());
@@ -210,7 +222,9 @@ public class WorkflowApprovalServiceImpl implements WorkflowApprovalService {
         validateAllowedAction(graph, nodeRun.getNodeId(), action);
 
         LocalDateTime now = LocalDateTime.now();
-        reserveDecision(approval, command, action, now);
+        if (!reserveDecision(approval, expectedLockVersion, command, action, now)) {
+            return getById(approvalId);
+        }
         switch (action) {
             case "APPROVE" -> approveNode(approval, nodeRun, null, now);
             case "EDIT_AND_APPROVE" -> {
@@ -229,8 +243,9 @@ public class WorkflowApprovalServiceImpl implements WorkflowApprovalService {
         return approvalMapper.selectById(approvalId);
     }
 
-    private void reserveDecision(
+    private boolean reserveDecision(
             WorkflowApproval approval,
+            int expectedLockVersion,
             ApprovalDecision command,
             String action,
             LocalDateTime now
@@ -238,23 +253,31 @@ public class WorkflowApprovalServiceImpl implements WorkflowApprovalService {
         int updated = approvalMapper.update(null, new LambdaUpdateWrapper<WorkflowApproval>()
                 .eq(WorkflowApproval::getId, approval.getId())
                 .eq(WorkflowApproval::getStatus, "PENDING")
+                .eq(WorkflowApproval::getLockVersion, expectedLockVersion)
                 .set(WorkflowApproval::getStatus, "DECIDED")
                 .set(WorkflowApproval::getDecision, action)
                 .set(WorkflowApproval::getDecidedByUserId, command.userId())
                 .set(WorkflowApproval::getDecisionReason, command.reason())
                 .set(WorkflowApproval::getIdempotencyKey, command.idempotencyKey())
+                .set(WorkflowApproval::getLockVersion, expectedLockVersion + 1)
                 .set(WorkflowApproval::getDecidedAt, now)
                 .set(WorkflowApproval::getUpdatedAt, now));
         if (updated == 0) {
-            throw conflict("Workflow approval was decided concurrently");
+            WorkflowApproval current = getById(approval.getId());
+            if (command.idempotencyKey().equals(current.getIdempotencyKey())) {
+                return false;
+            }
+            throw optimisticConflict(current, expectedLockVersion);
         }
         approval.setStatus("DECIDED");
         approval.setDecision(action);
         approval.setDecidedByUserId(command.userId());
         approval.setDecisionReason(command.reason());
         approval.setIdempotencyKey(command.idempotencyKey());
+        approval.setLockVersion(expectedLockVersion + 1);
         approval.setDecidedAt(now);
         approval.setUpdatedAt(now);
+        return true;
     }
 
     private void createPendingApproval(
@@ -270,6 +293,7 @@ public class WorkflowApprovalServiceImpl implements WorkflowApprovalService {
         approval.setStatus("PENDING");
         approval.setCandidateArtifactId(candidateArtifactId);
         approval.setIdempotencyKey("pending:" + nodeRun.getId() + ":" + mode);
+        approval.setLockVersion(0);
         approval.setCreatedAt(now);
         approval.setUpdatedAt(now);
         approvalMapper.insert(approval);
@@ -560,6 +584,21 @@ public class WorkflowApprovalServiceImpl implements WorkflowApprovalService {
 
     private ResponseStatusException conflict(String message) {
         return new ResponseStatusException(HttpStatus.CONFLICT, message);
+    }
+
+    private OptimisticLockConflictException optimisticConflict(
+            WorkflowApproval current,
+            int expectedLockVersion
+    ) {
+        int currentLockVersion = valueOrZero(current.getLockVersion());
+        return new OptimisticLockConflictException(
+                "workflowApproval",
+                current.getId(),
+                expectedLockVersion,
+                currentLockVersion,
+                current.getId(),
+                currentLockVersion
+        );
     }
 
     private ResponseStatusException notFound(String message) {
