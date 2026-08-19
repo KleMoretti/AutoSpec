@@ -14,13 +14,14 @@ function App() {
   return (
     <Router>
       <Layout className="app-shell">
+        <a className="skip-link" href="#main-content">Skip to main content</a>
         <Header className="app-header">
           <Link to="/" className="brand">
             <FileTextOutlined />
             <span>AutoSpec</span>
           </Link>
-          <Button type="primary" icon={<PlusOutlined />}>
-            <Link to="/">New</Link>
+          <Button icon={<PlusOutlined />}>
+            <Link to="/">Projects</Link>
           </Button>
         </Header>
         <Routes>

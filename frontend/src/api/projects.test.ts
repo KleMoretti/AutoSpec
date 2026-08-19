@@ -36,7 +36,7 @@ describe('project api client', () => {
     fetchMock.mockReset();
   });
 
-  it('attaches the autospec session token header when a session exists', async () => {
+  it('uses same-origin credentials without exposing the session token to JavaScript requests', async () => {
     const storage = new Map<string, string>();
     vi.stubGlobal('localStorage', {
       getItem: (key: string) => storage.get(key) ?? null,
@@ -53,7 +53,7 @@ describe('project api client', () => {
 
     expect(fetchMock).toHaveBeenCalledWith('/api/projects', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-AutoSpec-Session-Token': 'session-abc' },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: 'Campus Marketplace', requirement: 'Build it.' })
     });
   });

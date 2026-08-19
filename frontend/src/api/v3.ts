@@ -84,6 +84,14 @@ export interface WorkflowRunResponse {
   replayOfRunId?: number;
   reviewRound?: number;
   maxReviewRounds?: number;
+  qualityProfile?: 'FAST' | 'BALANCED' | 'DEEP';
+  maxTokens?: number;
+  maxCost?: number;
+  maxModelCalls?: number;
+  maxWallTimeMs?: number;
+  consumedTokens?: number;
+  consumedCost?: number;
+  modelCallCount?: number;
   status: string;
   responseStatus?: string;
   responsePercent?: number;
@@ -123,8 +131,28 @@ export interface WorkflowRuntimeMetricsResponse {
   retryCount: number;
   recoveryCount: number;
   tokenCount: number;
+  cacheTokenCount: number;
   estimatedCost: number;
+  modelCallCount: number;
   acceptedDuplicateEventCount: number;
+  qualityProfile?: string;
+  maxTokens?: number;
+  maxCost?: number;
+  maxModelCalls?: number;
+  maxWallTimeMs?: number;
+  remainingTokens?: number;
+  remainingCost?: number;
+  remainingModelCalls?: number;
+  modelUsage: Array<{
+    providerKey: string;
+    modelName: string;
+    invocationCount: number;
+    modelCallCount: number;
+    inputTokens: number;
+    outputTokens: number;
+    cacheTokens: number;
+    estimatedCost: number;
+  }>;
 }
 
 export interface WorkflowVersionResponse {
@@ -144,6 +172,22 @@ export interface WorkflowRunStartPayload {
   workflowVersionId: number;
   input: Record<string, unknown>;
   idempotencyKey: string;
+  executionPolicy?: {
+    qualityProfile: 'FAST' | 'BALANCED' | 'DEEP';
+    maxTokens?: number;
+    maxCost?: number;
+    maxModelCalls?: number;
+    maxWallTimeMs?: number;
+  };
+}
+
+export interface DeliveryReadinessResponse {
+  specReady: boolean;
+  buildReady: boolean;
+  status: 'NOT_STARTED' | 'SPEC_BLOCKED' | 'BUILD_REQUIRED' | 'READY' | string;
+  workflowRunId?: number;
+  codeGenerationJobId?: number;
+  blockers: string[];
 }
 
 export interface WorkflowReplayPayload {
@@ -154,6 +198,12 @@ export interface WorkflowReplayPayload {
 
 export async function getWorkflowRuns(projectId: number): Promise<WorkflowRunResponse[]> {
   return request(`/api/projects/${projectId}/workflow-runs`);
+}
+
+export async function getDeliveryReadiness(
+  projectId: number
+): Promise<DeliveryReadinessResponse> {
+  return request(`/api/projects/${projectId}/delivery-readiness`);
 }
 
 export async function startWorkflowRun(
@@ -192,40 +242,18 @@ export async function replayWorkflowRun(
 }
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const nextInit = withSessionHeader(init);
-  const response = nextInit === undefined ? await fetch(url) : await fetch(url, nextInit);
+  const response = init === undefined ? await fetch(url) : await fetch(url, init);
   if (!response.ok) {
     throw new Error(`Request failed: ${response.status}`);
   }
   return response.json() as Promise<T>;
 }
 
-function withSessionHeader(init?: RequestInit): RequestInit | undefined {
-  const sessionToken = readSessionToken();
-  if (!sessionToken) {
-    return init;
-  }
-  return {
-    ...init,
-    headers: {
-      ...(init?.headers as Record<string, string> | undefined),
-      'X-AutoSpec-Session-Token': sessionToken
-    }
-  };
-}
-
-function readSessionToken(): string | null {
-  if (typeof localStorage === 'undefined') {
-    return null;
-  }
-  const raw = localStorage.getItem('autospec.session');
-  if (!raw) {
-    return null;
-  }
-  try {
-    const parsed = JSON.parse(raw) as { sessionToken?: string };
-    return parsed.sessionToken ?? null;
-  } catch {
-    return null;
-  }
+export async function cancelWorkflowRun(
+  projectId: number,
+  runId: number
+): Promise<WorkflowRunResponse> {
+  return request(`/api/projects/${projectId}/workflow-runs/${runId}/cancel`, {
+    method: 'POST'
+  });
 }

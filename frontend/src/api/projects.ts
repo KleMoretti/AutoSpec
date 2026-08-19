@@ -1,5 +1,3 @@
-import { readSession } from './auth';
-
 export interface CreateProjectPayload {
   name: string;
   requirement: string;
@@ -16,6 +14,21 @@ export interface ProjectResponse {
   originalRequirement: string;
   status: string;
   createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ProjectDashboardItemResponse {
+  projectId: number;
+  name: string;
+  requirementSummary: string;
+  projectStatus: string;
+  latestWorkflowRunId?: number;
+  latestWorkflowStatus?: string;
+  pendingApprovalCount: number;
+  openReviewIssueCount: number;
+  blockingReviewIssueCount: number;
+  estimatedCost: number;
+  qualityScore?: number;
   updatedAt?: string;
 }
 
@@ -55,16 +68,41 @@ export interface ArtifactResponse {
   status?: ArtifactStatus;
   sourceAgent?: string;
   parentArtifactId?: number;
+  workflowNodeRunId?: number;
+  contentHash?: string;
+  schemaVersion?: string;
+  promptKey?: string;
+  promptVersion?: string;
+  modelProvider?: string;
+  modelName?: string;
+  sourceCitationsJson?: string;
+  provenanceJson?: string;
   approvedAt?: string;
   updatedAt?: string;
 }
 
 export interface ReviewIssueResponse {
+  id: number;
+  issueKey?: string;
   severity: string;
   issueType: string;
+  artifactType?: string;
+  artifactPath?: string;
+  requirementId?: string;
   description: string;
   suggestion: string;
+  evidence?: string;
   status: string;
+  ownerUserId?: number;
+  resolution?: string;
+  resolvedInArtifactId?: number;
+}
+
+export interface ArtifactDiffResponse {
+  baseArtifactId: number;
+  targetArtifactId: number;
+  changed: boolean;
+  changedPaths: string[];
 }
 
 export interface ReviewResponse {
@@ -123,6 +161,14 @@ export async function getProject(projectId: number): Promise<ProjectResponse> {
   return request(`/api/projects/${projectId}`);
 }
 
+export async function getProjects(): Promise<ProjectResponse[]> {
+  return request('/api/projects');
+}
+
+export async function getProjectDashboard(): Promise<ProjectDashboardItemResponse[]> {
+  return request('/api/projects/dashboard');
+}
+
 export async function generateProject(projectId: number): Promise<GenerateProjectResponse> {
   return request(`/api/projects/${projectId}/generate`, { method: 'POST' });
 }
@@ -167,8 +213,53 @@ export async function getArtifacts(projectId: number): Promise<ArtifactResponse[
   return request(`/api/projects/${projectId}/artifacts`);
 }
 
+export async function getArtifactVersions(
+  projectId: number,
+  artifactId: number
+): Promise<ArtifactResponse[]> {
+  return request(`/api/projects/${projectId}/artifacts/${artifactId}/versions`);
+}
+
+export async function getArtifactDiff(
+  projectId: number,
+  artifactId: number,
+  againstArtifactId: number
+): Promise<ArtifactDiffResponse> {
+  return request(
+    `/api/projects/${projectId}/artifacts/${artifactId}/diff?againstArtifactId=${againstArtifactId}`
+  );
+}
+
+export async function restoreArtifact(
+  projectId: number,
+  artifactId: number,
+  expectedLatestLockVersion: number
+): Promise<ArtifactResponse> {
+  return request(`/api/projects/${projectId}/artifacts/${artifactId}/restore`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ expectedLatestLockVersion })
+  });
+}
+
 export async function getReview(projectId: number): Promise<ReviewResponse> {
   return request(`/api/projects/${projectId}/review`);
+}
+
+export async function updateReviewIssue(
+  projectId: number,
+  issueId: number,
+  payload: {
+    status: 'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'IGNORED';
+    resolution?: string;
+    resolvedInArtifactId?: number;
+  }
+): Promise<ReviewIssueResponse> {
+  return request(`/api/projects/${projectId}/review/issues/${issueId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
 }
 
 export async function getEventHistory(projectId: number): Promise<AgentEventResponse[]> {
@@ -180,9 +271,7 @@ export function subscribeProjectEvents(
   onEvent: (event: AgentEventResponse) => void,
   onError?: (event: Event) => void
 ): EventSource {
-  const token = readSessionToken();
-  const query = token ? `?sessionToken=${encodeURIComponent(token)}` : '';
-  const source = new EventSource(`/api/projects/${projectId}/events${query}`);
+  const source = new EventSource(`/api/projects/${projectId}/events`, { withCredentials: true });
   source.onmessage = (message) => onEvent(JSON.parse(message.data) as AgentEventResponse);
   if (onError) {
     source.onerror = onError;
@@ -206,28 +295,9 @@ export async function exportPdf(projectId: number): Promise<ExportMetadataRespon
 }
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const nextInit = withSessionHeader(init);
-  const response = nextInit === undefined ? await fetch(url) : await fetch(url, nextInit);
+  const response = init === undefined ? await fetch(url) : await fetch(url, init);
   if (!response.ok) {
     throw new Error(`Request failed: ${response.status}`);
   }
   return response.json() as Promise<T>;
-}
-
-function withSessionHeader(init?: RequestInit): RequestInit | undefined {
-  const sessionToken = readSessionToken();
-  if (!sessionToken) {
-    return init;
-  }
-  return {
-    ...init,
-    headers: {
-      ...(init?.headers as Record<string, string> | undefined),
-      'X-AutoSpec-Session-Token': sessionToken
-    }
-  };
-}
-
-function readSessionToken(): string | null {
-  return readSession()?.sessionToken ?? null;
 }
