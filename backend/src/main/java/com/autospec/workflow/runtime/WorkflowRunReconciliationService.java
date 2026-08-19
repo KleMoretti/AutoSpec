@@ -48,6 +48,9 @@ public class WorkflowRunReconciliationService implements WorkflowRunReconciliati
         if (run == null) {
             throw new IllegalArgumentException("workflow run not found: " + workflowRunId);
         }
+        if (!"RUNNING".equals(run.getStatus())) {
+            return;
+        }
         CompiledWorkflow graph = dagCompiler.compile(
                 snapshotParser.parse(run.getWorkflowSnapshotJson())
         );

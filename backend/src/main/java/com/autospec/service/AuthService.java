@@ -44,19 +44,26 @@ public class AuthService {
     }
 
     @Transactional
-    public UserAccount ensureDemoOwner() {
+    public UserAccount ensureDemoUser(String username, String displayName, String password) {
+        if (username == null || username.isBlank() || password == null || password.isBlank()) {
+            throw new IllegalArgumentException("Demo user credentials must not be blank");
+        }
         return userAccountService.lambdaQuery()
-                .eq(UserAccount::getUsername, "owner")
+                .eq(UserAccount::getUsername, username)
                 .oneOpt()
                 .orElseGet(() -> {
                     UserAccount user = new UserAccount();
-                    user.setUsername("owner");
-                    user.setDisplayName("Owner");
-                    user.setPasswordHash(passwordEncoder.encode("owner-pass"));
+                    user.setUsername(username);
+                    user.setDisplayName(displayName == null || displayName.isBlank() ? username : displayName);
+                    user.setPasswordHash(passwordEncoder.encode(password));
                     user.setEnabled(true);
                     userAccountService.save(user);
                     return user;
                 });
+    }
+
+    public Duration sessionTtl() {
+        return sessionTtl;
     }
 
     public UserAccount login(String username, String password) {

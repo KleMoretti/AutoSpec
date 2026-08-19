@@ -21,6 +21,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.Objects;
 
 public class WorkflowEventConsumer {
     private static final Logger LOGGER = LoggerFactory.getLogger(WorkflowEventConsumer.class);
@@ -35,6 +36,7 @@ public class WorkflowEventConsumer {
     private final WorkflowArtifactProjector artifactProjector;
     private final ReviewerReworkCoordinator reworkCoordinator;
     private final WorkflowEventTracer eventTracer;
+    private final WorkflowUsageRecorder usageRecorder;
 
     public WorkflowEventConsumer(
             ProcessedWorkflowEventMapper processedEventMapper,
@@ -117,6 +119,34 @@ public class WorkflowEventConsumer {
             WorkflowRunMapper runMapper,
             WorkflowEventTracer eventTracer
     ) {
+        this(
+                processedEventMapper,
+                nodeRunMapper,
+                reconciliationTrigger,
+                failureDecisionService,
+                objectMapper,
+                approvalCoordinator,
+                artifactProjector,
+                reworkCoordinator,
+                runMapper,
+                eventTracer,
+                WorkflowUsageRecorder.none()
+        );
+    }
+
+    public WorkflowEventConsumer(
+            ProcessedWorkflowEventMapper processedEventMapper,
+            WorkflowNodeRunMapper nodeRunMapper,
+            WorkflowRunReconciliationTrigger reconciliationTrigger,
+            WorkflowFailureDecisionService failureDecisionService,
+            ObjectMapper objectMapper,
+            WorkflowApprovalCoordinator approvalCoordinator,
+            WorkflowArtifactProjector artifactProjector,
+            ReviewerReworkCoordinator reworkCoordinator,
+            WorkflowRunMapper runMapper,
+            WorkflowEventTracer eventTracer,
+            WorkflowUsageRecorder usageRecorder
+    ) {
         this.processedEventMapper = processedEventMapper;
         this.nodeRunMapper = nodeRunMapper;
         this.runMapper = runMapper;
@@ -127,6 +157,7 @@ public class WorkflowEventConsumer {
         this.artifactProjector = artifactProjector;
         this.reworkCoordinator = reworkCoordinator;
         this.eventTracer = eventTracer;
+        this.usageRecorder = usageRecorder;
     }
 
     public WorkflowEventConsumer(
@@ -173,6 +204,9 @@ public class WorkflowEventConsumer {
     }
 
     private WorkflowEventOutcome consume(WorkflowExecutionEvent event) {
+        if (!isRunActive(event.workflowRunId())) {
+            return WorkflowEventOutcome.STALE;
+        }
         ProcessedWorkflowEvent processed = new ProcessedWorkflowEvent();
         processed.setEventId(event.eventId());
         processed.setEventType(event.eventType());
@@ -180,6 +214,15 @@ public class WorkflowEventConsumer {
         if (processedEventMapper.insertIfAbsent(processed) == 0) {
             recordDuplicate(event.workflowRunId());
             return WorkflowEventOutcome.DUPLICATE;
+        }
+
+        WorkflowNodeRun envelopeNode = nodeRunMapper.selectById(event.nodeRunId());
+        if (!isCurrentEnvelope(envelopeNode, event)) {
+            return WorkflowEventOutcome.STALE;
+        }
+
+        if (usageRecorder.record(event) == WorkflowUsageRecorder.UsageDecision.BUDGET_EXCEEDED) {
+            return WorkflowEventOutcome.ACCEPTED;
         }
 
         int updated = apply(event);
@@ -190,6 +233,21 @@ public class WorkflowEventConsumer {
             reconciliationTrigger.reconcile(event.workflowRunId());
         }
         return WorkflowEventOutcome.ACCEPTED;
+    }
+
+    private boolean isRunActive(long workflowRunId) {
+        if (runMapper == null) {
+            return true;
+        }
+        WorkflowRun run = runMapper.selectById(workflowRunId);
+        return run != null && "RUNNING".equals(run.getStatus());
+    }
+
+    private String activeRunSql(long workflowRunId) {
+        if (runMapper == null) {
+            return "SELECT " + workflowRunId;
+        }
+        return "SELECT id FROM workflow_run WHERE id = " + workflowRunId + " AND status = 'RUNNING'";
     }
 
     private void logOutcome(WorkflowExecutionEvent event, WorkflowEventOutcome outcome) {
@@ -210,10 +268,28 @@ public class WorkflowEventConsumer {
 
     private int apply(WorkflowExecutionEvent event) {
         LocalDateTime now = LocalDateTime.now();
+        WorkflowNodeRun envelopeNode = nodeRunMapper.selectById(event.nodeRunId());
+        if (!isCurrentEnvelope(envelopeNode, event)) {
+            return 0;
+        }
         UpdateWrapper<WorkflowNodeRun> update = new UpdateWrapper<WorkflowNodeRun>()
                 .eq("id", event.nodeRunId())
+                .eq("workflow_run_id", event.workflowRunId())
+                .inSql("workflow_run_id", activeRunSql(event.workflowRunId()))
                 .eq("execution_id", event.executionId())
                 .in("status", "QUEUED", "RUNNING");
+        if (envelopeNode.getContractHash() == null) {
+            update.isNull("contract_hash");
+        } else {
+            update.eq("contract_hash", event.contractHash());
+        }
+        if (event.fencingToken() != null) {
+            update.le("fencing_token", event.fencingToken())
+                    .set("fencing_token", event.fencingToken());
+        }
+        if (event.workerId() != null && !event.workerId().isBlank()) {
+            update.set("worker_id", event.workerId());
+        }
         if ("NODE_HEARTBEAT".equals(event.eventType())) {
             WorkflowNodeRun nodeRun = nodeRunMapper.selectById(event.nodeRunId());
             return nodeRunMapper.update(null, update
@@ -293,6 +369,22 @@ public class WorkflowEventConsumer {
         throw new IllegalArgumentException("Unsupported workflow event type: " + event.eventType());
     }
 
+    private boolean isCurrentEnvelope(
+            WorkflowNodeRun nodeRun,
+            WorkflowExecutionEvent event
+    ) {
+        if (nodeRun == null
+                || !Objects.equals(nodeRun.getWorkflowRunId(), event.workflowRunId())
+                || !Objects.equals(nodeRun.getExecutionId(), event.executionId())
+                || !("QUEUED".equals(nodeRun.getStatus()) || "RUNNING".equals(nodeRun.getStatus()))
+                || !Objects.equals(nodeRun.getContractHash(), event.contractHash())) {
+            return false;
+        }
+        long currentFence = nodeRun.getFencingToken() == null ? 0 : nodeRun.getFencingToken();
+        long eventFence = event.fencingToken() == null ? 0 : event.fencingToken();
+        return eventFence >= currentFence;
+    }
+
     private LocalDateTime startedAt(WorkflowExecutionEvent event, LocalDateTime now) {
         long durationMs = event.durationMs() == null ? 0 : Math.max(0, event.durationMs());
         return now.minusNanos(durationMs * 1_000_000L);
@@ -322,9 +414,19 @@ public class WorkflowEventConsumer {
 
     private WorkflowExecutionEvent parse(String payloadJson) {
         try {
-            return objectMapper.readValue(payloadJson, WorkflowExecutionEvent.class);
+            WorkflowExecutionEvent event = objectMapper.readValue(
+                    payloadJson,
+                    WorkflowExecutionEvent.class
+            );
+            if (!java.util.Set.of("NODE_HEARTBEAT", "NODE_SUCCEEDED", "NODE_FAILED")
+                    .contains(event.eventType())) {
+                throw new InvalidWorkflowEventException(
+                        "Unsupported workflow event type: " + event.eventType()
+                );
+            }
+            return event;
         } catch (JsonProcessingException exception) {
-            throw new IllegalArgumentException("Invalid workflow event payload", exception);
+            throw new InvalidWorkflowEventException("Invalid workflow event payload", exception);
         }
     }
 }

@@ -14,6 +14,7 @@ public class WorkflowEventPoller {
     private final int batchSize;
     private final Duration claimMinIdle;
     private final WorkflowTransportMetrics metrics;
+    private final WorkflowEventDeadLetterSink deadLetterSink;
 
     public WorkflowEventPoller(
             WorkflowEventStreamClient streamClient,
@@ -71,6 +72,26 @@ public class WorkflowEventPoller {
             Duration claimMinIdle,
             WorkflowTransportMetrics metrics
     ) {
+        this(
+                streamClient,
+                messageHandler,
+                consumerName,
+                batchSize,
+                claimMinIdle,
+                metrics,
+                WorkflowEventDeadLetterSink.none()
+        );
+    }
+
+    public WorkflowEventPoller(
+            WorkflowEventStreamClient streamClient,
+            WorkflowEventMessageHandler messageHandler,
+            String consumerName,
+            int batchSize,
+            Duration claimMinIdle,
+            WorkflowTransportMetrics metrics,
+            WorkflowEventDeadLetterSink deadLetterSink
+    ) {
         this.streamClient = streamClient;
         this.messageHandler = messageHandler;
         this.consumerName = consumerName;
@@ -80,6 +101,7 @@ public class WorkflowEventPoller {
         }
         this.claimMinIdle = claimMinIdle;
         this.metrics = metrics;
+        this.deadLetterSink = deadLetterSink;
     }
 
     public int pollOnce() {
@@ -101,6 +123,18 @@ public class WorkflowEventPoller {
         for (WorkflowStreamEventMessage message : messages) {
             try {
                 messageHandler.handle(message.payloadJson());
+            } catch (InvalidWorkflowEventException invalidEvent) {
+                try {
+                    deadLetterSink.quarantine(message, invalidEvent);
+                } catch (RuntimeException | Error quarantineFailure) {
+                    metrics.recordEventHandlerFailure();
+                    throw quarantineFailure;
+                }
+                streamClient.acknowledge(EVENT_STREAM, CONTROL_GROUP, message.messageId());
+                metrics.recordAcknowledgedEvent();
+                metrics.recordEventDeadLetter();
+                processed++;
+                continue;
             } catch (RuntimeException | Error failure) {
                 metrics.recordEventHandlerFailure();
                 throw failure;

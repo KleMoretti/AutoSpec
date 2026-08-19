@@ -5,8 +5,10 @@ import com.autospec.dto.ExportFileResponse;
 import com.autospec.dto.ExportResponse;
 import com.autospec.dto.PaginationRequest;
 import com.autospec.entity.ExportFile;
+import com.autospec.entity.Artifact;
 import com.autospec.service.AuditEventService;
 import com.autospec.service.ExportFileService;
+import com.autospec.service.DeliveryGateService;
 import com.autospec.service.MarkdownExportService;
 import com.autospec.service.PdfExportService;
 import com.autospec.service.ProjectAccessService;
@@ -37,6 +39,7 @@ public class ExportController {
     private final AuditEventService auditEventService;
     private final ProjectAccessService projectAccessService;
     private final ObjectMapper objectMapper;
+    private final DeliveryGateService deliveryGateService;
 
     public ExportController(
             MarkdownExportService markdownExportService,
@@ -44,7 +47,8 @@ public class ExportController {
             ExportFileService exportFileService,
             AuditEventService auditEventService,
             ProjectAccessService projectAccessService,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            DeliveryGateService deliveryGateService
     ) {
         this.markdownExportService = markdownExportService;
         this.pdfExportService = pdfExportService;
@@ -52,6 +56,7 @@ public class ExportController {
         this.auditEventService = auditEventService;
         this.projectAccessService = projectAccessService;
         this.objectMapper = objectMapper;
+        this.deliveryGateService = deliveryGateService;
     }
 
     @PostMapping("/{projectId}/export")
@@ -68,10 +73,11 @@ public class ExportController {
                 "OWNER",
                 "EDITOR"
         );
+        List<Artifact> deliverableArtifacts = deliveryGateService.requireDeliverable(projectId);
         if ("MARKDOWN".equalsIgnoreCase(format)) {
             return persistExport(projectId, actorUserId, new ExportResponse(
                     "MARKDOWN",
-                    markdownExportService.exportProject(projectId),
+                    markdownExportService.exportProject(projectId, deliverableArtifacts),
                     "autospec-project-" + projectId + ".md",
                     "text/markdown;charset=utf-8",
                     "text"
@@ -80,7 +86,9 @@ public class ExportController {
         if ("PDF".equalsIgnoreCase(format)) {
             return persistExport(projectId, actorUserId, new ExportResponse(
                     "PDF",
-                    java.util.Base64.getEncoder().encodeToString(pdfExportService.exportProject(projectId)),
+                    java.util.Base64.getEncoder().encodeToString(
+                            pdfExportService.exportProject(projectId, deliverableArtifacts)
+                    ),
                     "autospec-project-" + projectId + ".pdf",
                     "application/pdf",
                     "base64"

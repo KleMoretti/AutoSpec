@@ -1,7 +1,6 @@
 package com.autospec.workflow.runtime;
 
 import com.autospec.entity.WorkflowNodeRun;
-import com.autospec.entity.WorkflowOutbox;
 import com.autospec.entity.WorkflowRun;
 import com.autospec.mapper.WorkflowNodeRunMapper;
 import com.autospec.mapper.WorkflowOutboxMapper;
@@ -9,8 +8,6 @@ import com.autospec.mapper.WorkflowRunMapper;
 import com.autospec.observability.WorkflowTraceContextFactory;
 import com.autospec.workflow.transport.WorkflowRunReconciliationTrigger;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -21,7 +18,6 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.LinkedHashSet;
 import java.util.Set;
-import java.util.UUID;
 
 @Service
 public class WorkflowRecoveryService {
@@ -71,25 +67,8 @@ public class WorkflowRecoveryService {
             throw new IllegalArgumentException("now and a positive leaseTimeout are required");
         }
 
-        int orphaned = 0;
         int replacements = 0;
         Set<Long> runsToReconcile = new LinkedHashSet<>();
-        LocalDateTime leaseCutoff = now.minus(leaseTimeout);
-        List<WorkflowNodeRun> staleRuns = nodeRunMapper.selectList(
-                new LambdaQueryWrapper<WorkflowNodeRun>()
-                        .eq(WorkflowNodeRun::getStatus, WorkflowNodeStatus.RUNNING.name())
-                        .le(WorkflowNodeRun::getHeartbeatAt, leaseCutoff)
-                        .orderByAsc(WorkflowNodeRun::getId)
-        );
-        for (WorkflowNodeRun stale : staleRuns) {
-            if (orphan(stale, now)) {
-                orphaned++;
-                nodeRunMapper.insert(replacement(stale, now));
-                replacements++;
-                runsToReconcile.add(stale.getWorkflowRunId());
-            }
-        }
-
         List<WorkflowNodeRun> dueAttempts = nodeRunMapper.selectList(
                 new LambdaQueryWrapper<WorkflowNodeRun>()
                         .in(WorkflowNodeRun::getStatus,
@@ -100,6 +79,9 @@ public class WorkflowRecoveryService {
                         .orderByAsc(WorkflowNodeRun::getId)
         );
         for (WorkflowNodeRun due : dueAttempts) {
+            if (!isRunActive(due.getWorkflowRunId())) {
+                continue;
+            }
             if (claimDueAttempt(due, now)) {
                 nodeRunMapper.insert(replacement(due, now));
                 replacements++;
@@ -107,35 +89,8 @@ public class WorkflowRecoveryService {
             }
         }
 
-        int compensated = 0;
-        List<WorkflowNodeRun> queuedRuns = nodeRunMapper.selectList(
-                new LambdaQueryWrapper<WorkflowNodeRun>()
-                        .eq(WorkflowNodeRun::getStatus, WorkflowNodeStatus.QUEUED.name())
-                        .orderByAsc(WorkflowNodeRun::getId)
-        );
-        for (WorkflowNodeRun queued : queuedRuns) {
-            if (!hasExecuteCommand(queued.getId()) && claimForCompensation(queued, now)) {
-                outboxMapper.insert(compensationCommand(queued, now));
-                compensated++;
-            }
-        }
         runsToReconcile.forEach(reconciliationTrigger::reconcile);
-        return new RecoveryResult(orphaned, replacements, compensated);
-    }
-
-    private boolean orphan(WorkflowNodeRun stale, LocalDateTime now) {
-        int updated = nodeRunMapper.update(null, new UpdateWrapper<WorkflowNodeRun>()
-                .eq("id", stale.getId())
-                .eq("execution_id", stale.getExecutionId())
-                .eq("status", WorkflowNodeStatus.RUNNING.name())
-                .eq("lock_version", stale.getLockVersion())
-                .set("status", WorkflowNodeStatus.ORPHANED.name())
-                .set("error_code", "HEARTBEAT_LEASE_EXPIRED")
-                .set("error_message", "Worker heartbeat lease expired")
-                .set("finished_at", now)
-                .set("updated_at", now)
-                .set("lock_version", stale.getLockVersion() + 1));
-        return updated == 1;
+        return new RecoveryResult(0, replacements, 0);
     }
 
     private WorkflowNodeRun replacement(WorkflowNodeRun stale, LocalDateTime now) {
@@ -146,6 +101,8 @@ public class WorkflowRecoveryService {
         replacement.setRevision(stale.getRevision());
         replacement.setAttempt(nextAttempt);
         replacement.setExecutionId(executionId(stale, nextAttempt));
+        replacement.setContractHash(stale.getContractHash());
+        replacement.setFencingToken(0L);
         replacement.setStatus(WorkflowNodeStatus.PENDING.name());
         replacement.setHandlerKey(stale.getHandlerKey());
         replacement.setHandlerVersion(stale.getHandlerVersion());
@@ -162,29 +119,10 @@ public class WorkflowRecoveryService {
                 + stale.getRevision() + ":" + attempt;
     }
 
-    private boolean hasExecuteCommand(long nodeRunId) {
-        return outboxMapper.selectCount(new LambdaQueryWrapper<WorkflowOutbox>()
-                .eq(WorkflowOutbox::getEventType, "EXECUTE_NODE")
-                .and(wrapper -> wrapper
-                        .like(WorkflowOutbox::getPayloadJson, "\"node_run_id\":" + nodeRunId)
-                        .or()
-                        .like(WorkflowOutbox::getPayloadJson, "\"nodeRunId\":" + nodeRunId))) > 0;
-    }
-
-    private boolean claimForCompensation(WorkflowNodeRun queued, LocalDateTime now) {
-        int updated = nodeRunMapper.update(null, new UpdateWrapper<WorkflowNodeRun>()
-                .eq("id", queued.getId())
-                .eq("execution_id", queued.getExecutionId())
-                .eq("status", WorkflowNodeStatus.QUEUED.name())
-                .eq("lock_version", queued.getLockVersion())
-                .set("updated_at", now)
-                .set("lock_version", queued.getLockVersion() + 1));
-        return updated == 1;
-    }
-
     private boolean claimDueAttempt(WorkflowNodeRun due, LocalDateTime now) {
-        int updated = nodeRunMapper.update(null, new UpdateWrapper<WorkflowNodeRun>()
+        int updated = nodeRunMapper.update(null, new com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<WorkflowNodeRun>()
                 .eq("id", due.getId())
+                .inSql("workflow_run_id", activeRunSql(due.getWorkflowRunId()))
                 .eq("execution_id", due.getExecutionId())
                 .eq("status", due.getStatus())
                 .eq("lock_version", due.getLockVersion())
@@ -195,36 +133,19 @@ public class WorkflowRecoveryService {
         return updated == 1;
     }
 
-    private WorkflowOutbox compensationCommand(WorkflowNodeRun queued, LocalDateTime now) {
-        WorkflowRun run = runMapper == null ? null : runMapper.selectById(queued.getWorkflowRunId());
-        String correlationId = run == null
-                ? Long.toString(queued.getWorkflowRunId())
-                : run.getCorrelationId();
-        QueuedNodeCommand command = QueuedNodeCommand.fromNodeRun(
-                UUID.randomUUID().toString(),
-                queued,
-                queued.getExecutionId(),
-                traceContextFactory.create(correlationId),
-                objectMapper
-        );
-        WorkflowOutbox outbox = new WorkflowOutbox();
-        outbox.setEventId(command.eventId());
-        outbox.setAggregateId(Long.toString(command.workflowRunId()));
-        outbox.setEventType("EXECUTE_NODE");
-        outbox.setPayloadJson(serialize(command));
-        outbox.setStatus("PENDING");
-        outbox.setRetryCount(0);
-        outbox.setCreatedAt(now);
-        outbox.setUpdatedAt(now);
-        return outbox;
+    private boolean isRunActive(Long workflowRunId) {
+        if (runMapper == null) {
+            return true;
+        }
+        WorkflowRun run = runMapper.selectById(workflowRunId);
+        return run != null && "RUNNING".equals(run.getStatus());
     }
 
-    private String serialize(QueuedNodeCommand command) {
-        try {
-            return objectMapper.writeValueAsString(command);
-        } catch (JsonProcessingException exception) {
-            throw new IllegalStateException("Unable to serialize recovery command", exception);
+    private String activeRunSql(Long workflowRunId) {
+        if (runMapper == null) {
+            return "SELECT " + workflowRunId;
         }
+        return "SELECT id FROM workflow_run WHERE id = " + workflowRunId + " AND status = 'RUNNING'";
     }
 
     public record RecoveryResult(

@@ -2,6 +2,7 @@ package com.autospec.dto;
 
 import com.autospec.entity.WorkflowRun;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 public record WorkflowRunResponse(
@@ -14,6 +15,14 @@ public record WorkflowRunResponse(
         Long replayOfRunId,
         Integer reviewRound,
         Integer maxReviewRounds,
+        String qualityProfile,
+        Long maxTokens,
+        BigDecimal maxCost,
+        Integer maxModelCalls,
+        Long maxWallTimeMs,
+        Long consumedTokens,
+        BigDecimal consumedCost,
+        Integer modelCallCount,
         String status,
         String responseStatus,
         Integer responsePercent,
@@ -33,6 +42,14 @@ public record WorkflowRunResponse(
                 run.getReplayOfRunId(),
                 run.getReviewRound(),
                 run.getMaxReviewRounds(),
+                run.getQualityProfile(),
+                run.getMaxTokens(),
+                run.getMaxCost(),
+                run.getMaxModelCalls(),
+                run.getMaxWallTimeMs(),
+                run.getConsumedTokens(),
+                run.getConsumedCost(),
+                run.getModelCallCount(),
                 run.getStatus(),
                 run.getResponseStatus(),
                 run.getResponsePercent(),

@@ -99,7 +99,7 @@ class ModelTimeoutRecoveryIT {
 
         String finalTimeoutEvent = timeoutEvent(secondAttempt);
         assertThat(consumer.consume(finalTimeoutEvent)).isEqualTo(WorkflowEventOutcome.ACCEPTED);
-        assertThat(consumer.consume(finalTimeoutEvent)).isEqualTo(WorkflowEventOutcome.DUPLICATE);
+        assertThat(consumer.consume(finalTimeoutEvent)).isEqualTo(WorkflowEventOutcome.STALE);
 
         WorkflowNodeRun failed = nodeRunMapper.selectById(secondAttempt.getId());
         WorkflowRun failedRun = runMapper.selectById(firstAttempt.getWorkflowRunId());
@@ -122,7 +122,7 @@ class ModelTimeoutRecoveryIT {
         assertThat(retryReadyMillis).isLessThan(FAILURE_HANDLING_RTO.toMillis());
         assertThat(finalizationMillis).isLessThan(FAILURE_HANDLING_RTO.toMillis());
         assertThat(retryAttempts).isEqualTo(1);
-        assertThat(acceptedDuplicates).isEqualTo(1);
+        assertThat(acceptedDuplicates).isZero();
         assertThat(failed.getStatus()).isEqualTo("FAILED");
         assertThat(failed.getErrorCode()).isEqualTo("MODEL_TIMEOUT");
         assertThat(failedRun.getStatus()).isEqualTo("FAILED");

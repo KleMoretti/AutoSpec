@@ -31,9 +31,13 @@ public class MarkdownExportService {
     }
 
     public String exportProject(Long projectId) {
-        Map<String, Artifact> artifacts = artifactService.lambdaQuery()
+        return exportProject(projectId, artifactService.lambdaQuery()
                 .eq(Artifact::getProjectId, projectId)
-                .list()
+                .list());
+    }
+
+    public String exportProject(Long projectId, List<Artifact> deliverableArtifacts) {
+        Map<String, Artifact> artifacts = deliverableArtifacts
                 .stream()
                 .collect(Collectors.toMap(
                         Artifact::getType,

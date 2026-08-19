@@ -36,6 +36,22 @@ public class Artifact {
 
     private Long workflowNodeRunId;
 
+    private String contentHash;
+
+    private String schemaVersion;
+
+    private String promptKey;
+
+    private String promptVersion;
+
+    private String modelProvider;
+
+    private String modelName;
+
+    private String sourceCitationsJson;
+
+    private String provenanceJson;
+
     private LocalDateTime approvedAt;
 
     private LocalDateTime createdAt;

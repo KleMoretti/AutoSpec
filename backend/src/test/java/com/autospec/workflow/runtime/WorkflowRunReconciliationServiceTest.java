@@ -21,6 +21,7 @@ class WorkflowRunReconciliationServiceTest {
         WorkflowReconciler reconciler = mock(WorkflowReconciler.class);
         WorkflowRun run = new WorkflowRun();
         run.setId(7L);
+        run.setStatus("RUNNING");
         run.setCorrelationId("correlation-7");
         run.setWorkflowSnapshotJson("""
                 {

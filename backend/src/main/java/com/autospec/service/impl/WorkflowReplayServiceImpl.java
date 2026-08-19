@@ -14,6 +14,7 @@ import com.autospec.workflow.runtime.DagCompiler;
 import com.autospec.workflow.runtime.WorkflowHandlerCatalog;
 import com.autospec.workflow.runtime.WorkflowRunReconciliationService;
 import com.autospec.workflow.runtime.WorkflowSnapshotParser;
+import com.autospec.workflow.runtime.WorkflowExecutableContractValidator;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -82,7 +83,9 @@ public class WorkflowReplayServiceImpl implements WorkflowReplayService {
         }
 
         ReplaySnapshot replaySnapshot = resolveSnapshot(source, mode, command.selectedWorkflowVersionId());
-        CompiledWorkflow graph = dagCompiler.compile(snapshotParser.parse(replaySnapshot.snapshotJson()));
+        var document = snapshotParser.parse(replaySnapshot.snapshotJson());
+        WorkflowExecutableContractValidator.validate(document);
+        CompiledWorkflow graph = dagCompiler.compile(document);
         Map<String, WorkflowNodeRun> originalInputs = originalInputs(sourceRunId);
         validateReplayInputs(graph, originalInputs);
 
@@ -97,6 +100,14 @@ public class WorkflowReplayServiceImpl implements WorkflowReplayService {
         replay.setReplayOfRunId(sourceRunId);
         replay.setReviewRound(0);
         replay.setMaxReviewRounds(source.getMaxReviewRounds() == null ? 0 : source.getMaxReviewRounds());
+        replay.setQualityProfile(source.getQualityProfile());
+        replay.setMaxTokens(source.getMaxTokens());
+        replay.setMaxCost(source.getMaxCost());
+        replay.setMaxModelCalls(source.getMaxModelCalls());
+        replay.setMaxWallTimeMs(source.getMaxWallTimeMs());
+        replay.setConsumedTokens(0L);
+        replay.setConsumedCost(java.math.BigDecimal.ZERO);
+        replay.setModelCallCount(0);
         replay.setLockVersion(0);
         replay.setLastHeartbeatAt(now);
         replay.setStatus("RUNNING");

@@ -1,6 +1,7 @@
 package com.autospec.service;
 
 import com.autospec.dto.WorkflowRuntimeMetricsResponse;
+import com.autospec.dto.ModelUsageResponse;
 import com.autospec.entity.ModelInvocation;
 import com.autospec.entity.WorkflowNodeRun;
 import com.autospec.entity.WorkflowRun;
@@ -15,6 +16,8 @@ import org.springframework.web.server.ResponseStatusException;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 @Service
 public class WorkflowRuntimeMetricsService {
@@ -67,6 +70,14 @@ public class WorkflowRuntimeMetricsService {
         long tokenCount = invocations.stream()
                 .mapToLong(invocation -> safe(invocation.getInputTokens()) + safe(invocation.getOutputTokens()))
                 .sum();
+        long cacheTokenCount = invocations.stream()
+                .mapToLong(invocation -> safe(invocation.getCacheTokens()))
+                .sum();
+        int modelCallCount = invocations.stream()
+                .mapToInt(invocation -> invocation.getCallCount() == null
+                        ? 1
+                        : invocation.getCallCount())
+                .sum();
         BigDecimal estimatedCost = invocations.stream()
                 .map(ModelInvocation::getEstimatedCost)
                 .filter(value -> value != null)
@@ -80,12 +91,88 @@ public class WorkflowRuntimeMetricsService {
                 retryCount,
                 recoveryCount,
                 tokenCount,
+                cacheTokenCount,
                 estimatedCost,
-                safe(run.getAcceptedDuplicateEventCount())
+                modelCallCount,
+                safe(run.getAcceptedDuplicateEventCount()),
+                run.getQualityProfile(),
+                run.getMaxTokens(),
+                run.getMaxCost(),
+                run.getMaxModelCalls(),
+                run.getMaxWallTimeMs(),
+                remaining(run.getMaxTokens(), run.getConsumedTokens()),
+                remaining(run.getMaxCost(), run.getConsumedCost()),
+                remaining(run.getMaxModelCalls(), run.getModelCallCount()),
+                aggregateUsage(invocations)
         );
+    }
+
+    private List<ModelUsageResponse> aggregateUsage(List<ModelInvocation> invocations) {
+        Map<String, UsageAccumulator> grouped = new LinkedHashMap<>();
+        for (ModelInvocation invocation : invocations) {
+            String provider = invocation.getProviderKey() == null ? "unknown" : invocation.getProviderKey();
+            String model = invocation.getModelName() == null ? "unknown" : invocation.getModelName();
+            UsageAccumulator usage = grouped.computeIfAbsent(
+                    provider + "\u0000" + model,
+                    ignored -> new UsageAccumulator(provider, model)
+            );
+            usage.invocationCount++;
+            usage.modelCallCount += invocation.getCallCount() == null ? 1 : invocation.getCallCount();
+            usage.inputTokens += safe(invocation.getInputTokens());
+            usage.outputTokens += safe(invocation.getOutputTokens());
+            usage.cacheTokens += safe(invocation.getCacheTokens());
+            usage.estimatedCost = usage.estimatedCost.add(
+                    invocation.getEstimatedCost() == null
+                            ? BigDecimal.ZERO
+                            : invocation.getEstimatedCost()
+            );
+        }
+        return grouped.values().stream()
+                .map(usage -> new ModelUsageResponse(
+                        usage.provider,
+                        usage.model,
+                        usage.invocationCount,
+                        usage.modelCallCount,
+                        usage.inputTokens,
+                        usage.outputTokens,
+                        usage.cacheTokens,
+                        usage.estimatedCost
+                ))
+                .toList();
+    }
+
+    private Long remaining(Long maximum, Long consumed) {
+        return maximum == null ? null : Math.max(0, maximum - (consumed == null ? 0 : consumed));
+    }
+
+    private Integer remaining(Integer maximum, Integer consumed) {
+        return maximum == null ? null : Math.max(0, maximum - safe(consumed));
+    }
+
+    private BigDecimal remaining(BigDecimal maximum, BigDecimal consumed) {
+        if (maximum == null) {
+            return null;
+        }
+        return maximum.subtract(consumed == null ? BigDecimal.ZERO : consumed).max(BigDecimal.ZERO);
     }
 
     private int safe(Integer value) {
         return value == null ? 0 : value;
+    }
+
+    private static final class UsageAccumulator {
+        private final String provider;
+        private final String model;
+        private int invocationCount;
+        private int modelCallCount;
+        private long inputTokens;
+        private long outputTokens;
+        private long cacheTokens;
+        private BigDecimal estimatedCost = BigDecimal.ZERO;
+
+        private UsageAccumulator(String provider, String model) {
+            this.provider = provider;
+            this.model = model;
+        }
     }
 }

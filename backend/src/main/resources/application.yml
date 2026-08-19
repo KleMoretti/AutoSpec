@@ -4,7 +4,7 @@ spring:
   config:
     import: optional:file:../.env[.properties]
   datasource:
-    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${MYSQL_DATABASE:autospec}?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+    url: ${DB_URL:jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${MYSQL_DATABASE:autospec}?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC}
     username: ${MYSQL_USER:root}
     password: ${MYSQL_PASSWORD:}
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -12,6 +12,9 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      ssl:
+        enabled: ${REDIS_SSL_ENABLED:false}
   sql:
     init:
       mode: ${SQL_INIT_MODE:never}
@@ -54,6 +57,14 @@ management:
   endpoint:
     health:
       show-details: never
+      validate-group-membership: false
+      probes:
+        enabled: true
+      group:
+        liveness:
+          include: livenessState,ping
+        readiness:
+          include: readinessState,db,redis
   metrics:
     distribution:
       percentiles-histogram:
@@ -62,15 +73,27 @@ management:
         http.server.requests: 100ms,250ms,500ms,1s,2s,5s
 
 autospec:
+  environment: ${AUTOSPEC_ENV:development}
   auth:
+    demo-user:
+      enabled: ${AUTH_DEMO_USER_ENABLED:false}
+      username: ${AUTH_DEMO_USER_USERNAME:owner}
+      display-name: ${AUTH_DEMO_USER_DISPLAY_NAME:Owner}
+      password: ${AUTH_DEMO_USER_PASSWORD:}
     login-rate-limit:
       enabled: ${AUTH_LOGIN_RATE_LIMIT_ENABLED:true}
       max-attempts: ${AUTH_LOGIN_RATE_LIMIT_MAX_ATTEMPTS:5}
       window: ${AUTH_LOGIN_RATE_LIMIT_WINDOW:5m}
     session:
       ttl: ${AUTH_SESSION_TTL:12h}
+      cookie-secure: ${AUTH_SESSION_COOKIE_SECURE:false}
+      same-site: ${AUTH_SESSION_SAME_SITE:Strict}
+      expose-token-in-response: ${AUTH_SESSION_EXPOSE_TOKEN:false}
   agent-engine:
     base-url: ${AGENT_ENGINE_BASE_URL:http://localhost:8000}
+    service-token: ${AGENT_ENGINE_SERVICE_TOKEN:}
+    connect-timeout: ${AGENT_ENGINE_CONNECT_TIMEOUT:5s}
+    read-timeout: ${AGENT_ENGINE_READ_TIMEOUT:60s}
   observability:
     workflow-backlog:
       enabled: ${WORKFLOW_BACKLOG_METRICS_ENABLED:false}

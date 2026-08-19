@@ -13,7 +13,17 @@ spring:
 
 autospec:
   auth:
+    demo-user:
+      enabled: true
+      username: owner
+      display-name: Owner
+      password: owner-pass
     login-rate-limit:
+      enabled: false
+    session:
+      expose-token-in-response: true
+  workflow:
+    admission:
       enabled: false
 
 mybatis-plus:

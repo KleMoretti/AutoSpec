@@ -39,6 +39,7 @@ public class WorkflowEventPollingConfiguration {
             ObjectProvider<WorkflowApprovalCoordinator> approvalCoordinatorProvider,
             ObjectProvider<WorkflowArtifactProjector> artifactProjectorProvider,
             ObjectProvider<ReviewerReworkCoordinator> reworkCoordinatorProvider,
+            ObjectProvider<WorkflowUsageRecorder> usageRecorderProvider,
             ObjectProvider<OpenTelemetry> openTelemetryProvider,
             ObjectMapper objectMapper
     ) {
@@ -52,7 +53,8 @@ public class WorkflowEventPollingConfiguration {
                 runMapperProvider.getIfAvailable(),
                 new WorkflowEventTracer(
                         openTelemetryProvider.getIfAvailable(OpenTelemetry::noop)
-                )
+                ),
+                usageRecorderProvider.getIfAvailable(WorkflowUsageRecorder::none)
         );
     }
 
@@ -72,7 +74,8 @@ public class WorkflowEventPollingConfiguration {
             @Value("${autospec.workflow.events.polling.consumer-name:control-plane}") String consumerName,
             @Value("${autospec.workflow.events.polling.batch-size:10}") int batchSize,
             @Value("${autospec.workflow.events.polling.claim-min-idle:30s}") String claimMinIdle,
-            ObjectProvider<WorkflowTransportMetrics> metricsProvider
+            ObjectProvider<WorkflowTransportMetrics> metricsProvider,
+            ObjectProvider<WorkflowEventDeadLetterSink> deadLetterSinkProvider
     ) {
         Duration parsedClaimMinIdle = DurationStyle.detectAndParse(claimMinIdle);
         return new WorkflowEventPoller(
@@ -81,7 +84,8 @@ public class WorkflowEventPollingConfiguration {
                 consumerName,
                 batchSize,
                 parsedClaimMinIdle,
-                metricsProvider.getIfAvailable(WorkflowTransportMetrics::isolated)
+                metricsProvider.getIfAvailable(WorkflowTransportMetrics::isolated),
+                deadLetterSinkProvider.getIfAvailable(WorkflowEventDeadLetterSink::none)
         );
     }
 

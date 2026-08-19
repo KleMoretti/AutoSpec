@@ -46,6 +46,41 @@ class WorkflowEventPollerTest {
     }
 
     @Test
+    void quarantinesInvalidEventAndContinuesWithRemainingBatch() {
+        FakeEventStreamClient client = new FakeEventStreamClient();
+        client.freshMessages = List.of(
+                new WorkflowStreamEventMessage("4-0", "not-json"),
+                new WorkflowStreamEventMessage("5-0", "{\"event_id\":\"valid\"}")
+        );
+        ArrayList<String> handled = new ArrayList<>();
+        ArrayList<String> quarantined = new ArrayList<>();
+        WorkflowEventMessageHandler handler = payload -> {
+            if ("not-json".equals(payload)) {
+                throw new InvalidWorkflowEventException("invalid event JSON");
+            }
+            handled.add(payload);
+        };
+        WorkflowEventPoller poller = new WorkflowEventPoller(
+                client,
+                handler,
+                "control-1",
+                10,
+                Duration.ofSeconds(30),
+                WorkflowTransportMetrics.isolated(),
+                (message, failure) -> quarantined.add(
+                        message.messageId() + ":" + failure.getMessage()
+                )
+        );
+
+        int processed = poller.pollOnce();
+
+        assertThat(processed).isEqualTo(2);
+        assertThat(quarantined).containsExactly("4-0:invalid event JSON");
+        assertThat(handled).containsExactly("{\"event_id\":\"valid\"}");
+        assertThat(client.acknowledged).containsExactly("4-0", "5-0");
+    }
+
+    @Test
     void reclaimsStaleMessagesBeforeReadingFreshMessages() {
         FakeEventStreamClient client = new FakeEventStreamClient();
         client.reclaimedMessages = List.of(

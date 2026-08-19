@@ -6,6 +6,7 @@ import com.autospec.mapper.WorkflowNodeRunMapper;
 import com.autospec.mapper.WorkflowRunMapper;
 import com.autospec.workflow.transport.WorkflowRunReconciliationTrigger;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -49,10 +50,21 @@ public class ReworkPlanExecutionService {
             String reviewerNodeId,
             List<String> requestedTargets
     ) {
+        return execute(workflowRunId, reviewerNodeId, requestedTargets, null);
+    }
+
+    @Transactional
+    public ReworkPlanner.ReworkPlan execute(
+            long workflowRunId,
+            String reviewerNodeId,
+            List<String> requestedTargets,
+            JsonNode triggerPayload
+    ) {
         WorkflowRun workflowRun = requireWorkflowRun(workflowRunId);
         CompiledWorkflow graph = dagCompiler.compile(
                 snapshotParser.parse(workflowRun.getWorkflowSnapshotJson())
         );
+        validateReworkConditions(graph, reviewerNodeId, requestedTargets, triggerPayload);
         Map<String, WorkflowNodeRun> latestRuns = latestRuns(
                 schedulingGateway.listNodeRuns(workflowRunId)
         );
@@ -83,6 +95,29 @@ public class ReworkPlanExecutionService {
 
         reconciliationTrigger.reconcile(workflowRunId);
         return plan;
+    }
+
+    private void validateReworkConditions(
+            CompiledWorkflow graph,
+            String reviewerNodeId,
+            List<String> requestedTargets,
+            JsonNode triggerPayload
+    ) {
+        if (triggerPayload == null) {
+            return;
+        }
+        RestrictedConditionEvaluator evaluator = new RestrictedConditionEvaluator();
+        for (String target : requestedTargets) {
+            boolean allowed = graph.reworkEdges().getOrDefault(reviewerNodeId, List.of()).stream()
+                    .filter(edge -> edge.toNode().equals(target))
+                    .anyMatch(edge -> edge.condition() == null
+                            || evaluator.evaluate(triggerPayload, edge.condition()));
+            if (!allowed) {
+                throw new IllegalArgumentException(
+                        "rework edge condition did not match target: " + target
+                );
+            }
+        }
     }
 
     private void validateTargetsAreCompleted(ReworkPlanner.ReworkPlan plan) {

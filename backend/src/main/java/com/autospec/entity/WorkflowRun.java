@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Data
@@ -33,6 +34,22 @@ public class WorkflowRun {
     private Integer maxReviewRounds;
 
     private Integer acceptedDuplicateEventCount;
+
+    private String qualityProfile;
+
+    private Long maxTokens;
+
+    private BigDecimal maxCost;
+
+    private Integer maxModelCalls;
+
+    private Long maxWallTimeMs;
+
+    private Long consumedTokens;
+
+    private BigDecimal consumedCost;
+
+    private Integer modelCallCount;
 
     private Integer lockVersion;
 

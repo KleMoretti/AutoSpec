@@ -9,11 +9,13 @@ import com.autospec.mapper.WorkflowRunMapper;
 import com.autospec.mapper.WorkflowTransitionMapper;
 import com.autospec.mapper.WorkflowVersionMapper;
 import com.autospec.service.WorkflowRunCreationService;
+import com.autospec.service.WorkflowExecutionPolicy;
 import com.autospec.workflow.runtime.CompiledWorkflow;
 import com.autospec.workflow.runtime.DagCompiler;
 import com.autospec.workflow.runtime.WorkflowHandlerCatalog;
 import com.autospec.workflow.runtime.WorkflowRunReconciliationService;
 import com.autospec.workflow.runtime.WorkflowSnapshotParser;
+import com.autospec.workflow.runtime.WorkflowExecutableContractValidator;
 import com.autospec.workflow.spec.WorkflowNodeDocument;
 import com.autospec.workflow.transport.WorkflowAdmissionGuard;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
@@ -87,6 +89,7 @@ public class WorkflowRunCreationServiceImpl implements WorkflowRunCreationServic
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Workflow version must be PUBLISHED");
         }
         var document = snapshotParser.parse(version.getSpecJson());
+        WorkflowExecutableContractValidator.validate(document);
         CompiledWorkflow graph = dagCompiler.compile(document);
         Map<String, HandlerRef> handlers = graph.nodes().entrySet().stream()
                 .collect(java.util.stream.Collectors.toUnmodifiableMap(
@@ -94,6 +97,14 @@ public class WorkflowRunCreationServiceImpl implements WorkflowRunCreationServic
                         entry -> handler(entry.getValue())
                 ));
         validateInput(command.inputJson());
+        WorkflowExecutionPolicy executionPolicy = WorkflowExecutionPolicy.resolve(
+                command.qualityProfile(),
+                command.maxTokens(),
+                command.maxCost(),
+                command.maxModelCalls(),
+                command.maxWallTimeMs()
+        );
+        String resolvedInputJson = withExecutionPolicy(command.inputJson(), executionPolicy);
 
         LocalDateTime now = LocalDateTime.now();
         WorkflowRun run = new WorkflowRun();
@@ -105,6 +116,14 @@ public class WorkflowRunCreationServiceImpl implements WorkflowRunCreationServic
         run.setWorkflowSnapshotJson(version.getSpecJson());
         run.setReviewRound(0);
         run.setMaxReviewRounds(document.maxReviewRounds());
+        run.setQualityProfile(executionPolicy.qualityProfile());
+        run.setMaxTokens(executionPolicy.maxTokens());
+        run.setMaxCost(executionPolicy.maxCost());
+        run.setMaxModelCalls(executionPolicy.maxModelCalls());
+        run.setMaxWallTimeMs(executionPolicy.maxWallTimeMs());
+        run.setConsumedTokens(0L);
+        run.setConsumedCost(java.math.BigDecimal.ZERO);
+        run.setModelCallCount(0);
         run.setLockVersion(0);
         run.setLastHeartbeatAt(now);
         run.setStatus("RUNNING");
@@ -128,7 +147,7 @@ public class WorkflowRunCreationServiceImpl implements WorkflowRunCreationServic
             node.setHandlerKey(handler.key());
             node.setHandlerVersion(handler.version());
             node.setTimeoutMs(nodeSpec.timeoutMs());
-            node.setInputJson(command.inputJson());
+            node.setInputJson(resolvedInputJson);
             node.setLockVersion(0);
             node.setCreatedAt(now);
             node.setUpdatedAt(now);
@@ -166,6 +185,26 @@ public class WorkflowRunCreationServiceImpl implements WorkflowRunCreationServic
             }
         } catch (JsonProcessingException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "input must be valid JSON", exception);
+        }
+    }
+
+    private String withExecutionPolicy(
+            String inputJson,
+            WorkflowExecutionPolicy executionPolicy
+    ) {
+        try {
+            com.fasterxml.jackson.databind.node.ObjectNode root =
+                    (com.fasterxml.jackson.databind.node.ObjectNode) objectMapper.readTree(inputJson);
+            root.set("execution_policy", objectMapper.valueToTree(java.util.Map.of(
+                    "quality_profile", executionPolicy.qualityProfile(),
+                    "max_tokens", executionPolicy.maxTokens(),
+                    "max_cost", executionPolicy.maxCost(),
+                    "max_model_calls", executionPolicy.maxModelCalls(),
+                    "max_wall_time_ms", executionPolicy.maxWallTimeMs()
+            )));
+            return objectMapper.writeValueAsString(root);
+        } catch (JsonProcessingException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid workflow input", exception);
         }
     }
 

@@ -1,17 +1,26 @@
 package com.autospec.service;
 
+import com.autospec.dto.ArtifactDiffResponse;
 import com.autospec.entity.Artifact;
 import com.autospec.entity.Project;
 import com.autospec.exception.OptimisticLockConflictException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.dao.DuplicateKeyException;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Set;
+import java.util.TreeSet;
 
 @Service
 public class ArtifactVersionService {
@@ -19,15 +28,31 @@ public class ArtifactVersionService {
     private final ArtifactService artifactService;
     private final ProjectService projectService;
     private final KnowledgeIndexService knowledgeIndexService;
+    private final ObjectMapper objectMapper;
+    private final ArtifactTraceGraphService traceGraphService;
 
+    @Autowired
     public ArtifactVersionService(
             ArtifactService artifactService,
             ProjectService projectService,
-            KnowledgeIndexService knowledgeIndexService
+            KnowledgeIndexService knowledgeIndexService,
+            ObjectMapper objectMapper,
+            ArtifactTraceGraphService traceGraphService
     ) {
         this.artifactService = artifactService;
         this.projectService = projectService;
         this.knowledgeIndexService = knowledgeIndexService;
+        this.objectMapper = objectMapper;
+        this.traceGraphService = traceGraphService;
+    }
+
+    public ArtifactVersionService(
+            ArtifactService artifactService,
+            ProjectService projectService,
+            KnowledgeIndexService knowledgeIndexService,
+            ObjectMapper objectMapper
+    ) {
+        this(artifactService, projectService, knowledgeIndexService, objectMapper, null);
     }
 
     @Transactional(isolation = Isolation.READ_COMMITTED)
@@ -61,13 +86,94 @@ public class ArtifactVersionService {
         next.setStatus("PENDING_REVIEW");
         next.setSourceAgent("HUMAN_EDITOR");
         next.setParentArtifactId(current.getId());
+        next.setWorkflowNodeRunId(current.getWorkflowNodeRunId());
+        copyProvenance(current, next);
+        next.setContentHash(contentHash(content));
         try {
             artifactService.save(next);
         } catch (DuplicateKeyException duplicateVersion) {
             Artifact refreshed = requireProjectArtifact(projectId, artifactId);
             throw conflict(refreshed, expectedLockVersion, latestVersion(projectId, current.getType()));
         }
+        projectTrace(next);
         return next;
+    }
+
+    @Transactional(isolation = Isolation.READ_COMMITTED)
+    public Artifact restore(
+            Long projectId,
+            Long sourceArtifactId,
+            int expectedLatestLockVersion
+    ) {
+        Artifact source = requireProjectArtifact(projectId, sourceArtifactId);
+        Artifact latest = latestVersion(projectId, source.getType());
+        boolean claimed = artifactService.lambdaUpdate()
+                .eq(Artifact::getId, latest.getId())
+                .eq(Artifact::getProjectId, projectId)
+                .eq(Artifact::getLockVersion, expectedLatestLockVersion)
+                .setSql("lock_version = lock_version + 1")
+                .set(Artifact::getUpdatedAt, LocalDateTime.now())
+                .update();
+        if (!claimed) {
+            throw conflict(
+                    latest,
+                    expectedLatestLockVersion,
+                    latestVersion(projectId, source.getType())
+            );
+        }
+
+        Artifact restored = new Artifact();
+        restored.setProjectId(projectId);
+        restored.setType(source.getType());
+        restored.setTitle(source.getTitle());
+        restored.setContent(source.getContent());
+        restored.setFormat(source.getFormat());
+        restored.setVersion(latest.getVersion() + 1);
+        restored.setLockVersion(0);
+        restored.setStatus("PENDING_REVIEW");
+        restored.setSourceAgent("HUMAN_RESTORE");
+        restored.setParentArtifactId(source.getId());
+        restored.setWorkflowNodeRunId(source.getWorkflowNodeRunId());
+        copyProvenance(source, restored);
+        restored.setContentHash(contentHash(source.getContent()));
+        try {
+            artifactService.save(restored);
+        } catch (DuplicateKeyException duplicateVersion) {
+            throw conflict(
+                    latest,
+                    expectedLatestLockVersion,
+                    latestVersion(projectId, source.getType())
+            );
+        }
+        projectTrace(restored);
+        return restored;
+    }
+
+    public ArtifactDiffResponse diff(Long projectId, Long baseArtifactId, Long targetArtifactId) {
+        Artifact base = requireProjectArtifact(projectId, baseArtifactId);
+        Artifact target = requireProjectArtifact(projectId, targetArtifactId);
+        if (!base.getType().equals(target.getType())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Artifacts must have the same type");
+        }
+        Set<String> changedPaths = new TreeSet<>();
+        try {
+            collectChangedPaths(
+                    objectMapper.readTree(base.getContent()),
+                    objectMapper.readTree(target.getContent()),
+                    "$",
+                    changedPaths
+            );
+        } catch (Exception invalidJson) {
+            if (!java.util.Objects.equals(base.getContent(), target.getContent())) {
+                changedPaths.add("$");
+            }
+        }
+        return new ArtifactDiffResponse(
+                baseArtifactId,
+                targetArtifactId,
+                !changedPaths.isEmpty(),
+                List.copyOf(changedPaths)
+        );
     }
 
     @Transactional(isolation = Isolation.READ_COMMITTED)
@@ -138,6 +244,64 @@ public class ArtifactVersionService {
                 .last("limit 1")
                 .oneOpt()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Artifact not found"));
+    }
+
+    private void copyProvenance(Artifact source, Artifact target) {
+        target.setSchemaVersion(source.getSchemaVersion());
+        target.setPromptKey(source.getPromptKey());
+        target.setPromptVersion(source.getPromptVersion());
+        target.setModelProvider(source.getModelProvider());
+        target.setModelName(source.getModelName());
+        target.setSourceCitationsJson(source.getSourceCitationsJson());
+        target.setProvenanceJson(source.getProvenanceJson());
+    }
+
+    private void projectTrace(Artifact artifact) {
+        if (traceGraphService != null) {
+            traceGraphService.project(artifact);
+        }
+    }
+
+    private String contentHash(String content) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                    .digest((content == null ? "" : content).getBytes(StandardCharsets.UTF_8));
+            return java.util.HexFormat.of().formatHex(digest);
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 is unavailable", exception);
+        }
+    }
+
+    private void collectChangedPaths(
+            JsonNode base,
+            JsonNode target,
+            String path,
+            Set<String> changedPaths
+    ) {
+        if (java.util.Objects.equals(base, target)) {
+            return;
+        }
+        if (base == null || target == null || base.getNodeType() != target.getNodeType()) {
+            changedPaths.add(path);
+            return;
+        }
+        if (base.isObject()) {
+            Set<String> names = new TreeSet<>();
+            base.fieldNames().forEachRemaining(names::add);
+            target.fieldNames().forEachRemaining(names::add);
+            for (String name : names) {
+                collectChangedPaths(base.get(name), target.get(name), path + "." + name, changedPaths);
+            }
+            return;
+        }
+        if (base.isArray()) {
+            int length = Math.max(base.size(), target.size());
+            for (int index = 0; index < length; index++) {
+                collectChangedPaths(base.get(index), target.get(index), path + "[" + index + "]", changedPaths);
+            }
+            return;
+        }
+        changedPaths.add(path);
     }
 
     private OptimisticLockConflictException conflict(

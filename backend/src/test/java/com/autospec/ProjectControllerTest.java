@@ -147,7 +147,12 @@ class ProjectControllerTest {
                 .andExpect(jsonPath("$.userId").isNumber())
                 .andExpect(jsonPath("$.username").value("owner"))
                 .andExpect(jsonPath("$.displayName").value("Owner"))
-                .andExpect(jsonPath("$.sessionToken").isString());
+                .andExpect(jsonPath("$.sessionToken").isString())
+                .andExpect(result -> assertThat(result.getResponse().getHeader("Set-Cookie"))
+                        .contains("AUTOSPEC_SESSION=")
+                        .contains("HttpOnly")
+                        .contains("SameSite=Strict")
+                        .contains("Path=/"));
     }
 
     @Test
@@ -501,7 +506,18 @@ class ProjectControllerTest {
                         .header(SESSION_HEADER, token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].artifactType").value("PRD"))
-                .andExpect(jsonPath("$[0].title").value("Knowledge Source PRD"));
+                .andExpect(jsonPath("$[0].title").value("Knowledge Source PRD"))
+                .andExpect(jsonPath("$[0].chunkId").isNumber())
+                .andExpect(jsonPath("$[0].citationLocation").value("chunk[0]"));
+
+        assertThat(knowledgeIndexService.retrieveForProject("campus favorites", 5, projectId))
+                .singleElement()
+                .satisfies(source -> {
+                    assertThat(source.chunkId()).isNotNull();
+                    assertThat(source.chunkIndex()).isZero();
+                    assertThat(source.retrievalStrategy()).isEqualTo("HYBRID_RRF_HASHING_V1");
+                    assertThat(source.relevanceScore()).isPositive();
+                });
     }
 
     @Test
@@ -626,7 +642,7 @@ class ProjectControllerTest {
     }
 
     @Test
-    void generationRetrievesOnlySourcesVisibleToProjectOwner() throws Exception {
+    void generationRetrievesOnlySourcesFromCurrentProject() throws Exception {
         String token = loginToken();
         long ownerSourceProjectId = createProject(token, "Owner Source", "Build model routing marketplace.");
         Artifact ownerArtifact = approvedArtifact(ownerSourceProjectId, "Owner Source PRD", "model routing marketplace owner source");
@@ -650,6 +666,14 @@ class ProjectControllerTest {
         Artifact otherArtifact = approvedArtifact(otherProject.getId(), "Other Tenant PRD", "model routing marketplace other source");
         knowledgeIndexService.indexApprovedArtifact(otherArtifact);
 
+        long projectId = createProject(token, "Routed Project", "Build model routing marketplace.");
+        Artifact currentArtifact = approvedArtifact(
+                projectId,
+                "Current Project PRD",
+                "model routing marketplace current project source"
+        );
+        knowledgeIndexService.indexApprovedArtifact(currentArtifact);
+
         when(agentEngineClient.generatePrd(contains("model routing"), anyList()))
                 .thenReturn(new AgentGenerationResult("""
                         {
@@ -663,7 +687,6 @@ class ProjectControllerTest {
                         }
                         """, null, null, List.of()));
 
-        long projectId = createProject(token, "Routed Project", "Build model routing marketplace.");
         mockMvc.perform(post("/api/projects/{projectId}/generate-prd", projectId)
                         .header(SESSION_HEADER, token))
                 .andExpect(status().isOk());
@@ -671,7 +694,8 @@ class ProjectControllerTest {
         ArgumentCaptor<List> sourcesCaptor = ArgumentCaptor.forClass(List.class);
         verify(agentEngineClient).generatePrd(eq("Build model routing marketplace."), sourcesCaptor.capture());
         assertThat(sourcesCaptor.getValue().toString())
-                .contains("Owner Source PRD")
+                .contains("Current Project PRD")
+                .doesNotContain("Owner Source PRD")
                 .doesNotContain("Other Tenant PRD");
     }
 
@@ -850,6 +874,51 @@ class ProjectControllerTest {
                         .header(SESSION_HEADER, token))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+    }
+
+    @Test
+    void editorCanResolveReviewIssueWithEvidenceAndRequiredRationale() throws Exception {
+        String token = loginToken();
+        long projectId = createProject(token, "Review Resolution", "Resolve review findings.");
+        Artifact fixedArtifact = approvedArtifact(
+                projectId,
+                "Fixed API design",
+                "{\"apis\":[\"POST /api/items\"]}"
+        );
+        ReviewIssue issue = new ReviewIssue();
+        issue.setProjectId(projectId);
+        issue.setIssueKey("REQ-001:API_COVERAGE");
+        issue.setSeverity("HIGH");
+        issue.setIssueType("API_COVERAGE");
+        issue.setRequirementId("REQ-001");
+        issue.setArtifactPath("$.apis");
+        issue.setDescription("A required API is missing.");
+        issue.setSuggestion("Add the API.");
+        issue.setStatus("OPEN");
+        reviewIssueService.save(issue);
+
+        mockMvc.perform(put("/api/projects/{projectId}/review/issues/{issueId}", projectId, issue.getId())
+                        .header(SESSION_HEADER, token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "status": "RESOLVED",
+                                  "resolution": "Added and validated the missing API.",
+                                  "resolvedInArtifactId": %d
+                                }
+                                """.formatted(fixedArtifact.getId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.issueKey").value("REQ-001:API_COVERAGE"))
+                .andExpect(jsonPath("$.status").value("RESOLVED"))
+                .andExpect(jsonPath("$.resolution").value("Added and validated the missing API."))
+                .andExpect(jsonPath("$.resolvedInArtifactId").value(fixedArtifact.getId()))
+                .andExpect(jsonPath("$.ownerUserId").isNumber());
+
+        mockMvc.perform(put("/api/projects/{projectId}/review/issues/{issueId}", projectId, issue.getId())
+                        .header(SESSION_HEADER, token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"IGNORED\"}"))
+                .andExpect(status().isBadRequest());
     }
 
     @Test
@@ -1546,7 +1615,13 @@ class ProjectControllerTest {
         String token = loginToken();
         long projectId = createProject(token, "Retryable Code Job Project", "Build retryable code export.");
         artifact(projectId, "PRD", "Retry PRD", "{\"project_name\":\"Retry\"}");
-        artifact(projectId, "BACKEND_DESIGN", "Retry Backend", "{\"apis\":[]}");
+        artifact(projectId, "BACKEND_DESIGN", "Retry Backend", """
+                {"apis":[{"method":"GET","path":"/api/retry","description":"Retry status"}]}
+                """);
+        artifact(projectId, "FRONTEND_SKELETON", "Retry Frontend", """
+                {"routes":[{"path":"/retry","page":"RetryPage"}],
+                 "pages":[{"name":"RetryPage","purpose":"Show retry status","components":["RetryStatus"]}]}
+                """);
 
         CodeGenerationJob failedJob = new CodeGenerationJob();
         failedJob.setProjectId(projectId);

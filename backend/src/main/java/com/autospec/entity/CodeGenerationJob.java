@@ -22,6 +22,12 @@ public class CodeGenerationJob {
 
     private String manifest;
 
+    private String gateStatus;
+
+    private String manifestHash;
+
+    private String verificationJson;
+
     private String errorMessage;
 
     private LocalDateTime createdAt;
@@ -29,4 +35,6 @@ public class CodeGenerationJob {
     private LocalDateTime completedAt;
 
     private LocalDateTime cancelledAt;
+
+    private LocalDateTime verifiedAt;
 }

@@ -83,7 +83,7 @@ class BackendDiagnosticsControllerTest {
 
     @Test
     void diagnosticsSummarizeWorkflowAuditExternalCallAndModelTelemetry() throws Exception {
-        UserAccount owner = authService.ensureDemoOwner();
+        UserAccount owner = authService.ensureDemoUser("owner", "Owner", "owner-pass");
         String token = authService.issueSession(owner);
         Project project = projectService.createProject("diagnostics-" + System.nanoTime(), "Build diagnostic view.");
         project.setUserId(owner.getId());

@@ -22,6 +22,8 @@ import java.io.ByteArrayInputStream;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.time.LocalDateTime;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
@@ -62,9 +64,15 @@ class CodeSkeletonServiceTest {
         project.setStatus("COMPLETED");
         projectService.save(project);
 
-        saveArtifact(project.getId(), "PRD", "{\"project_name\":\"Code Export\"}");
-        saveArtifact(project.getId(), "BACKEND_DESIGN", "{\"apis\":[]}");
-        saveArtifact(project.getId(), "FRONTEND_SKELETON", "{\"routes\":[]}");
+        saveArtifact(project.getId(), "PRD", "{\"project_name\":\"Clinic Scheduler\"}");
+        saveArtifact(project.getId(), "BACKEND_DESIGN", """
+                {"tables":[{"name":"appointment","description":"Appointments","fields":[{"name":"id","type":"BIGINT","nullable":false,"description":"ID"}]}],
+                 "apis":[{"method":"GET","path":"/api/appointments","description":"List appointments"}]}
+                """);
+        saveArtifact(project.getId(), "FRONTEND_SKELETON", """
+                {"routes":[{"path":"/appointments","page":"AppointmentPage"}],
+                 "pages":[{"name":"AppointmentPage","purpose":"Manage appointments","components":["AppointmentList"]}]}
+                """);
 
         CodeGenerationResponse response = codeSkeletonService.generate(project.getId());
 
@@ -72,18 +80,48 @@ class CodeSkeletonServiceTest {
         byte[] bytes = Base64.getDecoder().decode(response.content());
         try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(bytes))) {
             List<String> names = new ArrayList<>();
+            Map<String, String> contents = new LinkedHashMap<>();
             ZipEntry entry;
             while ((entry = zip.getNextEntry()) != null) {
                 names.add(entry.getName());
+                contents.put(entry.getName(), new String(zip.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8));
             }
             assertThat(names).contains(
                     "backend/pom.xml",
                     "backend/src/main/java/com/generated/Application.java",
+                    "backend/src/main/java/com/generated/GeneratedContractController.java",
+                    "backend/src/test/java/com/generated/GeneratedContractSmokeTest.java",
+                    "backend/src/test/resources/autospec-acceptance-tests.json",
+                    "backend/src/main/resources/schema.sql",
                     "frontend/package.json",
+                    "frontend/index.html",
+                    "frontend/src/main.tsx",
                     "frontend/src/App.tsx",
+                    "ACCEPTANCE_TESTS.json",
                     "AUTOSPEC_MANIFEST.json"
             );
+            assertThat(contents.get("backend/src/main/java/com/generated/GeneratedContractController.java"))
+                    .contains("/api/appointments", "List appointments");
+            assertThat(contents.get("backend/src/main/resources/schema.sql"))
+                    .contains("CREATE TABLE IF NOT EXISTS appointment", "id BIGINT NOT NULL");
+            assertThat(contents.get("frontend/src/App.tsx"))
+                    .contains(
+                            "Clinic Scheduler",
+                            "AppointmentPage",
+                            "/api/appointments",
+                            "join(' / ')",
+                            " - {api.description}"
+                    );
+            assertThat(contents.get("backend/src/main/java/com/generated/GeneratedContractController.java"))
+                    .contains("\"status\", \"READY\"");
         }
+        CodeGenerationJob successfulJob = codeGenerationJobService.lambdaQuery()
+                .eq(CodeGenerationJob::getProjectId, project.getId())
+                .one();
+        assertThat(successfulJob.getGateStatus()).isEqualTo("PASSED");
+        assertThat(successfulJob.getManifestHash()).hasSize(64);
+        assertThat(successfulJob.getVerificationJson())
+                .contains("BACKEND_BUILD_AND_SMOKE_TEST", "ACCEPTANCE_COVERAGE", "PASSED");
     }
 
     @Test

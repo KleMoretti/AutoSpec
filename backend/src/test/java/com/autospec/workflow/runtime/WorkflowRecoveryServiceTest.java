@@ -24,54 +24,37 @@ import static org.mockito.Mockito.when;
 class WorkflowRecoveryServiceTest {
 
     @Test
-    void orphansStaleAttemptAndCreatesReplacementAttempt() {
+    void leavesStaleRunningAttemptsToRedisExecutionLedgerAuthority() {
         WorkflowNodeRunMapper nodeMapper = mock(WorkflowNodeRunMapper.class);
         WorkflowOutboxMapper outboxMapper = mock(WorkflowOutboxMapper.class);
         WorkflowNodeRun stale = node(11L, "RUNNING", 1, "7:backend:1:1");
-        when(nodeMapper.selectList(any(Wrapper.class)))
-                .thenReturn(List.of(stale), List.of());
-        when(nodeMapper.update(any(), any(Wrapper.class))).thenReturn(1);
+        when(nodeMapper.selectList(any(Wrapper.class))).thenReturn(List.of());
         WorkflowRecoveryService service = service(nodeMapper, outboxMapper);
 
         WorkflowRecoveryService.RecoveryResult result = service.recover(
                 LocalDateTime.of(2026, 7, 12, 12, 0), Duration.ofSeconds(30)
         );
 
-        ArgumentCaptor<WorkflowNodeRun> inserted = ArgumentCaptor.forClass(WorkflowNodeRun.class);
-        verify(nodeMapper).insert(inserted.capture());
-        assertThat(inserted.getValue().getStatus()).isEqualTo("PENDING");
-        assertThat(inserted.getValue().getAttempt()).isEqualTo(2);
-        assertThat(inserted.getValue().getExecutionId()).isEqualTo("7:backend:1:2");
-        assertThat(result.orphanedAttempts()).isEqualTo(1);
-        assertThat(result.replacementAttempts()).isEqualTo(1);
+        verify(nodeMapper, never()).insert(any(WorkflowNodeRun.class));
+        verify(nodeMapper, never()).update(any(), any(Wrapper.class));
+        assertThat(result.orphanedAttempts()).isZero();
+        assertThat(result.replacementAttempts()).isZero();
     }
 
     @Test
-    void compensatesQueuedNodeWhoseCommandWasNeverWritten() throws Exception {
+    void leavesQueuedDeliveryRecoveryToTransactionalOutboxAndRedisStream() {
         WorkflowNodeRunMapper nodeMapper = mock(WorkflowNodeRunMapper.class);
         WorkflowOutboxMapper outboxMapper = mock(WorkflowOutboxMapper.class);
         WorkflowNodeRun queued = node(12L, "QUEUED", 1, "7:frontend:1:1");
-        when(nodeMapper.selectList(any(Wrapper.class)))
-                .thenReturn(List.of(), List.of(), List.of(queued));
-        when(nodeMapper.update(any(), any(Wrapper.class))).thenReturn(1);
-        when(outboxMapper.selectCount(any(Wrapper.class))).thenReturn(0L);
+        when(nodeMapper.selectList(any(Wrapper.class))).thenReturn(List.of());
         WorkflowRecoveryService service = service(nodeMapper, outboxMapper);
 
         WorkflowRecoveryService.RecoveryResult result = service.recover(
                 LocalDateTime.of(2026, 7, 12, 12, 0), Duration.ofSeconds(30)
         );
 
-        ArgumentCaptor<WorkflowOutbox> inserted = ArgumentCaptor.forClass(WorkflowOutbox.class);
-        verify(outboxMapper).insert(inserted.capture());
-        WorkflowOutbox outbox = inserted.getValue();
-        assertThat(outbox.getEventType()).isEqualTo("EXECUTE_NODE");
-        assertThat(outbox.getStatus()).isEqualTo("PENDING");
-        var payload = new ObjectMapper().readTree(outbox.getPayloadJson());
-        assertThat(payload.get("node_run_id").asLong()).isEqualTo(12L);
-        assertThat(payload.get("correlation_id").asText()).isEqualTo("7");
-        assertThat(payload.get("traceparent").asText())
-                .matches("00-[0-9a-f]{32}-[0-9a-f]{16}-01");
-        assertThat(result.compensatedCommands()).isEqualTo(1);
+        verify(outboxMapper, never()).insert(any(WorkflowOutbox.class));
+        assertThat(result.compensatedCommands()).isZero();
     }
 
     @Test
@@ -79,9 +62,7 @@ class WorkflowRecoveryServiceTest {
         WorkflowNodeRunMapper nodeMapper = mock(WorkflowNodeRunMapper.class);
         WorkflowOutboxMapper outboxMapper = mock(WorkflowOutboxMapper.class);
         WorkflowNodeRun stale = node(11L, "RUNNING", 1, "7:backend:1:1");
-        when(nodeMapper.selectList(any(Wrapper.class)))
-                .thenReturn(List.of(stale), List.of());
-        when(nodeMapper.update(any(), any(Wrapper.class))).thenReturn(0);
+        when(nodeMapper.selectList(any(Wrapper.class))).thenReturn(List.of());
 
         WorkflowRecoveryService.RecoveryResult result = service(nodeMapper, outboxMapper)
                 .recover(LocalDateTime.of(2026, 7, 12, 12, 0), Duration.ofSeconds(30));
@@ -96,9 +77,7 @@ class WorkflowRecoveryServiceTest {
         WorkflowNodeRunMapper nodeMapper = mock(WorkflowNodeRunMapper.class);
         WorkflowOutboxMapper outboxMapper = mock(WorkflowOutboxMapper.class);
         WorkflowNodeRun queued = node(12L, "QUEUED", 1, "7:frontend:1:1");
-        when(nodeMapper.selectList(any(Wrapper.class)))
-                .thenReturn(List.of(), List.of(), List.of(queued));
-        when(outboxMapper.selectCount(any(Wrapper.class))).thenReturn(1L);
+        when(nodeMapper.selectList(any(Wrapper.class))).thenReturn(List.of());
 
         WorkflowRecoveryService.RecoveryResult result = service(nodeMapper, outboxMapper)
                 .recover(LocalDateTime.of(2026, 7, 12, 12, 0), Duration.ofSeconds(30));
@@ -112,10 +91,7 @@ class WorkflowRecoveryServiceTest {
         WorkflowNodeRunMapper nodeMapper = mock(WorkflowNodeRunMapper.class);
         WorkflowOutboxMapper outboxMapper = mock(WorkflowOutboxMapper.class);
         WorkflowNodeRun queued = node(12L, "QUEUED", 1, "7:frontend:1:1");
-        when(nodeMapper.selectList(any(Wrapper.class)))
-                .thenReturn(List.of(), List.of(), List.of(queued));
-        when(outboxMapper.selectCount(any(Wrapper.class))).thenReturn(0L);
-        when(nodeMapper.update(any(), any(Wrapper.class))).thenReturn(0);
+        when(nodeMapper.selectList(any(Wrapper.class))).thenReturn(List.of());
 
         WorkflowRecoveryService.RecoveryResult result = service(nodeMapper, outboxMapper)
                 .recover(LocalDateTime.of(2026, 7, 12, 12, 0), Duration.ofSeconds(30));
@@ -131,8 +107,7 @@ class WorkflowRecoveryServiceTest {
         WorkflowNodeRun retryWait = node(13L, "RETRY_WAIT", 1, "7:backend:1:1");
         retryWait.setNodeId("backend");
         retryWait.setNextRetryAt(LocalDateTime.of(2026, 7, 13, 11, 59));
-        when(nodeMapper.selectList(any(Wrapper.class)))
-                .thenReturn(List.of(), List.of(retryWait), List.of());
+        when(nodeMapper.selectList(any(Wrapper.class))).thenReturn(List.of(retryWait));
         when(nodeMapper.update(any(), any(Wrapper.class))).thenReturn(1);
         WorkflowRunReconciliationTrigger trigger = mock(WorkflowRunReconciliationTrigger.class);
 
@@ -156,8 +131,7 @@ class WorkflowRecoveryServiceTest {
         fallback.setNodeId("backend");
         fallback.setHandlerKey("backend-safe-v1");
         fallback.setNextRetryAt(LocalDateTime.of(2026, 7, 13, 12, 0));
-        when(nodeMapper.selectList(any(Wrapper.class)))
-                .thenReturn(List.of(), List.of(fallback), List.of());
+        when(nodeMapper.selectList(any(Wrapper.class))).thenReturn(List.of(fallback));
         when(nodeMapper.update(any(), any(Wrapper.class))).thenReturn(1);
 
         service(nodeMapper, outboxMapper)
@@ -175,8 +149,7 @@ class WorkflowRecoveryServiceTest {
         WorkflowOutboxMapper outboxMapper = mock(WorkflowOutboxMapper.class);
         WorkflowNodeRun retryWait = node(13L, "RETRY_WAIT", 1, "7:backend:1:1");
         retryWait.setNextRetryAt(LocalDateTime.of(2026, 7, 13, 11, 59));
-        when(nodeMapper.selectList(any(Wrapper.class)))
-                .thenReturn(List.of(), List.of(retryWait), List.of());
+        when(nodeMapper.selectList(any(Wrapper.class))).thenReturn(List.of(retryWait));
         when(nodeMapper.update(any(), any(Wrapper.class))).thenReturn(0);
 
         WorkflowRecoveryService.RecoveryResult result = service(nodeMapper, outboxMapper)

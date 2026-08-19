@@ -17,6 +17,8 @@ public class WorkflowNodeRun {
     private Integer revision;
     private Integer attempt;
     private String executionId;
+    private String contractHash;
+    private Long fencingToken;
     private String status;
     private String handlerKey;
     private String handlerVersion;

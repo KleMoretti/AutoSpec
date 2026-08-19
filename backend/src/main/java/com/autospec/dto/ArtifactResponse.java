@@ -15,13 +15,26 @@ public record ArtifactResponse(
         String status,
         String sourceAgent,
         Long parentArtifactId,
+        Long workflowNodeRunId,
+        String contentHash,
+        String schemaVersion,
+        String promptKey,
+        String promptVersion,
+        String modelProvider,
+        String modelName,
+        String sourceCitationsJson,
+        String provenanceJson,
         LocalDateTime approvedAt,
         LocalDateTime createdAt,
         LocalDateTime updatedAt
 ) {
 
     public ArtifactResponse(Long id, String type, String title, String content, String format, Integer version) {
-        this(id, type, title, content, format, version, 0, null, null, null, null, null, null);
+        this(
+                id, type, title, content, format, version, 0, null, null, null,
+                null, null, null, null, null, null, null, null, null, null,
+                null, null
+        );
     }
 
     public static ArtifactResponse from(Artifact artifact) {
@@ -36,6 +49,15 @@ public record ArtifactResponse(
                 artifact.getStatus(),
                 artifact.getSourceAgent(),
                 artifact.getParentArtifactId(),
+                artifact.getWorkflowNodeRunId(),
+                artifact.getContentHash(),
+                artifact.getSchemaVersion(),
+                artifact.getPromptKey(),
+                artifact.getPromptVersion(),
+                artifact.getModelProvider(),
+                artifact.getModelName(),
+                artifact.getSourceCitationsJson(),
+                artifact.getProvenanceJson(),
                 artifact.getApprovedAt(),
                 artifact.getCreatedAt(),
                 artifact.getUpdatedAt()

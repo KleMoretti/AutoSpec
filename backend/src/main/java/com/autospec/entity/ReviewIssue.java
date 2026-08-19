@@ -26,5 +26,23 @@ public class ReviewIssue {
 
     private String status;
 
+    private String issueKey;
+
+    private String artifactType;
+
+    private String artifactPath;
+
+    private String requirementId;
+
+    private String evidence;
+
+    private Long ownerUserId;
+
+    private String resolution;
+
+    private Long resolvedInArtifactId;
+
     private LocalDateTime createdAt;
+
+    private LocalDateTime updatedAt;
 }

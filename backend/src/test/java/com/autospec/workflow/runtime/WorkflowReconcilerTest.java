@@ -2,6 +2,7 @@ package com.autospec.workflow.runtime;
 
 import com.autospec.entity.WorkflowNodeRun;
 import com.autospec.observability.WorkflowTraceContextFactory;
+import com.autospec.workflow.spec.WorkflowEdgeDocument;
 import com.autospec.workflow.spec.WorkflowNodeDocument;
 import com.autospec.workflow.spec.WorkflowSpecDocument;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -70,6 +71,36 @@ class WorkflowReconcilerTest {
         assertThat(gateway.commands).hasSize(1);
     }
 
+    @Test
+    void persistsConditionalSkipInsteadOfDispatchingTarget() throws Exception {
+        WorkflowNodeRun source = nodeRun(11L, "source", "SUCCEEDED", 0);
+        source.setOutputJson("{\"approved\":false}");
+        WorkflowNodeRun target = nodeRun(12L, "target", "PENDING", 0);
+        InMemorySchedulingGateway gateway = new InMemorySchedulingGateway(List.of(source, target));
+        var condition = new ObjectMapper().readTree(
+                "{\"path\":\"$.approved\",\"operator\":\"EQ\",\"value\":true}"
+        );
+        CompiledWorkflow graph = new DagCompiler().compile(new WorkflowSpecDocument(
+                "conditional-reconcile",
+                "v5",
+                2,
+                List.of(
+                        new WorkflowNodeDocument("source", List.of()),
+                        new WorkflowNodeDocument("target", List.of())
+                ),
+                List.of(new WorkflowEdgeDocument(
+                        "source", "target", "CONDITIONAL", condition
+                )),
+                List.of()
+        ));
+
+        ReconciliationResult result = reconciler(gateway).reconcile(7L, graph);
+
+        assertThat(result.skippedNodes()).containsExactly("target");
+        assertThat(target.getStatus()).isEqualTo("SKIPPED");
+        assertThat(gateway.commands).isEmpty();
+    }
+
     private CompiledWorkflow graph(int parallelism) {
         return new DagCompiler().compile(new WorkflowSpecDocument(
                 "reconcile-test",
@@ -126,6 +157,18 @@ class WorkflowReconcilerTest {
             nodeRun.setLockVersion(nodeRun.getLockVersion() + 1);
             nodeRun.setExecutionId(command.executionId());
             commands.add(command);
+            return true;
+        }
+
+        @Override
+        public boolean markSkipped(WorkflowNodeRun nodeRun, String reason) {
+            if (!"PENDING".equals(nodeRun.getStatus())) {
+                return false;
+            }
+            nodeRun.setStatus("SKIPPED");
+            nodeRun.setErrorCode("CONDITION_NOT_MATCHED");
+            nodeRun.setErrorMessage(reason);
+            nodeRun.setLockVersion(nodeRun.getLockVersion() + 1);
             return true;
         }
     }

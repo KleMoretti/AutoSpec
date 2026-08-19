@@ -38,19 +38,29 @@ public class DagCompiler {
         Map<String, Set<String>> predecessorSets = emptySets(nodes.keySet());
         Map<String, Set<String>> successorSets = emptySets(nodes.keySet());
         Map<String, Set<String>> reworkSets = emptySets(nodes.keySet());
+        Map<String, List<WorkflowEdgeDocument>> incomingEdges = emptyEdgeLists(nodes.keySet());
+        Map<String, List<WorkflowEdgeDocument>> reworkEdges = emptyEdgeLists(nodes.keySet());
 
         for (WorkflowNodeDocument node : nodes.values()) {
             for (String dependency : node.dependsOn()) {
                 addOrdinaryEdge(dependency, node.nodeId(), nodes, predecessorSets, successorSets);
+                incomingEdges.get(node.nodeId()).add(
+                        new WorkflowEdgeDocument(dependency, node.nodeId(), "NORMAL")
+                );
             }
         }
         for (WorkflowEdgeDocument edge : spec.edges()) {
             requireNode(edge.fromNode(), nodes);
             requireNode(edge.toNode(), nodes);
+            if (!Set.of("NORMAL", "CONDITIONAL", "REWORK").contains(edge.edgeType())) {
+                throw new InvalidWorkflowGraphException("INVALID_EDGE_TYPE", edge.edgeType());
+            }
             if (edge.isRework()) {
                 reworkSets.get(edge.fromNode()).add(edge.toNode());
+                reworkEdges.get(edge.fromNode()).add(edge);
             } else {
                 addOrdinaryEdge(edge.fromNode(), edge.toNode(), nodes, predecessorSets, successorSets);
+                incomingEdges.get(edge.toNode()).add(edge);
             }
         }
 
@@ -75,10 +85,13 @@ public class DagCompiler {
         return new CompiledWorkflow(
                 spec.workflowKey(),
                 spec.version(),
+                spec.protocolVersion(),
                 spec.maxParallelNodes(),
                 Map.copyOf(nodes),
                 immutableLists(predecessorSets),
                 immutableLists(successorSets),
+                immutableEdgeLists(incomingEdges),
+                immutableEdgeLists(reworkEdges),
                 immutableLists(reworkSets),
                 List.copyOf(layers),
                 List.copyOf(entries),
@@ -167,6 +180,20 @@ public class DagCompiler {
     private Map<String, List<String>> immutableLists(Map<String, Set<String>> values) {
         Map<String, List<String>> result = new LinkedHashMap<>();
         values.forEach((key, set) -> result.put(key, set.stream().sorted().toList()));
+        return Map.copyOf(result);
+    }
+
+    private Map<String, List<WorkflowEdgeDocument>> emptyEdgeLists(Set<String> nodeIds) {
+        Map<String, List<WorkflowEdgeDocument>> result = new LinkedHashMap<>();
+        nodeIds.forEach(node -> result.put(node, new ArrayList<>()));
+        return result;
+    }
+
+    private Map<String, List<WorkflowEdgeDocument>> immutableEdgeLists(
+            Map<String, List<WorkflowEdgeDocument>> values
+    ) {
+        Map<String, List<WorkflowEdgeDocument>> result = new LinkedHashMap<>();
+        values.forEach((key, edges) -> result.put(key, List.copyOf(edges)));
         return Map.copyOf(result);
     }
 }

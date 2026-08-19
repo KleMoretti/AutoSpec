@@ -26,5 +26,13 @@ public class KnowledgeChunk {
 
     private String vectorRef;
 
+    private String contentHash;
+
+    private String embeddingModel;
+
+    private Integer embeddingDimensions;
+
+    private String embeddingJson;
+
     private LocalDateTime createdAt;
 }

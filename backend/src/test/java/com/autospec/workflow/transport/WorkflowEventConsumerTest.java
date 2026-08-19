@@ -2,6 +2,7 @@ package com.autospec.workflow.transport;
 
 import com.autospec.entity.ProcessedWorkflowEvent;
 import com.autospec.entity.WorkflowNodeRun;
+import com.autospec.entity.WorkflowRun;
 import com.autospec.mapper.ProcessedWorkflowEventMapper;
 import com.autospec.mapper.WorkflowNodeRunMapper;
 import com.autospec.mapper.WorkflowRunMapper;
@@ -53,6 +54,10 @@ class WorkflowEventConsumerTest {
         WorkflowNodeRunMapper nodeMapper = mock(WorkflowNodeRunMapper.class);
         WorkflowRunMapper runMapper = mock(WorkflowRunMapper.class);
         WorkflowRunReconciliationTrigger trigger = mock(WorkflowRunReconciliationTrigger.class);
+        WorkflowRun running = new WorkflowRun();
+        running.setId(7L);
+        running.setStatus("RUNNING");
+        when(runMapper.selectById(7L)).thenReturn(running);
         when(processedMapper.insertIfAbsent(any(ProcessedWorkflowEvent.class))).thenReturn(0);
         WorkflowEventConsumer consumer = new WorkflowEventConsumer(
                 processedMapper,
@@ -75,12 +80,45 @@ class WorkflowEventConsumerTest {
     }
 
     @Test
+    void cancelledRunRejectsLateSuccessBeforeProjectionOrDeduplication() {
+        ProcessedWorkflowEventMapper processedMapper = mock(ProcessedWorkflowEventMapper.class);
+        WorkflowNodeRunMapper nodeMapper = mock(WorkflowNodeRunMapper.class);
+        WorkflowRunMapper runMapper = mock(WorkflowRunMapper.class);
+        WorkflowRunReconciliationTrigger trigger = mock(WorkflowRunReconciliationTrigger.class);
+        WorkflowArtifactProjector projector = mock(WorkflowArtifactProjector.class);
+        WorkflowRun cancelled = new WorkflowRun();
+        cancelled.setId(7L);
+        cancelled.setStatus("CANCELLED");
+        when(runMapper.selectById(7L)).thenReturn(cancelled);
+        WorkflowEventConsumer consumer = new WorkflowEventConsumer(
+                processedMapper,
+                nodeMapper,
+                trigger,
+                mock(WorkflowFailureDecisionService.class),
+                new ObjectMapper(),
+                null,
+                projector,
+                ReviewerReworkCoordinator.none(),
+                runMapper
+        );
+
+        WorkflowEventOutcome outcome = consumer.consume(successPayload());
+
+        assertThat(outcome).isEqualTo(WorkflowEventOutcome.STALE);
+        verify(processedMapper, never()).insertIfAbsent(any());
+        verify(nodeMapper, never()).update(any(), any());
+        verify(projector, never()).project(any(), any(), any());
+        verify(trigger, never()).reconcile(any(Long.class));
+    }
+
+    @Test
     void acceptsSuccessForCurrentExecutionAndTriggersReconciliation() {
         ProcessedWorkflowEventMapper processedMapper = mock(ProcessedWorkflowEventMapper.class);
         WorkflowNodeRunMapper nodeMapper = mock(WorkflowNodeRunMapper.class);
         WorkflowRunReconciliationTrigger trigger = mock(WorkflowRunReconciliationTrigger.class);
         when(processedMapper.insertIfAbsent(any(ProcessedWorkflowEvent.class))).thenReturn(1);
         when(nodeMapper.update(any(), any())).thenReturn(1);
+        when(nodeMapper.selectById(11L)).thenReturn(currentNode());
         WorkflowEventConsumer consumer = consumer(processedMapper, nodeMapper, trigger);
 
         WorkflowEventOutcome outcome = consumer.consume(successPayload());
@@ -134,6 +172,7 @@ class WorkflowEventConsumerTest {
         WorkflowRunReconciliationTrigger trigger = mock(WorkflowRunReconciliationTrigger.class);
         when(processedMapper.insertIfAbsent(any(ProcessedWorkflowEvent.class))).thenReturn(1);
         when(nodeMapper.update(any(), any())).thenReturn(1);
+        when(nodeMapper.selectById(11L)).thenReturn(currentNode());
         WorkflowEventConsumer consumer = new WorkflowEventConsumer(
                 processedMapper,
                 nodeMapper,
@@ -203,6 +242,38 @@ class WorkflowEventConsumerTest {
     }
 
     @Test
+    void rejectsTerminalEventFromSupersededFenceBeforeApplyingIt() {
+        ProcessedWorkflowEventMapper processedMapper = mock(ProcessedWorkflowEventMapper.class);
+        WorkflowNodeRunMapper nodeMapper = mock(WorkflowNodeRunMapper.class);
+        WorkflowRunReconciliationTrigger trigger = mock(WorkflowRunReconciliationTrigger.class);
+        WorkflowNodeRun current = currentNode();
+        current.setContractHash("a".repeat(64));
+        current.setFencingToken(2L);
+        when(processedMapper.insertIfAbsent(any(ProcessedWorkflowEvent.class))).thenReturn(1);
+        when(nodeMapper.selectById(11L)).thenReturn(current);
+        WorkflowEventConsumer consumer = new WorkflowEventConsumer(
+                processedMapper,
+                nodeMapper,
+                trigger,
+                mock(WorkflowFailureDecisionService.class),
+                new ObjectMapper()
+        );
+        String stalePayload = successPayload().replace(
+                "\"output_payload\":{\"doubled\":6}",
+                "\"output_payload\":{\"doubled\":6},"
+                        + "\"protocol_version\":1,"
+                        + "\"contract_hash\":\"" + "a".repeat(64) + "\","
+                        + "\"fencing_token\":1,\"worker_id\":\"worker-old\""
+        );
+
+        WorkflowEventOutcome outcome = consumer.consume(stalePayload);
+
+        assertThat(outcome).isEqualTo(WorkflowEventOutcome.STALE);
+        verify(nodeMapper, never()).update(any(), any());
+        verify(trigger, never()).reconcile(any(Long.class));
+    }
+
+    @Test
     void retryableFailurePersistsRetryWaitAndNextRetryTime() {
         ProcessedWorkflowEventMapper processedMapper = mock(ProcessedWorkflowEventMapper.class);
         WorkflowNodeRunMapper nodeMapper = mock(WorkflowNodeRunMapper.class);
@@ -210,6 +281,11 @@ class WorkflowEventConsumerTest {
         WorkflowFailureDecisionService failureDecisions = mock(WorkflowFailureDecisionService.class);
         WorkflowNodeRun nodeRun = new WorkflowNodeRun();
         nodeRun.setId(11L);
+        nodeRun.setWorkflowRunId(7L);
+        nodeRun.setNodeId("fixture");
+        nodeRun.setExecutionId("7:fixture:1:1");
+        nodeRun.setStatus("QUEUED");
+        nodeRun.setFencingToken(0L);
         nodeRun.setAttempt(1);
         LocalDateTime retryAt = LocalDateTime.of(2026, 7, 13, 12, 0, 1);
         when(processedMapper.insertIfAbsent(any(ProcessedWorkflowEvent.class))).thenReturn(1);
@@ -280,6 +356,7 @@ class WorkflowEventConsumerTest {
             WorkflowRunReconciliationTrigger trigger
     ) {
         WorkflowFailureDecisionService failureDecisions = mock(WorkflowFailureDecisionService.class);
+        when(nodeMapper.selectById(11L)).thenReturn(currentNode());
         return new WorkflowEventConsumer(
                 processedMapper, nodeMapper, trigger, failureDecisions, new ObjectMapper()
         );
@@ -307,6 +384,20 @@ class WorkflowEventConsumerTest {
         return successPayload()
                 .replace("7:fixture:1:1:succeeded", "7:fixture:1:1:heartbeat:1")
                 .replace("NODE_SUCCEEDED", "NODE_HEARTBEAT");
+    }
+
+    private WorkflowNodeRun currentNode() {
+        WorkflowNodeRun node = new WorkflowNodeRun();
+        node.setId(11L);
+        node.setWorkflowRunId(7L);
+        node.setNodeId("fixture");
+        node.setRevision(1);
+        node.setAttempt(1);
+        node.setExecutionId("7:fixture:1:1");
+        node.setStatus("QUEUED");
+        node.setFencingToken(0L);
+        node.setLockVersion(0);
+        return node;
     }
 
     private String tracedSuccessPayload() {

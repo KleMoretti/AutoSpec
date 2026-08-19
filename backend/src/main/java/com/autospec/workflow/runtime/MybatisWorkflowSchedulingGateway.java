@@ -49,6 +49,7 @@ public class MybatisWorkflowSchedulingGateway implements WorkflowSchedulingGatew
                 .eq(WorkflowNodeRun::getLockVersion, nodeRun.getLockVersion())
                 .set(WorkflowNodeRun::getStatus, WorkflowNodeStatus.QUEUED.name())
                 .set(WorkflowNodeRun::getExecutionId, command.executionId())
+                .set(WorkflowNodeRun::getContractHash, command.contractHash())
                 .set(WorkflowNodeRun::getQueuedAt, now)
                 .set(WorkflowNodeRun::getLockVersion, nodeRun.getLockVersion() + 1)
                 .set(WorkflowNodeRun::getUpdatedAt, now));
@@ -67,6 +68,23 @@ public class MybatisWorkflowSchedulingGateway implements WorkflowSchedulingGatew
         outbox.setUpdatedAt(now);
         outboxMapper.insert(outbox);
         return true;
+    }
+
+    @Override
+    @Transactional
+    public boolean markSkipped(WorkflowNodeRun nodeRun, String reason) {
+        LocalDateTime now = LocalDateTime.now();
+        int updated = nodeRunMapper.update(null, new LambdaUpdateWrapper<WorkflowNodeRun>()
+                .eq(WorkflowNodeRun::getId, nodeRun.getId())
+                .eq(WorkflowNodeRun::getStatus, WorkflowNodeStatus.PENDING.name())
+                .eq(WorkflowNodeRun::getLockVersion, nodeRun.getLockVersion())
+                .set(WorkflowNodeRun::getStatus, WorkflowNodeStatus.SKIPPED.name())
+                .set(WorkflowNodeRun::getErrorCode, "CONDITION_NOT_MATCHED")
+                .set(WorkflowNodeRun::getErrorMessage, reason)
+                .set(WorkflowNodeRun::getFinishedAt, now)
+                .set(WorkflowNodeRun::getLockVersion, nodeRun.getLockVersion() + 1)
+                .set(WorkflowNodeRun::getUpdatedAt, now));
+        return updated == 1;
     }
 
     private String serialize(QueuedNodeCommand command) {

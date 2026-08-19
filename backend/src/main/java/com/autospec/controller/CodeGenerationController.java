@@ -2,11 +2,14 @@ package com.autospec.controller;
 
 import com.autospec.dto.CodeGenerationJobResponse;
 import com.autospec.dto.CodeGenerationResponse;
+import com.autospec.dto.DeliveryReadinessResponse;
 import com.autospec.dto.PaginationRequest;
 import com.autospec.entity.CodeGenerationJob;
+import com.autospec.entity.Artifact;
 import com.autospec.service.AuditEventService;
 import com.autospec.service.CodeGenerationJobService;
 import com.autospec.service.CodeSkeletonService;
+import com.autospec.service.DeliveryGateService;
 import com.autospec.service.ProjectAccessService;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -27,17 +30,20 @@ public class CodeGenerationController {
     private final CodeGenerationJobService codeGenerationJobService;
     private final ProjectAccessService projectAccessService;
     private final AuditEventService auditEventService;
+    private final DeliveryGateService deliveryGateService;
 
     public CodeGenerationController(
             CodeSkeletonService codeSkeletonService,
             CodeGenerationJobService codeGenerationJobService,
             ProjectAccessService projectAccessService,
-            AuditEventService auditEventService
+            AuditEventService auditEventService,
+            DeliveryGateService deliveryGateService
     ) {
         this.codeSkeletonService = codeSkeletonService;
         this.codeGenerationJobService = codeGenerationJobService;
         this.projectAccessService = projectAccessService;
         this.auditEventService = auditEventService;
+        this.deliveryGateService = deliveryGateService;
     }
 
     @PostMapping("/{projectId}/code-skeleton")
@@ -51,7 +57,23 @@ public class CodeGenerationController {
                 "OWNER",
                 "EDITOR"
         );
-        return codeSkeletonService.generate(projectId);
+        List<Artifact> deliverableArtifacts = deliveryGateService.requireDeliverable(projectId);
+        return codeSkeletonService.generate(projectId, deliverableArtifacts);
+    }
+
+    @GetMapping("/{projectId}/delivery-readiness")
+    public DeliveryReadinessResponse deliveryReadiness(
+            @PathVariable Long projectId,
+            @RequestHeader(value = "X-AutoSpec-Session-Token", required = false) String sessionToken
+    ) {
+        projectAccessService.requireProjectRole(
+                projectId,
+                projectAccessService.resolveUserId(sessionToken),
+                "OWNER",
+                "EDITOR",
+                "VIEWER"
+        );
+        return deliveryGateService.readiness(projectId);
     }
 
     @GetMapping("/{projectId}/code-generation-jobs")
@@ -114,6 +136,7 @@ public class CodeGenerationController {
                 "OWNER",
                 "EDITOR"
         );
-        return codeSkeletonService.retry(projectId, jobId);
+        List<Artifact> deliverableArtifacts = deliveryGateService.requireDeliverable(projectId);
+        return codeSkeletonService.retry(projectId, jobId, deliverableArtifacts);
     }
 }

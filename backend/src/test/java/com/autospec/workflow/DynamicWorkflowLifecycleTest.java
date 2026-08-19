@@ -122,13 +122,16 @@ class DynamicWorkflowLifecycleTest {
 
         WorkflowNodeRun backend = node(run.getId(), "backend_engineer");
         WorkflowNodeRun frontend = node(run.getId(), "frontend_engineer");
-        assertThat(List.of(backend, frontend))
-                .extracting(WorkflowNodeRun::getStatus)
-                .containsOnly("QUEUED");
+        assertThat(backend.getStatus()).isEqualTo("QUEUED");
+        assertThat(frontend.getStatus()).isEqualTo("PENDING");
         JsonNode backendInput = objectMapper.readTree(backend.getInputJson());
         assertThat(backendInput.path("prd").path("title").asText()).isEqualTo("Marketplace PRD");
         assertThat(backendInput.path("architecture_design").path("style").asText()).isEqualTo("modular");
         consumer.consume(success(backend, "{\"api_endpoints\":[]}"));
+        frontend = node(run.getId(), "frontend_engineer");
+        assertThat(frontend.getStatus()).isEqualTo("QUEUED");
+        JsonNode frontendInput = objectMapper.readTree(frontend.getInputJson());
+        assertThat(frontendInput.path("backend_design").path("api_endpoints").isArray()).isTrue();
         consumer.consume(success(frontend, "{\"pages\":[]}"));
 
         WorkflowNodeRun reviewer = node(run.getId(), "reviewer");
@@ -142,19 +145,19 @@ class DynamicWorkflowLifecycleTest {
         assertThat(evaluator.getStatus()).isEqualTo("QUEUED");
         String evaluatorEvent = success(evaluator, "{\"overall_score\":92}");
         assertThat(consumer.consume(evaluatorEvent)).isEqualTo(WorkflowEventOutcome.ACCEPTED);
-        assertThat(consumer.consume(evaluatorEvent)).isEqualTo(WorkflowEventOutcome.DUPLICATE);
+        assertThat(consumer.consume(evaluatorEvent)).isEqualTo(WorkflowEventOutcome.STALE);
 
         WorkflowRun completed = runMapper.selectById(run.getId());
         assertThat(completed.getStatus()).isEqualTo("COMPLETED");
         assertThat(completed.getResponsePercent()).isEqualTo(100);
-        assertThat(completed.getAcceptedDuplicateEventCount()).isEqualTo(1);
+        assertThat(completed.getAcceptedDuplicateEventCount()).isZero();
         assertThat(metricsService.metrics(run.getId()))
                 .satisfies(metrics -> {
                     assertThat(metrics.nodeAttemptCount()).isEqualTo(6);
                     assertThat(metrics.executionDurationMs()).isEqualTo(72);
                     assertThat(metrics.retryCount()).isZero();
                     assertThat(metrics.recoveryCount()).isZero();
-                    assertThat(metrics.acceptedDuplicateEventCount()).isEqualTo(1);
+                    assertThat(metrics.acceptedDuplicateEventCount()).isZero();
                 });
         assertThat(artifactMapper.selectList(new LambdaQueryWrapper<Artifact>()
                 .eq(Artifact::getProjectId, project.getId())))
@@ -257,6 +260,10 @@ class DynamicWorkflowLifecycleTest {
                   "revision":%d,
                   "attempt":%d,
                   "execution_id":"%s",
+                  "protocol_version":1,
+                  "contract_hash":"%s",
+                  "fencing_token":1,
+                  "worker_id":"lifecycle-test-worker",
                   "duration_ms":12,
                   "output_payload":%s
                 }
@@ -269,6 +276,7 @@ class DynamicWorkflowLifecycleTest {
                 node.getRevision(),
                 node.getAttempt(),
                 node.getExecutionId(),
+                node.getContractHash(),
                 outputJson
         );
     }

@@ -28,6 +28,8 @@ public class WorkflowTransportMetrics {
             "autospec.redis.stream.acknowledged";
     public static final String EVENT_HANDLER_FAILURES =
             "autospec.workflow.event.handler.failures";
+    public static final String EVENT_DEAD_LETTERS =
+            "autospec.workflow.event.dead.letters";
 
     private final Counter outboxPublishSuccesses;
     private final Counter outboxPublishFailures;
@@ -38,6 +40,7 @@ public class WorkflowTransportMetrics {
     private final Counter reclaimedEvents;
     private final Counter acknowledgedEvents;
     private final Counter eventHandlerFailures;
+    private final Counter eventDeadLetters;
 
     public WorkflowTransportMetrics(MeterRegistry registry) {
         this.outboxPublishSuccesses = counter(
@@ -83,6 +86,11 @@ public class WorkflowTransportMetrics {
                 EVENT_HANDLER_FAILURES,
                 "Workflow event handler failures before acknowledgement"
         );
+        this.eventDeadLetters = counter(
+                registry,
+                EVENT_DEAD_LETTERS,
+                "Invalid inbound workflow events quarantined before acknowledgement"
+        );
     }
 
     static WorkflowTransportMetrics isolated() {
@@ -123,6 +131,10 @@ public class WorkflowTransportMetrics {
 
     void recordEventHandlerFailure() {
         eventHandlerFailures.increment();
+    }
+
+    void recordEventDeadLetter() {
+        eventDeadLetters.increment();
     }
 
     private Counter counter(MeterRegistry registry, String name, String description) {

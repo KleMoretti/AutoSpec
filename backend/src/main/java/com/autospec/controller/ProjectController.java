@@ -2,6 +2,8 @@ package com.autospec.controller;
 
 import com.autospec.dto.AgentEventResponse;
 import com.autospec.dto.ApproveArtifactResponse;
+import com.autospec.dto.ArtifactDiffResponse;
+import com.autospec.dto.ArtifactRestoreRequest;
 import com.autospec.dto.ArtifactResponse;
 import com.autospec.dto.CreateProjectRequest;
 import com.autospec.dto.CreateProjectResponse;
@@ -10,21 +12,25 @@ import com.autospec.dto.CursorPaginationRequest;
 import com.autospec.dto.GenerateProjectResponse;
 import com.autospec.dto.PaginationRequest;
 import com.autospec.dto.ProjectProgressResponse;
+import com.autospec.dto.ProjectDashboardItemResponse;
 import com.autospec.dto.ProjectResponse;
 import com.autospec.dto.RetryTaskResponse;
 import com.autospec.dto.ReviewIssueResponse;
+import com.autospec.dto.ReviewIssueUpdateRequest;
 import com.autospec.dto.ReviewResponse;
 import com.autospec.dto.UpdateArtifactRequest;
 import com.autospec.entity.AgentEvent;
 import com.autospec.entity.AgentTask;
 import com.autospec.entity.Artifact;
 import com.autospec.entity.Project;
+import com.autospec.entity.ReviewIssue;
 import com.autospec.service.AgentEventService;
 import com.autospec.service.AgentEventStreamService;
 import com.autospec.service.AgentOrchestrationService;
 import com.autospec.service.ArtifactVersionService;
 import com.autospec.service.ArtifactService;
 import com.autospec.service.ProjectAccessService;
+import com.autospec.service.ProjectDashboardService;
 import com.autospec.service.ProjectService;
 import com.autospec.service.ReviewIssueService;
 import jakarta.validation.Valid;
@@ -54,6 +60,7 @@ public class ProjectController {
     private final AgentEventService agentEventService;
     private final AgentEventStreamService agentEventStreamService;
     private final ProjectAccessService projectAccessService;
+    private final ProjectDashboardService projectDashboardService;
 
     public ProjectController(
             ProjectService projectService,
@@ -63,7 +70,8 @@ public class ProjectController {
             ReviewIssueService reviewIssueService,
             AgentEventService agentEventService,
             AgentEventStreamService agentEventStreamService,
-            ProjectAccessService projectAccessService
+            ProjectAccessService projectAccessService,
+            ProjectDashboardService projectDashboardService
     ) {
         this.projectService = projectService;
         this.agentOrchestrationService = agentOrchestrationService;
@@ -73,6 +81,7 @@ public class ProjectController {
         this.agentEventService = agentEventService;
         this.agentEventStreamService = agentEventStreamService;
         this.projectAccessService = projectAccessService;
+        this.projectDashboardService = projectDashboardService;
     }
 
     @GetMapping
@@ -116,8 +125,8 @@ public class ProjectController {
             @PathVariable Long projectId,
             @RequestHeader(value = "X-AutoSpec-Session-Token", required = false) String sessionToken
     ) {
-        requireEditor(projectId, sessionToken);
-        ProjectProgressResponse progress = agentOrchestrationService.generate(projectId);
+        Long actorUserId = requireEditor(projectId, sessionToken);
+        ProjectProgressResponse progress = agentOrchestrationService.generate(projectId, actorUserId);
         return new GenerateProjectResponse(projectId, progress.status(), progress.percent());
     }
 
@@ -126,8 +135,8 @@ public class ProjectController {
             @PathVariable Long projectId,
             @RequestHeader(value = "X-AutoSpec-Session-Token", required = false) String sessionToken
     ) {
-        requireEditor(projectId, sessionToken);
-        ProjectProgressResponse progress = agentOrchestrationService.generatePrd(projectId);
+        Long actorUserId = requireEditor(projectId, sessionToken);
+        ProjectProgressResponse progress = agentOrchestrationService.generatePrd(projectId, actorUserId);
         return new GenerateProjectResponse(projectId, progress.status(), progress.percent());
     }
 
@@ -137,8 +146,8 @@ public class ProjectController {
             @RequestHeader(value = "X-AutoSpec-Session-Token", required = false) String sessionToken,
             @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey
     ) {
-        requireEditor(projectId, sessionToken);
-        ProjectProgressResponse progress = agentOrchestrationService.generateV4(projectId, idempotencyKey);
+        Long actorUserId = requireEditor(projectId, sessionToken);
+        ProjectProgressResponse progress = agentOrchestrationService.generateV4(projectId, idempotencyKey, actorUserId);
         return new GenerateProjectResponse(projectId, progress.status(), progress.percent());
     }
 
@@ -147,8 +156,8 @@ public class ProjectController {
             @PathVariable Long projectId,
             @RequestHeader(value = "X-AutoSpec-Session-Token", required = false) String sessionToken
     ) {
-        requireEditor(projectId, sessionToken);
-        ProjectProgressResponse progress = agentOrchestrationService.continueAfterApprovedPrd(projectId);
+        Long actorUserId = requireEditor(projectId, sessionToken);
+        ProjectProgressResponse progress = agentOrchestrationService.continueAfterApprovedPrd(projectId, actorUserId);
         return new GenerateProjectResponse(projectId, progress.status(), progress.percent());
     }
 
@@ -173,6 +182,20 @@ public class ProjectController {
         return artifactService.listByProjectId(projectId, pagination.limit(), pagination.offset())
                 .stream()
                 .map(ArtifactResponse::from)
+                .toList();
+    }
+
+    @GetMapping("/dashboard")
+    public List<ProjectDashboardItemResponse> dashboard(
+            @RequestHeader(value = "X-AutoSpec-Session-Token", required = false) String sessionToken,
+            @RequestParam(defaultValue = "50") Integer limit,
+            @RequestParam(defaultValue = "0") Integer offset
+    ) {
+        PaginationRequest pagination = PaginationRequest.of(limit, offset);
+        Long userId = projectAccessService.resolveUserId(sessionToken);
+        return projectAccessService.listVisibleProjects(userId, pagination.limit(), pagination.offset())
+                .stream()
+                .map(projectDashboardService::summarize)
                 .toList();
     }
 
@@ -247,6 +270,32 @@ public class ProjectController {
         return new ApproveArtifactResponse(approved.getId(), approved.getStatus(), approved.getVersion());
     }
 
+    @GetMapping("/{projectId}/artifacts/{artifactId}/diff")
+    public ArtifactDiffResponse artifactDiff(
+            @PathVariable Long projectId,
+            @PathVariable Long artifactId,
+            @RequestParam Long againstArtifactId,
+            @RequestHeader(value = "X-AutoSpec-Session-Token", required = false) String sessionToken
+    ) {
+        requireViewer(projectId, sessionToken);
+        return artifactVersionService.diff(projectId, againstArtifactId, artifactId);
+    }
+
+    @PostMapping("/{projectId}/artifacts/{artifactId}/restore")
+    public ArtifactResponse restoreArtifact(
+            @PathVariable Long projectId,
+            @PathVariable Long artifactId,
+            @RequestHeader(value = "X-AutoSpec-Session-Token", required = false) String sessionToken,
+            @Valid @RequestBody ArtifactRestoreRequest request
+    ) {
+        requireEditor(projectId, sessionToken);
+        return ArtifactResponse.from(artifactVersionService.restore(
+                projectId,
+                artifactId,
+                request.expectedLatestLockVersion()
+        ));
+    }
+
     @GetMapping("/{projectId}/review")
     public ReviewResponse review(
             @PathVariable Long projectId,
@@ -258,15 +307,27 @@ public class ProjectController {
         requireViewer(projectId, sessionToken);
         List<ReviewIssueResponse> issues = reviewIssueService.listByProjectId(projectId, pagination.limit(), pagination.offset())
                 .stream()
-                .map(issue -> new ReviewIssueResponse(
-                        issue.getSeverity(),
-                        issue.getIssueType(),
-                        issue.getDescription(),
-                        issue.getSuggestion(),
-                        issue.getStatus()
-                ))
+                .map(this::reviewIssueResponse)
                 .toList();
         return new ReviewResponse(agentOrchestrationService.reviewScore(projectId), issues);
+    }
+
+    @PutMapping("/{projectId}/review/issues/{issueId}")
+    public ReviewIssueResponse updateReviewIssue(
+            @PathVariable Long projectId,
+            @PathVariable Long issueId,
+            @RequestHeader(value = "X-AutoSpec-Session-Token", required = false) String sessionToken,
+            @Valid @RequestBody ReviewIssueUpdateRequest request
+    ) {
+        Long actorUserId = requireEditor(projectId, sessionToken);
+        return reviewIssueResponse(reviewIssueService.updateDisposition(
+                projectId,
+                issueId,
+                request.status(),
+                request.resolution(),
+                request.resolvedInArtifactId(),
+                actorUserId
+        ));
     }
 
     @GetMapping("/{projectId}/events/history")
@@ -315,10 +376,9 @@ public class ProjectController {
     @GetMapping(value = "/{projectId}/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter streamEvents(
             @PathVariable Long projectId,
-            @RequestHeader(value = "X-AutoSpec-Session-Token", required = false) String sessionHeader,
-            @RequestParam(value = "sessionToken", required = false) String sessionParam
+            @RequestHeader(value = "X-AutoSpec-Session-Token", required = false) String sessionToken
     ) {
-        requireViewer(projectId, sessionHeader == null ? sessionParam : sessionHeader);
+        requireViewer(projectId, sessionToken);
         return agentEventStreamService.subscribe(projectId);
     }
 
@@ -343,12 +403,33 @@ public class ProjectController {
         );
     }
 
-    private void requireEditor(Long projectId, String sessionToken) {
+    private Long requireEditor(Long projectId, String sessionToken) {
+        Long userId = projectAccessService.resolveUserId(sessionToken);
         projectAccessService.requireProjectRole(
                 projectId,
-                projectAccessService.resolveUserId(sessionToken),
+                userId,
                 "OWNER",
                 "EDITOR"
+        );
+        return userId;
+    }
+
+    private ReviewIssueResponse reviewIssueResponse(ReviewIssue issue) {
+        return new ReviewIssueResponse(
+                issue.getId(),
+                issue.getIssueKey(),
+                issue.getSeverity(),
+                issue.getIssueType(),
+                issue.getArtifactType(),
+                issue.getArtifactPath(),
+                issue.getRequirementId(),
+                issue.getDescription(),
+                issue.getSuggestion(),
+                issue.getEvidence(),
+                issue.getStatus(),
+                issue.getOwnerUserId(),
+                issue.getResolution(),
+                issue.getResolvedInArtifactId()
         );
     }
 }
