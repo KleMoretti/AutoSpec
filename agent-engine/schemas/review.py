@@ -10,6 +10,10 @@ class ReviewIssue(BaseModel):
     issue_type: str = Field(min_length=1)
     description: str = Field(min_length=1)
     suggestion: str = Field(min_length=1)
+    issue_id: str | None = None
+    requirement_id: str | None = None
+    artifact_path: str | None = None
+    evidence: list[str] = Field(default_factory=list)
 
 
 class ReviewDecision(StrEnum):

@@ -264,6 +264,12 @@ def valid_frontend_payload():
                 "props": ["events"],
                 "state": [],
             },
+            {
+                "name": "ArtifactTabs",
+                "type": "tabs",
+                "props": ["artifacts"],
+                "state": [],
+            },
         ],
         "api_bindings": [
             {
@@ -399,11 +405,17 @@ def test_v4_workflow_appends_evaluator_report_after_reviewer():
         "reviewer",
         "evaluator",
     ]
-    assert result.evaluation_report.overall_score >= 80
+    assert result.evaluation_report.gate_status == "BLOCKED"
+    assert result.evaluation_report.overall_score <= 69
+    assert any(
+        issue.issue_type == "MUST_REQUIREMENT_TRACE_GAP"
+        for issue in result.evaluation_report.issues
+    )
     assert result.evaluation_report.dimension("RUNTIME_RELIABILITY").score == 100
     evaluator_record = result.records[-1]
     assert evaluator_record.agent_name == "EvaluatorAgent_v1"
-    assert evaluator_record.output_payload["final_grade"] in ["A", "B"]
+    assert evaluator_record.output_payload["final_grade"] == result.evaluation_report.final_grade
+    assert evaluator_record.output_payload["final_grade"] in ["D", "F"]
 
 
 def test_v4_response_serializes_evaluation_report():

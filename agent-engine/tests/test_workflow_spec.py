@@ -111,7 +111,7 @@ def test_autospec_v5_declares_parallel_nodes_and_bounded_rework():
     assert spec.runtime.max_review_rounds == 2
     assert spec.node("product_manager").approval.mode == "AFTER_NODE"
     assert spec.node("backend_engineer").depends_on == ["architect"]
-    assert spec.node("frontend_engineer").depends_on == ["architect"]
+    assert spec.node("frontend_engineer").depends_on == ["architect", "backend_engineer"]
     rework_edges = [edge for edge in spec.edges if edge.edge_type == "REWORK"]
     assert {edge.to_node for edge in rework_edges} == {
         "architect",

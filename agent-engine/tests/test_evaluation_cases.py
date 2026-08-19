@@ -3,10 +3,10 @@ import pytest
 from evaluation.case_catalog import get_evaluation_case, list_evaluation_cases
 
 
-def test_v4_evaluation_case_catalog_contains_three_reproducible_cases():
+def test_v4_evaluation_case_catalog_contains_cross_domain_benchmark_cases():
     cases = list_evaluation_cases()
 
-    assert len(cases) >= 3
+    assert len(cases) >= 20
     assert len({case.case_id for case in cases}) == len(cases)
     for case in cases:
         assert case.requirement

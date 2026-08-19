@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import asyncio
 import logging
+import uuid
 from contextlib import suppress
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -13,6 +14,11 @@ from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapProp
 from pydantic import ValidationError
 
 from runtime.node_executor import NodeCommand, NodeExecutionEvent, NodeExecutor
+from runtime.execution_ledger import (
+    ExecutionClaimStatus,
+    ExecutionLedger,
+    InMemoryExecutionLedger,
+)
 from runtime.worker_metrics import NO_OP_WORKER_METRICS, WorkerMetricsRecorder
 from runtime.workflow_log_context import bind_workflow_log_context
 
@@ -41,6 +47,14 @@ class InvalidWorkflowCommandError(ValueError):
         self.error_type = error_type
 
 
+class ExecutionAlreadyClaimedError(RuntimeError):
+    pass
+
+
+class LostExecutionFenceError(RuntimeError):
+    pass
+
+
 class WorkflowStreamClient(Protocol):
     async def publish_event(
         self, stream: str, event: NodeExecutionEvent
@@ -60,6 +74,8 @@ class WorkflowStreamWorker:
         event_stream: str = EVENT_STREAM,
         consumer_group: str = WORKER_GROUP,
         heartbeat_interval_seconds: float = 10.0,
+        consumer_name: str | None = None,
+        execution_ledger: ExecutionLedger | None = None,
         metrics: WorkerMetricsRecorder = NO_OP_WORKER_METRICS,
         tracer: Tracer | None = None,
     ) -> None:
@@ -69,6 +85,16 @@ class WorkflowStreamWorker:
         self._event_stream = event_stream
         self._consumer_group = consumer_group
         self._heartbeat_interval_seconds = heartbeat_interval_seconds
+        self._consumer_name = consumer_name or f"worker-{uuid.uuid4()}"
+        shared_ledger = execution_ledger or getattr(client, "execution_ledger", None)
+        if shared_ledger is None:
+            shared_ledger = InMemoryExecutionLedger()
+            try:
+                setattr(client, "execution_ledger", shared_ledger)
+            except (AttributeError, TypeError):
+                pass
+        self._execution_ledger = shared_ledger
+        self._lease_ms = max(30_000, round(heartbeat_interval_seconds * 3_000))
         self._metrics = metrics
         self._tracer = tracer or trace.get_tracer("autospec.agent-worker")
 
@@ -102,8 +128,40 @@ class WorkflowStreamWorker:
         ) as span:
             with bind_workflow_log_context(command):
                 try:
+                    claim = await self._execution_ledger.claim(
+                        command.execution_id,
+                        self._consumer_name,
+                        self._lease_ms,
+                    )
+                    if claim.status == ExecutionClaimStatus.BUSY:
+                        raise ExecutionAlreadyClaimedError(
+                            f"execution is owned by another live worker: {command.execution_id}"
+                        )
+                    if claim.status == ExecutionClaimStatus.CACHED:
+                        if claim.cached_event is None:
+                            raise RuntimeError("completed execution ledger entry has no cached event")
+                        event = claim.cached_event
+                        await self._client.publish_event(self._event_stream, event)
+                        await self._client.acknowledge(
+                            self._command_stream,
+                            self._consumer_group,
+                            message.message_id,
+                        )
+                        span.set_attribute("autospec.workflow.execution.cached", True)
+                        span.set_attribute("autospec.workflow.event.type", event.event_type)
+                        return event
+                    command = command.model_copy(
+                        update={
+                            "fencing_token": claim.fencing_token,
+                            "worker_id": self._consumer_name,
+                        }
+                    )
                     heartbeat_task = asyncio.create_task(
-                        self._publish_heartbeats(command)
+                        self._publish_heartbeats(
+                            command,
+                            message.message_id,
+                            self._consumer_name,
+                        )
                     )
                     try:
                         event = await self._executor.execute(command)
@@ -111,6 +169,16 @@ class WorkflowStreamWorker:
                         heartbeat_task.cancel()
                         with suppress(asyncio.CancelledError):
                             await heartbeat_task
+                    completed = await self._execution_ledger.complete(
+                        command.execution_id,
+                        self._consumer_name,
+                        command.fencing_token,
+                        event,
+                    )
+                    if not completed:
+                        raise LostExecutionFenceError(
+                            f"execution fence was superseded: {command.execution_id}"
+                        )
                     await self._client.publish_event(self._event_stream, event)
                     await self._client.acknowledge(
                         self._command_stream, self._consumer_group, message.message_id
@@ -129,7 +197,12 @@ class WorkflowStreamWorker:
                 )
                 return event
 
-    async def _publish_heartbeats(self, command: NodeCommand) -> None:
+    async def _publish_heartbeats(
+        self,
+        command: NodeCommand,
+        message_id: str,
+        consumer_name: str | None,
+    ) -> None:
         sequence = 0
         while True:
             await asyncio.sleep(self._heartbeat_interval_seconds)
@@ -148,8 +221,43 @@ class WorkflowStreamWorker:
                 correlation_id=command.correlation_id,
                 traceparent=command.traceparent,
                 tracestate=command.tracestate,
+                protocol_version=command.protocol_version,
+                contract_hash=command.contract_hash,
+                input_schema=command.input_schema,
+                input_schema_hash=command.input_schema_hash,
+                output_schema=command.output_schema,
+                output_schema_hash=command.output_schema_hash,
+                prompt_key=command.prompt_key,
+                prompt_version=command.prompt_version,
+                prompt_checksum=command.prompt_checksum,
+                fencing_token=command.fencing_token,
+                worker_id=command.worker_id,
             )
-            await self._client.publish_event(self._event_stream, heartbeat)
+            renewed = await self._execution_ledger.renew(
+                command.execution_id,
+                self._consumer_name,
+                command.fencing_token,
+                self._lease_ms,
+            )
+            if not renewed:
+                raise LostExecutionFenceError(
+                    f"execution fence was superseded: {command.execution_id}"
+                )
+            touch_pending = getattr(self._client, "touch_pending", None)
+            if touch_pending is not None and consumer_name is not None:
+                try:
+                    await touch_pending(
+                        self._command_stream,
+                        self._consumer_group,
+                        consumer_name,
+                        message_id,
+                    )
+                except Exception:  # Redis stream lease is secondary to the ledger fence.
+                    LOGGER.warning("unable to refresh command pending lease", exc_info=True)
+            try:
+                await self._client.publish_event(self._event_stream, heartbeat)
+            except Exception:  # Terminal publication is retried from the durable ledger.
+                LOGGER.warning("unable to publish workflow heartbeat", exc_info=True)
             self._metrics.pulse()
 
     def _parse_command(self, message: StreamMessage) -> NodeCommand:

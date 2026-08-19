@@ -24,7 +24,7 @@ class WorkflowWorkerRunner:
         consumer_group: str = WORKER_GROUP,
         claim_idle_ms: int = 30000,
         read_block_ms: int = 5000,
-        batch_size: int = 10,
+        batch_size: int = 1,
         dead_letter_stream: str = COMMAND_DLQ_STREAM,
         metrics: WorkerMetricsRecorder = NO_OP_WORKER_METRICS,
     ) -> None:

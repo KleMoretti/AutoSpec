@@ -4,6 +4,7 @@ import json
 from typing import Any
 
 from runtime.node_executor import NodeExecutionEvent
+from runtime.execution_ledger import RedisExecutionLedger
 from runtime.worker import InvalidWorkflowCommandError, StreamMessage
 
 
@@ -26,6 +27,7 @@ class RedisWorkflowStreamClient:
         self._event_stream_max_length = event_stream_max_length
         self._dead_letter_stream_max_length = dead_letter_stream_max_length
         self._claim_cursors: dict[tuple[str, str, str], str] = {}
+        self.execution_ledger = RedisExecutionLedger(redis_client)
 
     @classmethod
     def from_url(
@@ -63,7 +65,7 @@ class RedisWorkflowStreamClient:
         group: str,
         consumer: str,
         block_ms: int = 5000,
-        count: int = 10,
+        count: int = 1,
     ) -> list[StreamMessage]:
         response = await self._redis.xreadgroup(
             groupname=group,
@@ -84,6 +86,22 @@ class RedisWorkflowStreamClient:
 
     async def acknowledge(self, stream: str, group: str, message_id: str) -> None:
         await self._redis.xack(stream, group, message_id)
+
+    async def touch_pending(
+        self,
+        stream: str,
+        group: str,
+        consumer: str,
+        message_id: str,
+    ) -> None:
+        await self._redis.xclaim(
+            name=stream,
+            groupname=group,
+            consumername=consumer,
+            min_idle_time=0,
+            message_ids=[message_id],
+            justid=True,
+        )
 
     async def publish_dead_letter(
         self,
@@ -116,7 +134,7 @@ class RedisWorkflowStreamClient:
         group: str,
         consumer: str,
         minimum_idle_ms: int,
-        count: int = 10,
+        count: int = 1,
     ) -> list[StreamMessage]:
         cursor_key = (stream, group, consumer)
         start_id = self._claim_cursors.get(cursor_key, "0-0")

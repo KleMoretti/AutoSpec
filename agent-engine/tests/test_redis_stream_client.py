@@ -37,6 +37,10 @@ class FakeRedis:
         self.calls.append(("xautoclaim", kwargs))
         return self.claim_response
 
+    async def xclaim(self, **kwargs):
+        self.calls.append(("xclaim", kwargs))
+        return [kwargs["message_ids"][0]]
+
 
 def event():
     return NodeExecutionEvent(
@@ -100,6 +104,23 @@ async def test_publish_and_acknowledge_use_stream_commands():
     assert '"traceparent":"00-123e4567e89b12d3a456426614174000-123e4567e89b12d3-01"' in xadd[2]["payload"]
     assert xadd[3] == {"maxlen": 250, "approximate": True}
     assert redis.calls[1] == ("xack", "commands", "workers", "171-0")
+
+
+@pytest.mark.asyncio
+async def test_touch_pending_refreshes_the_active_consumers_claim_lease():
+    redis = FakeRedis()
+    client = RedisWorkflowStreamClient(redis)
+
+    await client.touch_pending("commands", "workers", "worker-1", "171-0")
+
+    assert redis.calls == [("xclaim", {
+        "name": "commands",
+        "groupname": "workers",
+        "consumername": "worker-1",
+        "min_idle_time": 0,
+        "message_ids": ["171-0"],
+        "justid": True,
+    })]
 
 
 @pytest.mark.asyncio

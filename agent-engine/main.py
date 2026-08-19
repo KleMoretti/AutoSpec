@@ -1,5 +1,9 @@
+import hmac
+import os
+
 from pydantic import BaseModel, Field
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 
 from evaluation.case_catalog import list_evaluation_cases
 from graph.workflow import (
@@ -17,9 +21,24 @@ from graph.workflow import (
 from review.experiments import compare_experiment_runs
 from schemas.evaluation import ExperimentRun
 from schemas.prd import PrdArtifact
+from model_gateway import build_model_client
 
 
 app = FastAPI(title="AutoSpec Agent Engine", version="0.1.0")
+model_client = build_model_client()
+service_token = os.getenv("AGENT_ENGINE_SERVICE_TOKEN", "").strip()
+if os.getenv("AUTOSPEC_ENV", "development").strip().lower() in {"production", "prod"} and not service_token:
+    raise RuntimeError("AGENT_ENGINE_SERVICE_TOKEN is required in production")
+
+
+@app.middleware("http")
+async def authenticate_internal_requests(request: Request, call_next):
+    if request.url.path == "/health" or not service_token:
+        return await call_next(request)
+    supplied = request.headers.get("X-AutoSpec-Service-Token", "")
+    if not hmac.compare_digest(supplied, service_token):
+        return JSONResponse(status_code=401, content={"detail": "Invalid service token"})
+    return await call_next(request)
 
 
 class GenerateRequest(BaseModel):
@@ -44,13 +63,21 @@ def health() -> dict[str, str]:
 
 @app.post("/generate")
 def generate(request: GenerateRequest) -> dict:
-    result = run_v1_workflow(request.requirement, retrieved_sources=request.retrieved_sources)
+    result = run_v1_workflow(
+        request.requirement,
+        model_client=model_client,
+        retrieved_sources=request.retrieved_sources,
+    )
     return v1_response(result)
 
 
 @app.post("/generate/prd")
 def generate_prd(request: GenerateRequest) -> dict:
-    prd, records = run_prd_workflow(request.requirement, retrieved_sources=request.retrieved_sources)
+    prd, records = run_prd_workflow(
+        request.requirement,
+        model_client=model_client,
+        retrieved_sources=request.retrieved_sources,
+    )
     return {
         "prd": prd.model_dump(),
         "records": [record_response(record) for record in records],
@@ -59,24 +86,43 @@ def generate_prd(request: GenerateRequest) -> dict:
 
 @app.post("/generate/v2")
 def generate_v2(request: GenerateRequest) -> dict:
-    return v2_response(run_v2_workflow(request.requirement, retrieved_sources=request.retrieved_sources))
+    return v2_response(
+        run_v2_workflow(
+            request.requirement,
+            model_client=model_client,
+            retrieved_sources=request.retrieved_sources,
+        )
+    )
 
 
 @app.post("/generate/v4")
 def generate_v4(request: GenerateRequest) -> dict:
-    return v4_response(run_v4_workflow(request.requirement, retrieved_sources=request.retrieved_sources))
+    return v4_response(
+        run_v4_workflow(
+            request.requirement,
+            model_client=model_client,
+            retrieved_sources=request.retrieved_sources,
+        )
+    )
 
 
 @app.post("/generate/v2/continue")
 def generate_v2_continue(request: ContinueV2Request) -> dict:
     prd = PrdArtifact.model_validate(request.prd)
-    return v2_response(run_v2_continue_workflow(request.requirement, prd, retrieved_sources=request.retrieved_sources))
+    return v2_response(
+        run_v2_continue_workflow(
+            request.requirement,
+            prd,
+            model_client=model_client,
+            retrieved_sources=request.retrieved_sources,
+        )
+    )
 
 
 @app.post("/nodes/{node_name}/run")
 def run_node(node_name: str, payload: dict) -> dict:
     try:
-        return record_response(run_v2_node(node_name, payload))
+        return record_response(run_v2_node(node_name, payload, model_client=model_client))
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 

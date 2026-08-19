@@ -34,8 +34,10 @@ class StubExecutor:
     def __init__(self, event=None, error=None):
         self.event = event
         self.error = error
+        self.calls = 0
 
     async def execute(self, _command):
+        self.calls += 1
         if self.error:
             raise self.error
         return self.event
@@ -196,14 +198,16 @@ async def test_worker_exit_after_terminal_publish_replays_same_event_before_ack(
             await super().acknowledge(stream, group, message_id)
 
     client = ExitBeforeFirstAckClient()
-    first_worker = WorkflowStreamWorker(client, StubExecutor(success_event()))
+    first_executor = StubExecutor(success_event())
+    first_worker = WorkflowStreamWorker(client, first_executor)
     failure_started_at = time.perf_counter()
 
     with pytest.raises(ConnectionError, match="worker exited before command ack"):
         await first_worker.process(message())
     failure_detected_at = time.perf_counter()
 
-    recovery_worker = WorkflowStreamWorker(client, StubExecutor(success_event()))
+    recovery_executor = StubExecutor(success_event())
+    recovery_worker = WorkflowStreamWorker(client, recovery_executor)
     recovered_event = await recovery_worker.process(message())
     recovered_at = time.perf_counter()
 
@@ -212,6 +216,8 @@ async def test_worker_exit_after_terminal_publish_replays_same_event_before_ack(
         "7:fixture:1:1:succeeded",
     ]
     assert recovered_event.event_id == "7:fixture:1:1:succeeded"
+    assert first_executor.calls == 1
+    assert recovery_executor.calls == 0
     assert client.acknowledged == [
         ("autospec.workflow.commands", "autospec-workers", "1710000000000-0")
     ]
@@ -219,7 +225,7 @@ async def test_worker_exit_after_terminal_publish_replays_same_event_before_ack(
         "failureDrill=worker-exit-after-terminal-publish "
         f"detectionMs={round((failure_detected_at - failure_started_at) * 1000)} "
         f"recoveryMs={round((recovered_at - failure_detected_at) * 1000)} "
-        "duplicateDeliveries=1 eventCount=2 finalAckCount=1 "
+        "duplicateDeliveries=1 modelReexecutions=0 eventCount=2 finalAckCount=1 "
         "manualRepairs=0 finalState=ACKNOWLEDGED"
     )
 

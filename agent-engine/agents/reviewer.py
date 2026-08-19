@@ -1,3 +1,4 @@
+import hashlib
 from typing import Any
 
 from agents.base import ModelClient
@@ -36,6 +37,7 @@ class ReviewerAgent:
         retrieved_sources: list[dict[str, Any]] | None = None,
         generated_files: list[dict[str, Any] | str] | None = None,
         model_invocations: list[dict[str, Any]] | None = None,
+        context_manifest: dict[str, Any] | None = None,
     ) -> ReviewReport:
         if architecture_design is not None and frontend_skeleton is not None:
             rule_issues = run_v2_rule_checks(prd, architecture_design, backend_design, frontend_skeleton)
@@ -51,6 +53,8 @@ class ReviewerAgent:
                     generated_files=generated_files or [],
                 )
             )
+
+        rule_issues = self._with_stable_issue_ids(rule_issues)
 
         if self.model_client is not None:
             input_payload: dict[str, Any] = {
@@ -68,13 +72,16 @@ class ReviewerAgent:
                 input_payload["generated_files"] = generated_files
             if model_invocations is not None:
                 input_payload["model_invocations"] = model_invocations
+            input_payload["context_manifest"] = context_manifest or {}
 
             semantic_report = ReviewReport.model_validate(
                 self.model_client.generate_json(self.prompt_name, input_payload)
             )
-            combined_issues = [*rule_issues, *semantic_report.issues]
+            combined_issues = self._with_stable_issue_ids(
+                [*rule_issues, *semantic_report.issues]
+            )
             routes = self._merge_routes(
-                self._routes_for_issues(rule_issues), semantic_report.routes
+                self._routes_for_issues(combined_issues), semantic_report.routes
             )
             return ReviewReport(
                 score=min(semantic_report.score, score_from_issues(rule_issues)),
@@ -93,9 +100,11 @@ class ReviewerAgent:
 
     def _routes_for_issues(self, issues: list[ReviewIssue]) -> list[ReworkRoute]:
         grouped: dict[str, list[tuple[str, ReviewIssue]]] = {}
-        for index, issue in enumerate(issues, start=1):
+        for issue in issues:
+            if issue.severity.upper() not in {"CRITICAL", "HIGH"}:
+                continue
             target = _ISSUE_TARGETS.get(issue.issue_type, "architect")
-            grouped.setdefault(target, []).append((f"R-{index}", issue))
+            grouped.setdefault(target, []).append((issue.issue_id or "ISS-UNKNOWN", issue))
         return [
             ReworkRoute(
                 target_node=target,
@@ -128,3 +137,15 @@ class ReviewerAgent:
                 ),
             )
         return list(merged.values())
+
+    def _with_stable_issue_ids(self, issues: list[ReviewIssue]) -> list[ReviewIssue]:
+        normalized: list[ReviewIssue] = []
+        for issue in issues:
+            if issue.issue_id:
+                normalized.append(issue)
+                continue
+            digest = hashlib.sha256(
+                f"{issue.issue_type}\n{issue.description}".encode("utf-8")
+            ).hexdigest()[:12].upper()
+            normalized.append(issue.model_copy(update={"issue_id": f"ISS-{digest}"}))
+        return normalized

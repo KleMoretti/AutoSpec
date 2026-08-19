@@ -14,6 +14,8 @@ def test_compare_experiment_runs_ranks_by_score_failures_cost_and_duration():
         status="SUCCEEDED",
         estimated_cost=0.08,
         failure_count=0,
+        human_quality_score=80,
+        human_reviewer_count=2,
     )
     candidate = ExperimentRun(
         run_id="candidate",
@@ -26,6 +28,8 @@ def test_compare_experiment_runs_ranks_by_score_failures_cost_and_duration():
         status="SUCCEEDED",
         estimated_cost=0.10,
         failure_count=0,
+        human_quality_score=88.5,
+        human_reviewer_count=2,
     )
     failed = ExperimentRun(
         run_id="failed",
@@ -49,6 +53,9 @@ def test_compare_experiment_runs_ranks_by_score_failures_cost_and_duration():
     assert report.comparisons[0].score_delta == 10
     assert report.comparisons[0].duration_delta_ms == 300
     assert report.comparisons[0].cost_delta == 0.02
+    assert report.comparisons[0].human_quality_score_delta == 8.5
+    assert report.comparisons[0].changed_prompt_keys == ["evaluator"]
+    assert report.comparisons[0].changed_model_keys == ["evaluator"]
     assert report.comparisons[1].candidate_run_id == "failed"
     assert any(issue.issue_type == "EXPERIMENT_FAILURE" for issue in report.issues)
 
