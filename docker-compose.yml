@@ -1,14 +1,21 @@
+x-default-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   mysql:
     image: mysql:8.4
     restart: unless-stopped
+    logging: *default-logging
     environment:
       MYSQL_DATABASE: ${MYSQL_DATABASE:-autospec}
       MYSQL_USER: ${MYSQL_USER:-autospec}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD is required}
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD is required}
     ports:
-      - "${DB_PORT:-3306}:3306"
+      - "${MYSQL_BIND_ADDRESS:-127.0.0.1}:${DB_PORT:-3306}:3306"
     volumes:
       - autospec_mysql_data:/var/lib/mysql
     healthcheck:
@@ -21,13 +28,16 @@ services:
   redis:
     image: redis:7.4-alpine
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+    logging: *default-logging
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD is required}"]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "${REDIS_BIND_ADDRESS:-127.0.0.1}:${REDIS_PORT:-6379}:6379"
     volumes:
       - autospec_redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep PONG"]
       interval: 5s
       timeout: 3s
       retries: 12
@@ -36,9 +46,36 @@ services:
     build:
       context: ./agent-engine
     restart: unless-stopped
+    logging: *default-logging
     command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
     ports:
-      - "${AGENT_ENGINE_PORT:-8000}:8000"
+      - "${AGENT_ENGINE_BIND_ADDRESS:-127.0.0.1}:${AGENT_ENGINE_PORT:-8000}:8000"
+    environment:
+      AUTOSPEC_ENV: ${AUTOSPEC_ENV:-development}
+      AGENT_MODEL_MODE: ${AGENT_MODEL_MODE:-fixture}
+      MODEL_API_KEY: ${MODEL_API_KEY:-}
+      MODEL_BASE_URL: ${MODEL_BASE_URL:-}
+      MODEL_NAME: ${MODEL_NAME:-}
+      MODEL_PROVIDER_KEY: ${MODEL_PROVIDER_KEY:-openai-compatible}
+      MODEL_TIMEOUT_SECONDS: ${MODEL_TIMEOUT_SECONDS:-45}
+      MODEL_MAX_RETRIES: ${MODEL_MAX_RETRIES:-2}
+      MODEL_INPUT_COST_PER_1M: ${MODEL_INPUT_COST_PER_1M:-0}
+      MODEL_OUTPUT_COST_PER_1M: ${MODEL_OUTPUT_COST_PER_1M:-0}
+      MODEL_FAST_NAME: ${MODEL_FAST_NAME:-}
+      MODEL_FAST_PROVIDER_KEY: ${MODEL_FAST_PROVIDER_KEY:-}
+      MODEL_FAST_INPUT_COST_PER_1M: ${MODEL_FAST_INPUT_COST_PER_1M:-0}
+      MODEL_FAST_OUTPUT_COST_PER_1M: ${MODEL_FAST_OUTPUT_COST_PER_1M:-0}
+      MODEL_DEEP_NAME: ${MODEL_DEEP_NAME:-}
+      MODEL_DEEP_PROVIDER_KEY: ${MODEL_DEEP_PROVIDER_KEY:-}
+      MODEL_DEEP_INPUT_COST_PER_1M: ${MODEL_DEEP_INPUT_COST_PER_1M:-0}
+      MODEL_DEEP_OUTPUT_COST_PER_1M: ${MODEL_DEEP_OUTPUT_COST_PER_1M:-0}
+      MODEL_FALLBACK_API_KEY: ${MODEL_FALLBACK_API_KEY:-}
+      MODEL_FALLBACK_BASE_URL: ${MODEL_FALLBACK_BASE_URL:-}
+      MODEL_FALLBACK_NAME: ${MODEL_FALLBACK_NAME:-}
+      MODEL_FALLBACK_PROVIDER_KEY: ${MODEL_FALLBACK_PROVIDER_KEY:-}
+      MODEL_FALLBACK_INPUT_COST_PER_1M: ${MODEL_FALLBACK_INPUT_COST_PER_1M:-0}
+      MODEL_FALLBACK_OUTPUT_COST_PER_1M: ${MODEL_FALLBACK_OUTPUT_COST_PER_1M:-0}
+      AGENT_ENGINE_SERVICE_TOKEN: ${AGENT_ENGINE_SERVICE_TOKEN:?AGENT_ENGINE_SERVICE_TOKEN is required}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)"]
       interval: 10s
@@ -47,18 +84,28 @@ services:
 
   backend:
     build:
-      context: .
-      dockerfile: backend/Dockerfile
+      context: ./backend
     restart: unless-stopped
+    logging: *default-logging
     environment:
       DB_HOST: mysql
       DB_PORT: 3306
       MYSQL_DATABASE: ${MYSQL_DATABASE:-autospec}
       MYSQL_USER: ${MYSQL_USER:-autospec}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:?MYSQL_PASSWORD is required}
+      DB_URL: "jdbc:mysql://mysql:3306/${MYSQL_DATABASE:-autospec}?createDatabaseIfNotExist=true&sslMode=${DB_SSL_MODE:-DISABLED}&allowPublicKeyRetrieval=${DB_ALLOW_PUBLIC_KEY_RETRIEVAL:-true}&serverTimezone=UTC"
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      REDIS_SSL_ENABLED: ${REDIS_SSL_ENABLED:-false}
       AGENT_ENGINE_BASE_URL: http://agent-engine:8000
+      AGENT_ENGINE_SERVICE_TOKEN: ${AGENT_ENGINE_SERVICE_TOKEN:?AGENT_ENGINE_SERVICE_TOKEN is required}
+      AUTOSPEC_ENV: ${AUTOSPEC_ENV:-development}
+      AUTH_DEMO_USER_ENABLED: ${AUTH_DEMO_USER_ENABLED:-false}
+      AUTH_DEMO_USER_USERNAME: ${AUTH_DEMO_USER_USERNAME:-owner}
+      AUTH_DEMO_USER_DISPLAY_NAME: ${AUTH_DEMO_USER_DISPLAY_NAME:-Owner}
+      AUTH_DEMO_USER_PASSWORD: ${AUTH_DEMO_USER_PASSWORD:-}
+      AUTH_SESSION_COOKIE_SECURE: ${AUTH_SESSION_COOKIE_SECURE:-false}
       SQL_INIT_MODE: never
       WORKFLOW_OUTBOX_ENABLED: "true"
       WORKFLOW_EVENT_POLLING_ENABLED: "true"
@@ -70,7 +117,7 @@ services:
       OTEL_SERVICE_NAME: autospec-backend
       OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://tempo:4318/v1/traces
     ports:
-      - "${BACKEND_PORT:-8080}:8080"
+      - "${BACKEND_BIND_ADDRESS:-127.0.0.1}:${BACKEND_PORT:-8080}:8080"
     depends_on:
       mysql:
         condition: service_healthy
@@ -79,7 +126,7 @@ services:
       agent-engine:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8080/api/health"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/actuator/health/readiness"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -89,42 +136,107 @@ services:
     build:
       context: ./agent-engine
     restart: unless-stopped
+    logging: *default-logging
     command: ["python", "-m", "worker_main"]
     environment:
-      REDIS_URL: redis://redis:6379/0
+      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6379/0
       WORKER_NAME: autospec-worker-1
       WORKER_METRICS_HOST: 0.0.0.0
       WORKER_METRICS_PORT: 9100
       WORKER_TRACING_ENABLED: ${WORKER_TRACING_ENABLED:-false}
       OTEL_SERVICE_NAME: autospec-agent-worker
       OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://tempo:4318/v1/traces
+      AUTOSPEC_ENV: ${AUTOSPEC_ENV:-development}
+      AGENT_MODEL_MODE: ${AGENT_MODEL_MODE:-fixture}
+      MODEL_API_KEY: ${MODEL_API_KEY:-}
+      MODEL_BASE_URL: ${MODEL_BASE_URL:-}
+      MODEL_NAME: ${MODEL_NAME:-}
+      MODEL_PROVIDER_KEY: ${MODEL_PROVIDER_KEY:-openai-compatible}
+      MODEL_TIMEOUT_SECONDS: ${MODEL_TIMEOUT_SECONDS:-45}
+      MODEL_MAX_RETRIES: ${MODEL_MAX_RETRIES:-2}
+      MODEL_INPUT_COST_PER_1M: ${MODEL_INPUT_COST_PER_1M:-0}
+      MODEL_OUTPUT_COST_PER_1M: ${MODEL_OUTPUT_COST_PER_1M:-0}
+      MODEL_FAST_NAME: ${MODEL_FAST_NAME:-}
+      MODEL_FAST_PROVIDER_KEY: ${MODEL_FAST_PROVIDER_KEY:-}
+      MODEL_FAST_INPUT_COST_PER_1M: ${MODEL_FAST_INPUT_COST_PER_1M:-0}
+      MODEL_FAST_OUTPUT_COST_PER_1M: ${MODEL_FAST_OUTPUT_COST_PER_1M:-0}
+      MODEL_DEEP_NAME: ${MODEL_DEEP_NAME:-}
+      MODEL_DEEP_PROVIDER_KEY: ${MODEL_DEEP_PROVIDER_KEY:-}
+      MODEL_DEEP_INPUT_COST_PER_1M: ${MODEL_DEEP_INPUT_COST_PER_1M:-0}
+      MODEL_DEEP_OUTPUT_COST_PER_1M: ${MODEL_DEEP_OUTPUT_COST_PER_1M:-0}
+      MODEL_FALLBACK_API_KEY: ${MODEL_FALLBACK_API_KEY:-}
+      MODEL_FALLBACK_BASE_URL: ${MODEL_FALLBACK_BASE_URL:-}
+      MODEL_FALLBACK_NAME: ${MODEL_FALLBACK_NAME:-}
+      MODEL_FALLBACK_PROVIDER_KEY: ${MODEL_FALLBACK_PROVIDER_KEY:-}
+      MODEL_FALLBACK_INPUT_COST_PER_1M: ${MODEL_FALLBACK_INPUT_COST_PER_1M:-0}
+      MODEL_FALLBACK_OUTPUT_COST_PER_1M: ${MODEL_FALLBACK_OUTPUT_COST_PER_1M:-0}
+      WORKER_CLAIM_IDLE_MS: ${WORKER_CLAIM_IDLE_MS:-120000}
     depends_on:
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; body=urllib.request.urlopen('http://localhost:9100/metrics', timeout=2).read(); assert b'autospec_worker_active 1.0' in body"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
 
   agent-worker-2:
     build:
       context: ./agent-engine
     restart: unless-stopped
+    logging: *default-logging
     command: ["python", "-m", "worker_main"]
     environment:
-      REDIS_URL: redis://redis:6379/0
+      REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required}@redis:6379/0
       WORKER_NAME: autospec-worker-2
       WORKER_METRICS_HOST: 0.0.0.0
       WORKER_METRICS_PORT: 9100
       WORKER_TRACING_ENABLED: ${WORKER_TRACING_ENABLED:-false}
       OTEL_SERVICE_NAME: autospec-agent-worker
       OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://tempo:4318/v1/traces
+      AUTOSPEC_ENV: ${AUTOSPEC_ENV:-development}
+      AGENT_MODEL_MODE: ${AGENT_MODEL_MODE:-fixture}
+      MODEL_API_KEY: ${MODEL_API_KEY:-}
+      MODEL_BASE_URL: ${MODEL_BASE_URL:-}
+      MODEL_NAME: ${MODEL_NAME:-}
+      MODEL_PROVIDER_KEY: ${MODEL_PROVIDER_KEY:-openai-compatible}
+      MODEL_TIMEOUT_SECONDS: ${MODEL_TIMEOUT_SECONDS:-45}
+      MODEL_MAX_RETRIES: ${MODEL_MAX_RETRIES:-2}
+      MODEL_INPUT_COST_PER_1M: ${MODEL_INPUT_COST_PER_1M:-0}
+      MODEL_OUTPUT_COST_PER_1M: ${MODEL_OUTPUT_COST_PER_1M:-0}
+      MODEL_FAST_NAME: ${MODEL_FAST_NAME:-}
+      MODEL_FAST_PROVIDER_KEY: ${MODEL_FAST_PROVIDER_KEY:-}
+      MODEL_FAST_INPUT_COST_PER_1M: ${MODEL_FAST_INPUT_COST_PER_1M:-0}
+      MODEL_FAST_OUTPUT_COST_PER_1M: ${MODEL_FAST_OUTPUT_COST_PER_1M:-0}
+      MODEL_DEEP_NAME: ${MODEL_DEEP_NAME:-}
+      MODEL_DEEP_PROVIDER_KEY: ${MODEL_DEEP_PROVIDER_KEY:-}
+      MODEL_DEEP_INPUT_COST_PER_1M: ${MODEL_DEEP_INPUT_COST_PER_1M:-0}
+      MODEL_DEEP_OUTPUT_COST_PER_1M: ${MODEL_DEEP_OUTPUT_COST_PER_1M:-0}
+      MODEL_FALLBACK_API_KEY: ${MODEL_FALLBACK_API_KEY:-}
+      MODEL_FALLBACK_BASE_URL: ${MODEL_FALLBACK_BASE_URL:-}
+      MODEL_FALLBACK_NAME: ${MODEL_FALLBACK_NAME:-}
+      MODEL_FALLBACK_PROVIDER_KEY: ${MODEL_FALLBACK_PROVIDER_KEY:-}
+      MODEL_FALLBACK_INPUT_COST_PER_1M: ${MODEL_FALLBACK_INPUT_COST_PER_1M:-0}
+      MODEL_FALLBACK_OUTPUT_COST_PER_1M: ${MODEL_FALLBACK_OUTPUT_COST_PER_1M:-0}
+      WORKER_CLAIM_IDLE_MS: ${WORKER_CLAIM_IDLE_MS:-120000}
     depends_on:
       redis:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; body=urllib.request.urlopen('http://localhost:9100/metrics', timeout=2).read(); assert b'autospec_worker_active 1.0' in body"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
 
   frontend:
     build:
       context: ./frontend
     restart: unless-stopped
+    logging: *default-logging
     ports:
-      - "${FRONTEND_PORT:-5173}:80"
+      - "${FRONTEND_BIND_ADDRESS:-127.0.0.1}:${FRONTEND_PORT:-5173}:80"
     depends_on:
       backend:
         condition: service_healthy
@@ -138,6 +250,7 @@ services:
     image: prom/prometheus:v3.5.0
     profiles: ["monitoring"]
     restart: unless-stopped
+    logging: *default-logging
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
@@ -164,6 +277,7 @@ services:
     image: grafana/tempo:2.10.5
     profiles: ["monitoring"]
     restart: unless-stopped
+    logging: *default-logging
     command: ["-config.file=/etc/tempo.yaml"]
     ports:
       - "${TEMPO_BIND_ADDRESS:-127.0.0.1}:${TEMPO_PORT:-3200}:3200"
@@ -180,6 +294,7 @@ services:
     image: grafana/grafana:12.1.0
     profiles: ["monitoring"]
     restart: unless-stopped
+    logging: *default-logging
     entrypoint: ["/bin/sh", "-ec"]
     command:
       - |
