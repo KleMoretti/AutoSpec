@@ -1,5 +1,7 @@
 package com.autospec.integration;
 
+import com.autospec.entity.WorkflowNodeRun;
+import com.autospec.entity.WorkflowRun;
 import com.autospec.mapper.ProcessedWorkflowEventMapper;
 import com.autospec.mapper.WorkflowNodeRunMapper;
 import com.autospec.mapper.WorkflowRunMapper;
@@ -54,6 +56,16 @@ class MySqlWorkflowEventConsumerConcurrencyIT extends MySqlIntegrationTestSuppor
         WorkflowNodeRunMapper nodeRunMapper = mock(WorkflowNodeRunMapper.class);
         WorkflowRunMapper runMapper = mock(WorkflowRunMapper.class);
         WorkflowRunReconciliationTrigger trigger = mock(WorkflowRunReconciliationTrigger.class);
+        WorkflowRun run = new WorkflowRun();
+        run.setId(7L);
+        run.setStatus("RUNNING");
+        WorkflowNodeRun nodeRun = new WorkflowNodeRun();
+        nodeRun.setId(11L);
+        nodeRun.setWorkflowRunId(7L);
+        nodeRun.setExecutionId("7:backend_engineer:1:1");
+        nodeRun.setStatus("QUEUED");
+        when(runMapper.selectById(7L)).thenReturn(run);
+        when(nodeRunMapper.selectById(11L)).thenReturn(nodeRun);
         when(nodeRunMapper.update(any(), any())).thenReturn(1);
         String eventId = "event-" + UUID.randomUUID();
         String payload = successPayload(eventId);

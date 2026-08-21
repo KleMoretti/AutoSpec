@@ -3,20 +3,20 @@ package com.autospec.integration;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.MySQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
-@Testcontainers
 abstract class MySqlIntegrationTestSupport {
 
-    @Container
     protected static final MySQLContainer<?> MYSQL = new MySQLContainer<>(
             DockerImageName.parse("mysql:8.4")
     )
             .withDatabaseName("autospec_integration")
             .withUsername("autospec")
             .withPassword("autospec");
+
+    static {
+        MYSQL.start();
+    }
 
     @DynamicPropertySource
     static void configureMySql(DynamicPropertyRegistry registry) {
