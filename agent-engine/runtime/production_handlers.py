@@ -225,5 +225,5 @@ def _prompt_checksum(prompt_key: str, prompt_version: str) -> str:
             / "prompts"
             / f"{prompt_key}_{prompt_version}.md"
         )
-        material = path.read_bytes()
+        material = path.read_text(encoding="utf-8").encode("utf-8")
     return hashlib.sha256(material).hexdigest()

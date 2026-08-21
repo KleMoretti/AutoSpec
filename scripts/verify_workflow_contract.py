@@ -9,7 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 AGENT_ENGINE = ROOT / "agent-engine"
 CONTRACT = ROOT / "agent-engine" / "contracts" / "autospec-v5.workflow.json"
-MIGRATION = (
+CONTRACT_MIGRATION = (
     ROOT
     / "backend"
     / "src"
@@ -17,20 +17,21 @@ MIGRATION = (
     / "resources"
     / "db"
     / "migration"
-    / "V70__seed_autospec_v5_workflow.sql"
+    / "V82__refresh_autospec_v5_executable_contract.sql"
 )
 
 
 def main() -> int:
     canonical = json.loads(CONTRACT.read_text(encoding="utf-8"))
-    sql = MIGRATION.read_text(encoding="utf-8")
+    sql = CONTRACT_MIGRATION.read_text(encoding="utf-8")
     match = re.search(
-        r"'(\{\s*\"workflow_key\"\s*:\s*\"autospec-v5\".*?\})'\s*,\s*'builtin-autospec-v5-v5'",
+        r"spec_json\s*=\s*'(\{\s*\"workflow_key\"\s*:\s*\"autospec-v5\".*?\})'"
+        r"\s*,\s*content_hash",
         sql,
         re.DOTALL,
     )
     if match is None:
-        print("Unable to locate the autospec-v5 JSON seed in V70", file=sys.stderr)
+        print("Unable to locate the autospec-v5 JSON update in V82", file=sys.stderr)
         return 1
     seeded = json.loads(match.group(1))
     if seeded != canonical:

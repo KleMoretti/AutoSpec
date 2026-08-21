@@ -31,6 +31,6 @@ class WorkflowExecutableContractTest {
         );
 
         assertThat(contract.contractHash())
-                .isEqualTo("bab2b82336dbd3450fde715328e2233b40cd93f774849b5f573c693573f3d5b8");
+                .isEqualTo("c4dc9b91ea583c82a0227f2a18df123718a18b082f9e234570e55a29e4983405");
     }
 }
