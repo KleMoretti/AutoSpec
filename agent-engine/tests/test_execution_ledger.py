@@ -1,5 +1,3 @@
-import asyncio
-
 import pytest
 
 from runtime.execution_ledger import (
@@ -28,7 +26,8 @@ def terminal_event(fence: int) -> NodeExecutionEvent:
 
 @pytest.mark.asyncio
 async def test_ledger_fences_expired_owner_and_replays_cached_terminal_result():
-    ledger = InMemoryExecutionLedger()
+    current_time_ms = 1_000
+    ledger = InMemoryExecutionLedger(lambda: current_time_ms)
 
     first = await ledger.claim("execution-1", "worker-a", lease_ms=1)
     busy = await ledger.claim("execution-1", "worker-b", lease_ms=1)
@@ -36,7 +35,7 @@ async def test_ledger_fences_expired_owner_and_replays_cached_terminal_result():
     assert first.fencing_token == 1
     assert busy.status == ExecutionClaimStatus.BUSY
 
-    await asyncio.sleep(0.01)
+    current_time_ms += 2
     second = await ledger.claim("execution-1", "worker-b", lease_ms=1000)
     assert second.status == ExecutionClaimStatus.ACQUIRED
     assert second.fencing_token == 2

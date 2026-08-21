@@ -5,7 +5,7 @@ import hashlib
 import time
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any, Protocol
+from typing import Any, Callable, Protocol
 
 from runtime.node_executor import NodeExecutionEvent
 
@@ -60,9 +60,10 @@ class _Entry:
 class InMemoryExecutionLedger:
     """Deterministic ledger for tests and non-distributed fixture mode."""
 
-    def __init__(self) -> None:
+    def __init__(self, now_ms: Callable[[], int] | None = None) -> None:
         self._entries: dict[str, _Entry] = {}
         self._lock = asyncio.Lock()
+        self._now_ms = now_ms or _now_ms
 
     async def claim(
         self,
@@ -71,7 +72,7 @@ class InMemoryExecutionLedger:
         lease_ms: int,
     ) -> ExecutionClaim:
         async with self._lock:
-            now = _now_ms()
+            now = self._now_ms()
             entry = self._entries.setdefault(execution_id, _Entry())
             if entry.state == "COMPLETED" and entry.event is not None:
                 return ExecutionClaim(
@@ -104,7 +105,7 @@ class InMemoryExecutionLedger:
                 or entry.fencing_token != fencing_token
             ):
                 return False
-            entry.lease_until_ms = _now_ms() + lease_ms
+            entry.lease_until_ms = self._now_ms() + lease_ms
             return True
 
     async def complete(
