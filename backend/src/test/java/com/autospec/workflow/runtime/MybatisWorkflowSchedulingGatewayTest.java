@@ -2,11 +2,14 @@ package com.autospec.workflow.runtime;
 
 import com.autospec.entity.Project;
 import com.autospec.entity.WorkflowNodeRun;
+import com.autospec.entity.WorkflowOutbox;
 import com.autospec.entity.WorkflowRun;
 import com.autospec.mapper.WorkflowNodeRunMapper;
 import com.autospec.mapper.WorkflowOutboxMapper;
 import com.autospec.mapper.WorkflowRunMapper;
 import com.autospec.service.ProjectService;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -15,7 +18,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
-import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -53,7 +55,8 @@ class MybatisWorkflowSchedulingGatewayTest {
         assertThat(stored.getStatus()).isEqualTo("QUEUED");
         assertThat(stored.getExecutionId()).isEqualTo(command.executionId());
         assertThat(stored.getLockVersion()).isEqualTo(1);
-        assertThat(outboxMapper.selectCount(null)).isEqualTo(1);
+        assertThat(outboxMapper.selectCount(new LambdaQueryWrapper<WorkflowOutbox>()
+                .eq(WorkflowOutbox::getEventId, command.eventId()))).isEqualTo(1);
     }
 
     private WorkflowNodeRun persistPendingNode() {

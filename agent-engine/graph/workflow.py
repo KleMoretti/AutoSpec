@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
 from time import perf_counter
-from typing import Any, Callable
+from typing import Any, Callable, NotRequired, TypedDict
 
 from agents.architect import ArchitectAgent
 from agents.backend_engineer import BackendEngineerAgent
@@ -77,6 +77,15 @@ SUPPORTED_V2_NODES = {
 
 
 Callback = Callable[[AgentExecutionRecord], None]
+
+
+class V1WorkflowState(TypedDict):
+    requirement: str
+    retrieved_sources: list[dict[str, Any]]
+    records: list[AgentExecutionRecord]
+    prd: NotRequired[PrdArtifact]
+    backend_design: NotRequired[BackendDesignArtifact]
+    review_report: NotRequired[ReviewReport]
 
 
 def run_v1_workflow(
@@ -311,7 +320,7 @@ def build_v1_workflow(model_client: ModelClient | None, callbacks: list[Callback
     if StateGraph is None:
         return SequentialV1Workflow(model_client=model_client, callbacks=callbacks)
 
-    graph = StateGraph(dict)
+    graph = StateGraph(V1WorkflowState)
 
     def product_manager_node(state: dict[str, Any]) -> dict[str, Any]:
         prd, record = _execute_node(

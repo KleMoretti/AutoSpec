@@ -3,7 +3,7 @@ WORKDIR /workspace
 COPY pom.xml pom.xml
 RUN mvn -q dependency:go-offline
 COPY src src
-RUN mvn -q -DskipTests package
+RUN mvn -q -Dskip.unit.tests=true package
 
 # Delivery verification compiles the generated contract in-process, so the runtime
 # intentionally includes javac instead of using a JRE-only image.

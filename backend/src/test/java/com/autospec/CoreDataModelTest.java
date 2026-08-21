@@ -24,6 +24,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -109,14 +110,15 @@ class CoreDataModelTest {
         assertThat(artifactService.getById(artifact.getId()).getStatus()).isEqualTo("PENDING_REVIEW");
 
         PromptVersion prompt = new PromptVersion();
-        prompt.setPromptKey("ProductManagerAgent");
+        String promptKey = "ProductManagerAgent-" + UUID.randomUUID();
+        prompt.setPromptKey(promptKey);
         prompt.setVersion("v2");
         prompt.setContent("Generate structured PRD JSON.");
         prompt.setChecksum("sha256:test");
         prompt.setActive(true);
 
         assertThat(promptVersionService.save(prompt)).isTrue();
-        assertThat(promptVersionService.getById(prompt.getId()).getPromptKey()).isEqualTo("ProductManagerAgent");
+        assertThat(promptVersionService.getById(prompt.getId()).getPromptKey()).isEqualTo(promptKey);
 
         AgentEvent event = new AgentEvent();
         event.setProjectId(project.getId());
