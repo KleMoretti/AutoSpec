@@ -1,35 +1,23 @@
 import { DownloadOutlined, FilePdfOutlined, ReloadOutlined } from '@ant-design/icons';
 import { Alert, Button, Descriptions, Result, Space, Spin, Steps, Tag, Typography, message } from 'antd';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import {
-  type ArtifactResponse,
-  type ProjectResponse,
-  type ReviewResponse,
   exportMarkdown,
-  exportPdf,
-  getArtifacts,
-  getProject,
-  getReview
+  exportPdf
 } from '../api/projects';
 import {
   type ApprovalDecisionPayload,
   type DeliveryReadinessResponse,
-  type WorkflowApprovalResponse,
   type WorkflowNodeRunResponse,
   type WorkflowReplayPayload,
   type WorkflowRunResponse,
   type WorkflowRunStartPayload,
   type WorkflowRuntimeMetricsResponse,
-  type WorkflowVersionResponse,
   cancelWorkflowRun,
   decideWorkflowApproval,
-  getDeliveryReadiness,
-  getWorkflowApprovals,
   getWorkflowRunMetrics,
   getWorkflowRunNodes,
-  getWorkflowRuns,
-  getWorkflowVersions,
   replayWorkflowRun,
   startWorkflowRun
 } from '../api/v3';
@@ -38,33 +26,28 @@ import CodeExportPanel from '../components/CodeExportPanel';
 import ReviewIssueTable from '../components/ReviewIssueTable';
 import WorkflowApprovalPanel from '../components/WorkflowApprovalPanel';
 import WorkflowReplayPanel from '../components/WorkflowReplayPanel';
-
-type AuxiliaryResource = 'review' | 'approvals' | 'runs' | 'versions' | 'readiness';
+import { useProjectDetailData } from '../hooks/useProjectDetailData';
 
 function ProjectDetailPage() {
   const params = useParams();
   const projectId = useMemo(() => Number(params.projectId), [params.projectId]);
-  const [project, setProject] = useState<ProjectResponse | null>(null);
-  const [artifacts, setArtifacts] = useState<ArtifactResponse[]>([]);
-  const [review, setReview] = useState<ReviewResponse | null>(null);
-  const [approvals, setApprovals] = useState<WorkflowApprovalResponse[]>([]);
-  const [workflowRuns, setWorkflowRuns] = useState<WorkflowRunResponse[]>([]);
-  const [workflowVersions, setWorkflowVersions] = useState<WorkflowVersionResponse[]>([]);
-  const [deliveryReadiness, setDeliveryReadiness] = useState<DeliveryReadinessResponse | null>(null);
-  const [loading, setLoading] = useState(true);
+  const {
+    project,
+    artifacts,
+    review,
+    approvals,
+    workflowRuns,
+    workflowVersions,
+    deliveryReadiness,
+    latestRun,
+    loading,
+    error,
+    resourceErrors,
+    reload: loadProject
+  } = useProjectDetailData(projectId);
   const [downloadingMarkdown, setDownloadingMarkdown] = useState(false);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [resourceErrors, setResourceErrors] = useState<Partial<Record<AuxiliaryResource, string>>>({});
   const [selectedStage, setSelectedStage] = useState<number | null>(null);
-  const loadInFlight = useRef<{ projectId: number; promise: Promise<void> } | null>(null);
-  const activeProjectId = useRef(projectId);
-  activeProjectId.current = projectId;
-
-  const latestRun = useMemo(
-    () => workflowRuns.slice().sort((left, right) => right.id - left.id)[0],
-    [workflowRuns]
-  );
   const workflowStatus = latestRun?.status ?? project?.status ?? 'CREATED';
   const specificationReady = deliveryReadiness?.specReady === true;
   const deliverable = isDeliveryReady(deliveryReadiness);
@@ -78,72 +61,6 @@ function ProjectDetailPage() {
     return 0;
   }, [approvals, deliverable, latestRun, openReviewIssues.length, specificationReady]);
   const activeStage = selectedStage ?? inferredStage;
-
-  const loadProject = useCallback((): Promise<void> => {
-    if (!Number.isFinite(projectId)) {
-      setError('Invalid project id');
-      setLoading(false);
-      return Promise.resolve();
-    }
-    if (loadInFlight.current?.projectId === projectId) {
-      return loadInFlight.current.promise;
-    }
-    const requestedProjectId = projectId;
-    const request = (async () => {
-      const [projectResult, artifactResult, reviewResult, approvalResult, runResult, versionResult, readinessResult] =
-        await Promise.allSettled([
-          getProject(projectId),
-          getArtifacts(projectId),
-          getReview(projectId),
-          getWorkflowApprovals(projectId),
-          getWorkflowRuns(projectId),
-          getWorkflowVersions('autospec-v5'),
-          getDeliveryReadiness(projectId)
-        ]);
-      if (activeProjectId.current !== requestedProjectId) return;
-
-      const coreErrors: string[] = [];
-      if (projectResult.status === 'fulfilled') setProject(projectResult.value);
-      else coreErrors.push(`project: ${errorMessage(projectResult.reason)}`);
-      if (artifactResult.status === 'fulfilled') setArtifacts(artifactResult.value);
-      else coreErrors.push(`artifacts: ${errorMessage(artifactResult.reason)}`);
-
-      const nextErrors: Partial<Record<AuxiliaryResource, string>> = {};
-      if (reviewResult.status === 'fulfilled') setReview(reviewResult.value);
-      else nextErrors.review = errorMessage(reviewResult.reason);
-      if (approvalResult.status === 'fulfilled') setApprovals(approvalResult.value);
-      else nextErrors.approvals = errorMessage(approvalResult.reason);
-      if (runResult.status === 'fulfilled') setWorkflowRuns(runResult.value);
-      else nextErrors.runs = errorMessage(runResult.reason);
-      if (versionResult.status === 'fulfilled') setWorkflowVersions(versionResult.value);
-      else nextErrors.versions = errorMessage(versionResult.reason);
-      if (readinessResult.status === 'fulfilled') setDeliveryReadiness(readinessResult.value);
-      else {
-        setDeliveryReadiness(null);
-        nextErrors.readiness = errorMessage(readinessResult.reason);
-      }
-      setResourceErrors(nextErrors);
-      setError(coreErrors.length > 0 ? `Could not refresh ${coreErrors.join('; ')}` : null);
-      setLoading(false);
-    })();
-    const tracked = request.finally(() => {
-      if (loadInFlight.current?.promise === tracked) loadInFlight.current = null;
-    });
-    loadInFlight.current = { projectId, promise: tracked };
-    return tracked;
-  }, [projectId]);
-
-  useEffect(() => {
-    void loadProject();
-  }, [loadProject]);
-
-  useEffect(() => {
-    if (!latestRun || !['RUNNING', 'PENDING'].includes(latestRun.status)) {
-      return undefined;
-    }
-    const timer = window.setInterval(() => void loadProject(), 2000);
-    return () => window.clearInterval(timer);
-  }, [latestRun, loadProject]);
 
   async function handleApprovalDecision(approvalId: number, payload: ApprovalDecisionPayload) {
     try {
@@ -400,10 +317,6 @@ function downloadBlob(content: BlobPart, fileName: string, type: string) {
   link.download = fileName;
   link.click();
   URL.revokeObjectURL(url);
-}
-
-function errorMessage(value: unknown): string {
-  return value instanceof Error ? value.message : 'Request failed';
 }
 
 export function isDeliveryReady(readiness: DeliveryReadinessResponse | null): boolean {
