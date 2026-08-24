@@ -110,14 +110,10 @@ def run_prd_workflow(
     callbacks: list[Callback] | None = None,
     retrieved_sources: list[dict[str, Any]] | None = None,
 ) -> tuple[PrdArtifact, list[AgentExecutionRecord]]:
-    prd, record = _execute_node(
-        node_name="product_manager",
-        agent_name=ProductManagerAgent.prompt_name,
-        input_payload={"requirement": requirement, "retrieved_sources": retrieved_sources or []},
-        run=lambda: ProductManagerAgent(model_client).run(requirement, retrieved_sources=retrieved_sources or []),
-        callbacks=callbacks or [],
+    state = V1WorkflowSteps(model_client, callbacks or []).product_manager(
+        {"requirement": requirement, "retrieved_sources": retrieved_sources or [], "records": []}
     )
-    return prd, [record]
+    return state["prd"], state["records"]
 
 
 def run_v2_workflow(
@@ -316,13 +312,12 @@ def run_v2_node(
     )
 
 
-def build_v1_workflow(model_client: ModelClient | None, callbacks: list[Callback]):
-    if StateGraph is None:
-        return SequentialV1Workflow(model_client=model_client, callbacks=callbacks)
+class V1WorkflowSteps:
+    def __init__(self, model_client: ModelClient | None, callbacks: list[Callback]):
+        self.model_client = model_client
+        self.callbacks = callbacks
 
-    graph = StateGraph(V1WorkflowState)
-
-    def product_manager_node(state: dict[str, Any]) -> dict[str, Any]:
+    def product_manager(self, state: dict[str, Any]) -> dict[str, Any]:
         prd, record = _execute_node(
             node_name="product_manager",
             agent_name=ProductManagerAgent.prompt_name,
@@ -330,15 +325,15 @@ def build_v1_workflow(model_client: ModelClient | None, callbacks: list[Callback
                 "requirement": state["requirement"],
                 "retrieved_sources": state.get("retrieved_sources", []),
             },
-            run=lambda: ProductManagerAgent(model_client).run(
+            run=lambda: ProductManagerAgent(self.model_client).run(
                 state["requirement"],
                 retrieved_sources=state.get("retrieved_sources", []),
             ),
-            callbacks=callbacks,
+            callbacks=self.callbacks,
         )
         return {"prd": prd, "records": [*state["records"], record]}
 
-    def backend_engineer_node(state: dict[str, Any]) -> dict[str, Any]:
+    def backend_engineer(self, state: dict[str, Any]) -> dict[str, Any]:
         backend_design, record = _execute_node(
             node_name="backend_engineer",
             agent_name=BackendEngineerAgent.prompt_name,
@@ -347,16 +342,16 @@ def build_v1_workflow(model_client: ModelClient | None, callbacks: list[Callback
                 "prd": state["prd"].model_dump(),
                 "retrieved_sources": state.get("retrieved_sources", []),
             },
-            run=lambda: BackendEngineerAgent(model_client).run(
+            run=lambda: BackendEngineerAgent(self.model_client).run(
                 state["requirement"],
                 state["prd"],
                 retrieved_sources=state.get("retrieved_sources", []),
             ),
-            callbacks=callbacks,
+            callbacks=self.callbacks,
         )
         return {"backend_design": backend_design, "records": [*state["records"], record]}
 
-    def reviewer_node(state: dict[str, Any]) -> dict[str, Any]:
+    def reviewer(self, state: dict[str, Any]) -> dict[str, Any]:
         review_report, record = _execute_node(
             node_name="reviewer",
             agent_name=ReviewerAgent.prompt_name,
@@ -365,18 +360,26 @@ def build_v1_workflow(model_client: ModelClient | None, callbacks: list[Callback
                 "backend_design": state["backend_design"].model_dump(),
                 "retrieved_sources": state.get("retrieved_sources", []),
             },
-            run=lambda: ReviewerAgent(model_client).run(
+            run=lambda: ReviewerAgent(self.model_client).run(
                 state["prd"],
                 state["backend_design"],
                 retrieved_sources=state.get("retrieved_sources", []),
             ),
-            callbacks=callbacks,
+            callbacks=self.callbacks,
         )
         return {"review_report": review_report, "records": [*state["records"], record]}
 
-    graph.add_node("product_manager", product_manager_node)
-    graph.add_node("backend_engineer", backend_engineer_node)
-    graph.add_node("reviewer", reviewer_node)
+
+def build_v1_workflow(model_client: ModelClient | None, callbacks: list[Callback]):
+    if StateGraph is None:
+        return SequentialV1Workflow(model_client=model_client, callbacks=callbacks)
+
+    steps = V1WorkflowSteps(model_client, callbacks)
+    graph = StateGraph(V1WorkflowState)
+
+    graph.add_node("product_manager", steps.product_manager)
+    graph.add_node("backend_engineer", steps.backend_engineer)
+    graph.add_node("reviewer", steps.reviewer)
     graph.set_entry_point("product_manager")
     graph.add_edge("product_manager", "backend_engineer")
     graph.add_edge("backend_engineer", "reviewer")
@@ -386,62 +389,13 @@ def build_v1_workflow(model_client: ModelClient | None, callbacks: list[Callback
 
 class SequentialV1Workflow:
     def __init__(self, model_client: ModelClient | None, callbacks: list[Callback]):
-        self.model_client = model_client
-        self.callbacks = callbacks
+        self.steps = V1WorkflowSteps(model_client, callbacks)
 
     def invoke(self, state: dict[str, Any]) -> dict[str, Any]:
-        requirement = state["requirement"]
-        records: list[AgentExecutionRecord] = []
-
-        prd, record = _execute_node(
-            node_name="product_manager",
-            agent_name=ProductManagerAgent.prompt_name,
-            input_payload={"requirement": requirement, "retrieved_sources": state.get("retrieved_sources", [])},
-            run=lambda: ProductManagerAgent(self.model_client).run(
-                requirement,
-                retrieved_sources=state.get("retrieved_sources", []),
-            ),
-            callbacks=self.callbacks,
-        )
-        records.append(record)
-
-        backend_design, record = _execute_node(
-            node_name="backend_engineer",
-            agent_name=BackendEngineerAgent.prompt_name,
-            input_payload={"requirement": requirement, "prd": prd.model_dump(), "retrieved_sources": state.get("retrieved_sources", [])},
-            run=lambda: BackendEngineerAgent(self.model_client).run(
-                requirement,
-                prd,
-                retrieved_sources=state.get("retrieved_sources", []),
-            ),
-            callbacks=self.callbacks,
-        )
-        records.append(record)
-
-        review_report, record = _execute_node(
-            node_name="reviewer",
-            agent_name=ReviewerAgent.prompt_name,
-            input_payload={
-                "prd": prd.model_dump(),
-                "backend_design": backend_design.model_dump(),
-                "retrieved_sources": state.get("retrieved_sources", []),
-            },
-            run=lambda: ReviewerAgent(self.model_client).run(
-                prd,
-                backend_design,
-                retrieved_sources=state.get("retrieved_sources", []),
-            ),
-            callbacks=self.callbacks,
-        )
-        records.append(record)
-
-        return {
-            "requirement": requirement,
-            "prd": prd,
-            "backend_design": backend_design,
-            "review_report": review_report,
-            "records": records,
-        }
+        current = {**state, "records": []}
+        for step in (self.steps.product_manager, self.steps.backend_engineer, self.steps.reviewer):
+            current.update(step(current))
+        return current
 
 
 def _agent_name_for_node(node_name: str) -> str:

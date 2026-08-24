@@ -1,4 +1,4 @@
-from graph.workflow import run_v1_workflow, run_v2_node, run_v2_workflow, run_v4_workflow
+from graph.workflow import SequentialV1Workflow, run_v1_workflow, run_v2_node, run_v2_workflow, run_v4_workflow
 from main import v4_response
 
 
@@ -310,6 +310,32 @@ def test_v1_workflow_runs_nodes_in_order_and_records_callbacks():
         "reviewer",
     ]
     assert all(record.status == "SUCCEEDED" for record in records)
+
+
+def test_sequential_v1_fallback_preserves_the_same_stage_contract():
+    records = []
+    model_client = FakeModelClient()
+
+    state = SequentialV1Workflow(model_client, [records.append]).invoke(
+        {
+            "requirement": "Build a campus second-hand marketplace.",
+            "retrieved_sources": [],
+            "records": [],
+        }
+    )
+
+    assert [call[0] for call in model_client.calls] == [
+        "ProductManagerAgent_v1",
+        "BackendEngineerAgent_v1",
+        "ReviewerAgent_v1",
+    ]
+    assert [record.node_name for record in records] == [
+        "product_manager",
+        "backend_engineer",
+        "reviewer",
+    ]
+    assert state["records"] == records
+    assert state["review_report"].score == 95
 
 
 def test_default_v1_workflow_does_not_flag_product_publish_as_admin_audit_api():
