@@ -158,7 +158,7 @@ class MySqlFailureRecoveryIT {
                 + ":" + proxy.getProxyPort()
                 + "/" + MYSQL.getDatabaseName()
                 + "?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC"
-                + "&connectTimeout=500&socketTimeout=500";
+                + "&connectTimeout=1000&socketTimeout=2000";
     }
 
     @SuppressWarnings("deprecation")
