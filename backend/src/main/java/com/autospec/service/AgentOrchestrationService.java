@@ -26,29 +26,6 @@ import java.util.UUID;
 @Service
 public class AgentOrchestrationService {
 
-    private static final List<String> V1_AGENTS = List.of(
-            "ProductManagerAgent_v1",
-            "BackendEngineerAgent_v1",
-            "ReviewerAgent_v1"
-    );
-
-    private static final List<String> V2_AGENTS = List.of(
-            "ProductManagerAgent_v1",
-            "ArchitectAgent_v1",
-            "BackendEngineerAgent_v1",
-            "FrontendEngineerAgent_v1",
-            "ReviewerAgent_v1"
-    );
-
-    private static final List<String> V4_AGENTS = List.of(
-            "ProductManagerAgent_v1",
-            "ArchitectAgent_v1",
-            "BackendEngineerAgent_v1",
-            "FrontendEngineerAgent_v1",
-            "ReviewerAgent_v1",
-            "EvaluatorAgent_v1"
-    );
-
     private final ProjectService projectService;
     private final AgentTaskService agentTaskService;
     private final ArtifactService artifactService;
@@ -113,11 +90,7 @@ public class AgentOrchestrationService {
 
         AgentGenerationResult generationResult = agentEngineClient.generate(project.getOriginalRequirement());
         recordTasks(projectId, generationResult);
-        saveArtifact(projectId, "PRD", project.getName() + " PRD", generationResult.prdJson(), "ProductManagerAgent_v1", "GENERATED");
-        saveArtifact(projectId, "BACKEND_DESIGN", project.getName() + " Backend Design", generationResult.backendDesignJson(), "BackendEngineerAgent_v1", "GENERATED");
-        saveArtifact(projectId, "REVIEW_REPORT", project.getName() + " Review Report", generationResult.reviewReportJson(), "ReviewerAgent_v1", "GENERATED");
-        saveArtifact(projectId, "EVALUATION_REPORT", project.getName() + " Evaluation Report", generationResult.evaluationReportJson(), "EvaluatorAgent_v1", "GENERATED");
-        saveReviewIssues(projectId, generationResult.reviewReportJson());
+        saveArtifacts(project, generationResult, AgentWorkflowStage.LEGACY_GENERATION_OUTPUTS, "GENERATED");
 
         project.setStatus("COMPLETED");
         projectService.updateById(project);
@@ -211,13 +184,7 @@ public class AgentOrchestrationService {
         );
         AgentGenerationResult generationResult = callGenerateV4AgentEngine(project, retrievedSources, idempotencyKey, workflowRunId, correlationId);
         recordTasks(projectId, generationResult, workflowRunId, correlationId);
-        saveArtifact(projectId, "PRD", project.getName() + " PRD", generationResult.prdJson(), "ProductManagerAgent_v1", "GENERATED");
-        saveArtifact(projectId, "ARCHITECTURE_DESIGN", project.getName() + " Architecture Design", generationResult.architectureDesignJson(), "ArchitectAgent_v1", "GENERATED");
-        saveArtifact(projectId, "BACKEND_DESIGN", project.getName() + " Backend Design", generationResult.backendDesignJson(), "BackendEngineerAgent_v1", "GENERATED");
-        saveArtifact(projectId, "FRONTEND_SKELETON", project.getName() + " Frontend Skeleton", generationResult.frontendSkeletonJson(), "FrontendEngineerAgent_v1", "GENERATED");
-        saveArtifact(projectId, "REVIEW_REPORT", project.getName() + " Review Report", generationResult.reviewReportJson(), "ReviewerAgent_v1", "GENERATED");
-        saveArtifact(projectId, "EVALUATION_REPORT", project.getName() + " Evaluation Report", generationResult.evaluationReportJson(), "EvaluatorAgent_v1", "GENERATED");
-        saveReviewIssues(projectId, generationResult.reviewReportJson());
+        saveArtifacts(project, generationResult, AgentWorkflowStage.V4, "GENERATED");
 
         project.setStatus("COMPLETED");
         projectService.updateById(project);
@@ -369,7 +336,7 @@ public class AgentOrchestrationService {
                 knowledgeIndexService.retrieveForProject(project.getOriginalRequirement(), 5, projectId)
         );
         recordTasks(projectId, result);
-        saveArtifact(projectId, "PRD", project.getName() + " PRD", result.prdJson(), "ProductManagerAgent_v1", "PENDING_REVIEW");
+        saveStageArtifact(project, AgentWorkflowStage.PRODUCT_MANAGER, result.prdJson(), "PENDING_REVIEW");
 
         project.setStatus("PRD_REVIEW");
         projectService.updateById(project);
@@ -396,12 +363,7 @@ public class AgentOrchestrationService {
                 knowledgeIndexService.retrieveForProject(project.getOriginalRequirement(), 5, projectId)
         );
         recordTasks(projectId, result);
-        saveArtifact(projectId, "ARCHITECTURE_DESIGN", project.getName() + " Architecture Design", result.architectureDesignJson(), "ArchitectAgent_v1", "GENERATED");
-        saveArtifact(projectId, "BACKEND_DESIGN", project.getName() + " Backend Design", result.backendDesignJson(), "BackendEngineerAgent_v1", "GENERATED");
-        saveArtifact(projectId, "FRONTEND_SKELETON", project.getName() + " Frontend Skeleton", result.frontendSkeletonJson(), "FrontendEngineerAgent_v1", "GENERATED");
-        saveArtifact(projectId, "REVIEW_REPORT", project.getName() + " Review Report", result.reviewReportJson(), "ReviewerAgent_v1", "GENERATED");
-        saveArtifact(projectId, "EVALUATION_REPORT", project.getName() + " Evaluation Report", result.evaluationReportJson(), "EvaluatorAgent_v1", "GENERATED");
-        saveReviewIssues(projectId, result.reviewReportJson());
+        saveArtifacts(project, result, AgentWorkflowStage.AFTER_PRD, "GENERATED");
 
         project.setStatus("COMPLETED");
         projectService.updateById(project);
@@ -482,23 +444,26 @@ public class AgentOrchestrationService {
             generationResult.records().forEach(record -> recordTask(projectId, record, null, workflowRunId, correlationId));
             return;
         }
-        if (generationResult.prdJson() != null) {
-            recordTask(projectId, new AgentEngineExecutionRecord("product_manager", "ProductManagerAgent_v1", "SUCCEEDED", null, generationResult.prdJson(), null, null, "ProductManagerAgent"), null, workflowRunId, correlationId);
-        }
-        if (generationResult.architectureDesignJson() != null) {
-            recordTask(projectId, new AgentEngineExecutionRecord("architect", "ArchitectAgent_v1", "SUCCEEDED", null, generationResult.architectureDesignJson(), null, null, "ArchitectAgent"), null, workflowRunId, correlationId);
-        }
-        if (generationResult.backendDesignJson() != null) {
-            recordTask(projectId, new AgentEngineExecutionRecord("backend_engineer", "BackendEngineerAgent_v1", "SUCCEEDED", null, generationResult.backendDesignJson(), null, null, "BackendEngineerAgent"), null, workflowRunId, correlationId);
-        }
-        if (generationResult.frontendSkeletonJson() != null) {
-            recordTask(projectId, new AgentEngineExecutionRecord("frontend_engineer", "FrontendEngineerAgent_v1", "SUCCEEDED", null, generationResult.frontendSkeletonJson(), null, null, "FrontendEngineerAgent"), null, workflowRunId, correlationId);
-        }
-        if (generationResult.reviewReportJson() != null) {
-            recordTask(projectId, new AgentEngineExecutionRecord("reviewer", "ReviewerAgent_v1", "SUCCEEDED", null, generationResult.reviewReportJson(), null, null, "ReviewerAgent"), null, workflowRunId, correlationId);
-        }
-        if (generationResult.evaluationReportJson() != null) {
-            recordTask(projectId, new AgentEngineExecutionRecord("evaluator", "EvaluatorAgent_v1", "SUCCEEDED", null, generationResult.evaluationReportJson(), null, null, "EvaluatorAgent"), null, workflowRunId, correlationId);
+        for (AgentWorkflowStage stage : AgentWorkflowStage.V4) {
+            String output = stage.outputFrom(generationResult);
+            if (output != null) {
+                recordTask(
+                        projectId,
+                        new AgentEngineExecutionRecord(
+                                stage.nodeName(),
+                                stage.agentName(),
+                                "SUCCEEDED",
+                                null,
+                                output,
+                                null,
+                                null,
+                                stage.promptKey()
+                        ),
+                        null,
+                        workflowRunId,
+                        correlationId
+                );
+            }
         }
     }
 
@@ -578,6 +543,31 @@ public class AgentOrchestrationService {
         artifactService.save(artifact);
     }
 
+    private void saveArtifacts(
+            Project project,
+            AgentGenerationResult result,
+            List<AgentWorkflowStage> stages,
+            String status
+    ) {
+        for (AgentWorkflowStage stage : stages) {
+            saveStageArtifact(project, stage, stage.outputFrom(result), status);
+        }
+    }
+
+    private void saveStageArtifact(Project project, AgentWorkflowStage stage, String content, String status) {
+        saveArtifact(
+                project.getId(),
+                stage.artifactType(),
+                stage.artifactTitle(project.getName()),
+                content,
+                stage.agentName(),
+                status
+        );
+        if (stage == AgentWorkflowStage.REVIEWER) {
+            saveReviewIssues(project.getId(), content);
+        }
+    }
+
     private int nextArtifactVersion(Long projectId, String type) {
         return artifactService.lambdaQuery()
                 .eq(Artifact::getProjectId, projectId)
@@ -591,12 +581,16 @@ public class AgentOrchestrationService {
     }
 
     private String nextAgentName(List<AgentTask> tasks) {
-        List<String> expected = isV4(tasks) ? V4_AGENTS : isV2(tasks) ? V2_AGENTS : V1_AGENTS;
+        List<AgentWorkflowStage> expected = expectedStages(tasks);
         List<String> finished = tasks.stream()
                 .filter(task -> "SUCCEEDED".equals(task.getStatus()))
                 .map(AgentTask::getAgentName)
                 .toList();
-        return expected.stream().filter(agent -> !finished.contains(agent)).findFirst().orElse("COMPLETED");
+        return expected.stream()
+                .map(AgentWorkflowStage::agentName)
+                .filter(agent -> !finished.contains(agent))
+                .findFirst()
+                .orElse("COMPLETED");
     }
 
     private int percent(Project project, List<AgentTask> tasks) {
@@ -609,39 +603,31 @@ public class AgentOrchestrationService {
         if (tasks.isEmpty()) {
             return 0;
         }
-        int denominator = isV4(tasks) ? V4_AGENTS.size() : isV2(tasks) ? V2_AGENTS.size() : V1_AGENTS.size();
+        int denominator = expectedStages(tasks).size();
         long succeeded = tasks.stream().filter(task -> "SUCCEEDED".equals(task.getStatus())).count();
         return Math.min((int) Math.round((succeeded * 100.0) / denominator), 100);
     }
 
-    private boolean isV4(List<AgentTask> tasks) {
-        return tasks.stream().anyMatch(task ->
-                "EvaluatorAgent_v1".equals(task.getAgentName())
-                        || "evaluator".equals(task.getNodeName()));
+    private List<AgentWorkflowStage> expectedStages(List<AgentTask> tasks) {
+        if (containsStage(tasks, AgentWorkflowStage.EVALUATOR)) {
+            return AgentWorkflowStage.V4;
+        }
+        if (containsStage(tasks, AgentWorkflowStage.ARCHITECT)
+                || containsStage(tasks, AgentWorkflowStage.FRONTEND_ENGINEER)) {
+            return AgentWorkflowStage.V2;
+        }
+        return AgentWorkflowStage.V1;
     }
 
-    private boolean isV2(List<AgentTask> tasks) {
-        return tasks.stream().anyMatch(task ->
-                "ArchitectAgent_v1".equals(task.getAgentName())
-                        || "FrontendEngineerAgent_v1".equals(task.getAgentName())
-                        || "architect".equals(task.getNodeName())
-                        || "frontend_engineer".equals(task.getNodeName()));
+    private boolean containsStage(List<AgentTask> tasks, AgentWorkflowStage stage) {
+        return tasks.stream().anyMatch(task -> stage.matches(task.getNodeName(), task.getAgentName()));
     }
 
     private void saveNodeArtifactIfArtifactNode(Long projectId, String nodeName, String outputJson) {
         Project project = getProjectOrThrow(projectId);
-        if ("architect".equals(nodeName)) {
-            saveArtifact(projectId, "ARCHITECTURE_DESIGN", project.getName() + " Architecture Design", outputJson, "ArchitectAgent_v1", "GENERATED");
-        } else if ("backend_engineer".equals(nodeName)) {
-            saveArtifact(projectId, "BACKEND_DESIGN", project.getName() + " Backend Design", outputJson, "BackendEngineerAgent_v1", "GENERATED");
-        } else if ("frontend_engineer".equals(nodeName)) {
-            saveArtifact(projectId, "FRONTEND_SKELETON", project.getName() + " Frontend Skeleton", outputJson, "FrontendEngineerAgent_v1", "GENERATED");
-        } else if ("reviewer".equals(nodeName)) {
-            saveArtifact(projectId, "REVIEW_REPORT", project.getName() + " Review Report", outputJson, "ReviewerAgent_v1", "GENERATED");
-            saveReviewIssues(projectId, outputJson);
-        } else if ("evaluator".equals(nodeName)) {
-            saveArtifact(projectId, "EVALUATION_REPORT", project.getName() + " Evaluation Report", outputJson, "EvaluatorAgent_v1", "GENERATED");
-        }
+        AgentWorkflowStage.forNode(nodeName)
+                .filter(stage -> stage != AgentWorkflowStage.PRODUCT_MANAGER)
+                .ifPresent(stage -> saveStageArtifact(project, stage, outputJson, "GENERATED"));
     }
 
     private String promptKey(AgentEngineExecutionRecord record) {
@@ -658,15 +644,9 @@ public class AgentOrchestrationService {
         if (agentName == null) {
             return "unknown";
         }
-        return switch (agentName) {
-            case "ProductManagerAgent_v1" -> "product_manager";
-            case "ArchitectAgent_v1" -> "architect";
-            case "BackendEngineerAgent_v1" -> "backend_engineer";
-            case "FrontendEngineerAgent_v1" -> "frontend_engineer";
-            case "ReviewerAgent_v1" -> "reviewer";
-            case "EvaluatorAgent_v1" -> "evaluator";
-            default -> agentName;
-        };
+        return AgentWorkflowStage.forAgent(agentName)
+                .map(AgentWorkflowStage::nodeName)
+                .orElse(agentName);
     }
 
     private String newCorrelationId() {
