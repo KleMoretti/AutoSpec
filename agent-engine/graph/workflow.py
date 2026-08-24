@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from time import perf_counter
-from typing import Any, Callable
+from typing import Any, Callable, NotRequired, TypedDict
 
 from agents.architect import ArchitectAgent
 from agents.backend_engineer import BackendEngineerAgent
@@ -77,6 +77,15 @@ SUPPORTED_V2_NODES = {
 
 
 Callback = Callable[[AgentExecutionRecord], None]
+
+
+class V1WorkflowState(TypedDict):
+    requirement: str
+    retrieved_sources: list[dict[str, Any]]
+    records: list[AgentExecutionRecord]
+    prd: NotRequired[PrdArtifact]
+    backend_design: NotRequired[BackendDesignArtifact]
+    review_report: NotRequired[ReviewReport]
 
 
 def run_v1_workflow(
@@ -215,8 +224,18 @@ def run_v2_continue_workflow(
     backend_design, record = _execute_node(
         node_name="backend_engineer",
         agent_name=BackendEngineerAgent.prompt_name,
-        input_payload={"requirement": requirement, "prd": prd.model_dump(), "retrieved_sources": retrieved_sources or []},
-        run=lambda: BackendEngineerAgent(model_client).run(requirement, prd, retrieved_sources=retrieved_sources or []),
+        input_payload={
+            "requirement": requirement,
+            "prd": prd.model_dump(),
+            "architecture_design": architecture_design.model_dump(),
+            "retrieved_sources": retrieved_sources or [],
+        },
+        run=lambda: BackendEngineerAgent(model_client).run(
+            requirement,
+            prd,
+            architecture_design,
+            retrieved_sources=retrieved_sources or [],
+        ),
         callbacks=callback_list,
     )
     records.append(record)
@@ -288,14 +307,20 @@ def run_v2_node(
         run=lambda: _run_v2_node_output(node_name, payload, model_client),
         callbacks=[],
     )
-    return record
+    if model_client is None:
+        return record
+    return replace(
+        record,
+        provider_key=getattr(model_client, "provider_key", "model-gateway"),
+        model_name=getattr(model_client, "model_name", "configured-model"),
+    )
 
 
 def build_v1_workflow(model_client: ModelClient | None, callbacks: list[Callback]):
     if StateGraph is None:
         return SequentialV1Workflow(model_client=model_client, callbacks=callbacks)
 
-    graph = StateGraph(dict)
+    graph = StateGraph(V1WorkflowState)
 
     def product_manager_node(state: dict[str, Any]) -> dict[str, Any]:
         prd, record = _execute_node(
@@ -437,31 +462,46 @@ def _run_v2_node_output(
 ) -> Any:
     requirement = _require_str(payload, "requirement") if node_name != "reviewer" else payload.get("requirement", "")
     retrieved_sources = payload.get("retrieved_sources", [])
+    context_manifest = payload.get("context_manifest", {})
 
     if node_name == "product_manager":
-        return ProductManagerAgent(model_client).run(requirement, retrieved_sources=retrieved_sources)
+        return ProductManagerAgent(model_client).run(
+            requirement,
+            retrieved_sources=retrieved_sources,
+            context_manifest=context_manifest,
+        )
 
     prd = PrdArtifact.model_validate(payload["prd"])
     if node_name == "architect":
-        return ArchitectAgent(model_client).run(requirement, prd, retrieved_sources=retrieved_sources)
+        return ArchitectAgent(model_client).run(
+            requirement,
+            prd,
+            retrieved_sources=retrieved_sources,
+            context_manifest=context_manifest,
+        )
 
     if node_name == "backend_engineer":
-        return BackendEngineerAgent(model_client).run(requirement, prd, retrieved_sources=retrieved_sources)
+        architecture_design = ArchitectureDesignArtifact.model_validate(
+            payload["architecture_design"]
+        )
+        return BackendEngineerAgent(model_client).run(
+            requirement,
+            prd,
+            architecture_design,
+            retrieved_sources=retrieved_sources,
+            context_manifest=context_manifest,
+        )
 
     if node_name == "frontend_engineer":
         architecture_design = ArchitectureDesignArtifact.model_validate(payload["architecture_design"])
-        backend_design_payload = payload.get("backend_design")
-        backend_design = (
-            BackendDesignArtifact.model_validate(backend_design_payload)
-            if backend_design_payload is not None
-            else None
-        )
+        backend_design = BackendDesignArtifact.model_validate(payload["backend_design"])
         return FrontendEngineerAgent(model_client).run(
             requirement,
             prd,
             architecture_design,
             backend_design,
             retrieved_sources=retrieved_sources,
+            context_manifest=context_manifest,
         )
 
     backend_design = BackendDesignArtifact.model_validate(payload["backend_design"])
@@ -475,6 +515,7 @@ def _run_v2_node_output(
         retrieved_sources=retrieved_sources,
         generated_files=payload.get("generated_files", []),
         model_invocations=payload.get("model_invocations", []),
+        context_manifest=context_manifest,
     )
 
 

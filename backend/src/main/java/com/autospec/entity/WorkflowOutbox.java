@@ -20,6 +20,10 @@ public class WorkflowOutbox {
     private Integer retryCount;
     private LocalDateTime nextRetryAt;
     private LocalDateTime publishedAt;
+    private String lastErrorType;
+    private LocalDateTime lastErrorAt;
+    private LocalDateTime deadLetteredAt;
+    private LocalDateTime closedAt;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

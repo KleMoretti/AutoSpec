@@ -6,6 +6,7 @@ import com.autospec.entity.WorkflowApproval;
 import com.autospec.entity.WorkflowNodeRun;
 import com.autospec.entity.WorkflowOutbox;
 import com.autospec.entity.WorkflowRun;
+import com.autospec.exception.OptimisticLockConflictException;
 import com.autospec.mapper.ArtifactMapper;
 import com.autospec.mapper.ProcessedWorkflowEventMapper;
 import com.autospec.mapper.WorkflowApprovalMapper;
@@ -26,7 +27,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -114,6 +114,7 @@ class WorkflowApprovalServiceTest {
 
         approvalService.decide(
                 approval.getId(),
+                0,
                 decision("APPROVE", "after-runtime-" + UUID.randomUUID(), null, null)
         );
 
@@ -133,6 +134,7 @@ class WorkflowApprovalServiceTest {
 
         WorkflowApproval decided = approvalService.decide(
                 fixture.approval().getId(),
+                0,
                 decision("APPROVE", "before-approve-" + UUID.randomUUID(), null, null)
         );
 
@@ -152,6 +154,7 @@ class WorkflowApprovalServiceTest {
 
         WorkflowApproval decided = approvalService.decide(
                 fixture.approval().getId(),
+                0,
                 decision(
                         "EDIT_AND_APPROVE",
                         "edit-approve-" + UUID.randomUUID(),
@@ -179,20 +182,26 @@ class WorkflowApprovalServiceTest {
         String key = "duplicate-" + UUID.randomUUID();
 
         WorkflowApproval first = approvalService.decide(
-                fixture.approval().getId(), decision("APPROVE", key, null, null)
+                fixture.approval().getId(), 0, decision("APPROVE", key, null, null)
         );
         WorkflowApproval duplicate = approvalService.decide(
-                fixture.approval().getId(), decision("APPROVE", key, null, null)
+                fixture.approval().getId(), 0, decision("APPROVE", key, null, null)
         );
 
         assertThat(duplicate.getId()).isEqualTo(first.getId());
         assertThat(outboxes(fixture.run().getId())).hasSize(1);
         assertThatThrownBy(() -> approvalService.decide(
                 fixture.approval().getId(),
+                0,
                 decision("APPROVE", "different-" + UUID.randomUUID(), null, null)
         ))
-                .isInstanceOf(ResponseStatusException.class)
-                .hasMessageContaining("already decided");
+                .isInstanceOfSatisfying(
+                        OptimisticLockConflictException.class,
+                        conflict -> assertThat(conflict.getDetails())
+                                .containsEntry("resourceType", "workflowApproval")
+                                .containsEntry("expectedLockVersion", "0")
+                                .containsEntry("currentLockVersion", "1")
+                );
     }
 
     @Test
@@ -201,6 +210,7 @@ class WorkflowApprovalServiceTest {
 
         approvalService.decide(
                 fixture.approval().getId(),
+                0,
                 decision("REJECT", "reject-" + UUID.randomUUID(), null, null)
         );
 
@@ -216,6 +226,7 @@ class WorkflowApprovalServiceTest {
 
         approvalService.decide(
                 fixture.approval().getId(),
+                0,
                 decision(
                         "ROLLBACK_TO_NODE",
                         "rollback-" + UUID.randomUUID(),
@@ -296,6 +307,7 @@ class WorkflowApprovalServiceTest {
         approval.setStatus("PENDING");
         approval.setCandidateArtifactId(candidate == null ? null : candidate.getId());
         approval.setIdempotencyKey("pending:" + UUID.randomUUID());
+        approval.setLockVersion(0);
         approval.setCreatedAt(LocalDateTime.now());
         approval.setUpdatedAt(LocalDateTime.now());
         approvalMapper.insert(approval);

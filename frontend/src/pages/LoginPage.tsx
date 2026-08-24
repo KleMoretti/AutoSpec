@@ -27,14 +27,13 @@ function LoginPage() {
   }
 
   return (
-    <main className="workspace">
+    <main className="workspace" id="main-content">
       <section className="panel input-panel">
         <Typography.Title level={1}>Sign in</Typography.Title>
         <Form
           layout="vertical"
           onFinish={handleFinish}
           requiredMark="optional"
-          initialValues={{ username: 'owner', password: 'owner-pass' }}
         >
           <Form.Item name="username" label="Username" rules={[{ required: true, message: 'Username is required' }]}>
             <Input size="large" autoComplete="username" />

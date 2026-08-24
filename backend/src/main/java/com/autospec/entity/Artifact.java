@@ -26,6 +26,8 @@ public class Artifact {
 
     private Integer version;
 
+    private Integer lockVersion = 0;
+
     private String status;
 
     private String sourceAgent;
@@ -33,6 +35,22 @@ public class Artifact {
     private Long parentArtifactId;
 
     private Long workflowNodeRunId;
+
+    private String contentHash;
+
+    private String schemaVersion;
+
+    private String promptKey;
+
+    private String promptVersion;
+
+    private String modelProvider;
+
+    private String modelName;
+
+    private String sourceCitationsJson;
+
+    private String provenanceJson;
 
     private LocalDateTime approvedAt;
 

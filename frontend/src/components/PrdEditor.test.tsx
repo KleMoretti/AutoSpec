@@ -10,6 +10,7 @@ const artifact: ArtifactResponse = {
   content: '{"title":"Campus Marketplace"}',
   format: 'JSON',
   version: 1,
+  lockVersion: 0,
   status: 'PENDING_REVIEW',
   sourceAgent: 'ProductManagerAgent_v2',
   updatedAt: '2026-06-28T10:00:00'

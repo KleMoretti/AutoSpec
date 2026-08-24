@@ -2,6 +2,10 @@ package com.autospec;
 
 import com.autospec.entity.Project;
 import com.autospec.entity.WorkflowRun;
+import com.autospec.entity.WorkflowNodeRun;
+import com.autospec.entity.WorkflowOutbox;
+import com.autospec.mapper.WorkflowNodeRunMapper;
+import com.autospec.mapper.WorkflowOutboxMapper;
 import com.autospec.service.ProjectService;
 import com.autospec.service.WorkflowRunService;
 import org.junit.jupiter.api.Test;
@@ -24,6 +28,12 @@ class WorkflowRunServiceTest {
 
     @Autowired
     private ProjectService projectService;
+
+    @Autowired
+    private WorkflowNodeRunMapper nodeRunMapper;
+
+    @Autowired
+    private WorkflowOutboxMapper outboxMapper;
 
     @Test
     void staleRunningWorkflowRunsCanBeTimedOut() throws Exception {
@@ -62,12 +72,33 @@ class WorkflowRunServiceTest {
         LocalDateTime now = LocalDateTime.now();
         WorkflowRun running = workflowRun(project.getId(), "running-cancel-key", "RUNNING", now.minusMinutes(5));
         WorkflowRun completed = workflowRun(project.getId(), "completed-cancel-key", "COMPLETED", now.minusMinutes(10));
+        WorkflowNodeRun node = new WorkflowNodeRun();
+        node.setWorkflowRunId(running.getId());
+        node.setNodeId("architect");
+        node.setRevision(1);
+        node.setAttempt(1);
+        node.setExecutionId(running.getId() + ":architect:1:1");
+        node.setStatus("QUEUED");
+        node.setHandlerKey("ArchitectAgent");
+        node.setHandlerVersion("v1");
+        node.setLockVersion(0);
+        nodeRunMapper.insert(node);
+        WorkflowOutbox outbox = new WorkflowOutbox();
+        outbox.setEventId("cancel-command-" + running.getId());
+        outbox.setAggregateId(Long.toString(running.getId()));
+        outbox.setEventType("EXECUTE_NODE");
+        outbox.setPayloadJson("{}");
+        outbox.setStatus("PENDING");
+        outbox.setRetryCount(0);
+        outboxMapper.insert(outbox);
 
         WorkflowRun cancelled = workflowRunService.cancelRunningRun(project.getId(), running.getId());
 
         assertThat(cancelled.getStatus()).isEqualTo("CANCELLED");
         assertThat(cancelled.getErrorMessage()).isEqualTo("Cancelled by user request");
         assertThat(cancelled.getCompletedAt()).isNotNull();
+        assertThat(nodeRunMapper.selectById(node.getId()).getStatus()).isEqualTo("CANCELLED");
+        assertThat(outboxMapper.selectById(outbox.getId()).getStatus()).isEqualTo("CLOSED");
 
         assertThatThrownBy(() -> workflowRunService.cancelRunningRun(project.getId(), completed.getId()))
                 .isInstanceOf(ResponseStatusException.class)

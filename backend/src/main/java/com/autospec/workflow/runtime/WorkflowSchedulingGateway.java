@@ -8,4 +8,8 @@ public interface WorkflowSchedulingGateway {
     List<WorkflowNodeRun> listNodeRuns(long workflowRunId);
 
     boolean reserveAndAppendCommand(WorkflowNodeRun nodeRun, QueuedNodeCommand command);
+
+    default boolean markSkipped(WorkflowNodeRun nodeRun, String reason) {
+        return false;
+    }
 }

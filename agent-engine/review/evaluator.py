@@ -4,7 +4,12 @@ from typing import Any
 
 from schemas.architecture_design import ArchitectureDesignArtifact
 from schemas.backend_design import BackendDesignArtifact
-from schemas.evaluation import EvaluationDimensionScore, EvaluationIssue, EvaluationReport
+from schemas.evaluation import (
+    EvaluationDimensionScore,
+    EvaluationIssue,
+    EvaluationReport,
+    RequirementTrace,
+)
 from schemas.frontend_skeleton import FrontendSkeletonArtifact
 from schemas.prd import PrdArtifact
 from schemas.review import ReviewReport
@@ -19,17 +24,24 @@ def evaluate_artifacts(
     frontend_skeleton: FrontendSkeletonArtifact,
     review_report: ReviewReport,
     records: list[Any] | None = None,
+    model_invocations: list[Any] | None = None,
     retrieved_sources: list[dict[str, Any]] | None = None,
     generated_files: list[dict[str, Any] | str] | None = None,
 ) -> EvaluationReport:
     issues: list[EvaluationIssue] = []
+    traceability = _build_requirement_traceability(
+        prd,
+        architecture_design,
+        backend_design,
+        frontend_skeleton,
+    )
     dimension_scores = [
         _schema_validity_score(),
-        _requirement_coverage_score(prd, backend_design, frontend_skeleton, issues),
+        _requirement_coverage_score(traceability, issues),
         _cross_artifact_consistency_score(backend_design, frontend_skeleton, issues),
         _permission_coverage_score(backend_design, issues),
         _rag_citation_score(requirement, prd, retrieved_sources or [], issues),
-        _runtime_reliability_score(records or [], issues),
+        _runtime_reliability_score(records or [], model_invocations or [], issues),
         _export_readiness_score(generated_files or [], issues),
     ]
     if review_report.issues:
@@ -39,17 +51,36 @@ def evaluate_artifacts(
                 issue_type=f"REVIEW_{issue.issue_type}",
                 description=issue.description,
                 suggestion=issue.suggestion,
-                evidence=["ReviewerAgent_v1"],
+                evidence=["ReviewerAgent_v1", *issue.evidence],
+                requirement_id=issue.requirement_id,
+                artifact_path=issue.artifact_path,
             )
             for issue in review_report.issues
         )
 
+    normalized_issues = [
+        issue.model_copy(
+            update={
+                "blocking": issue.blocking
+                or issue.severity.upper() in {"CRITICAL", "HIGH"}
+            }
+        )
+        for issue in issues
+    ]
+    blocking_issues = [issue for issue in normalized_issues if issue.blocking]
     overall_score = int(sum(score.score for score in dimension_scores) / len(dimension_scores))
+    if any(issue.severity.upper() == "CRITICAL" for issue in blocking_issues):
+        overall_score = min(overall_score, 49)
+    elif blocking_issues:
+        overall_score = min(overall_score, 69)
     return EvaluationReport(
         overall_score=overall_score,
         final_grade=_grade(overall_score),
         dimension_scores=dimension_scores,
-        issues=issues,
+        issues=normalized_issues,
+        gate_status="BLOCKED" if blocking_issues else "PASSED",
+        blocking_issue_count=len(blocking_issues),
+        requirement_traceability=traceability,
     )
 
 
@@ -62,40 +93,164 @@ def _schema_validity_score() -> EvaluationDimensionScore:
 
 
 def _requirement_coverage_score(
-    prd: PrdArtifact,
-    backend_design: BackendDesignArtifact,
-    frontend_skeleton: FrontendSkeletonArtifact,
+    traceability: list[RequirementTrace],
     issues: list[EvaluationIssue],
 ) -> EvaluationDimensionScore:
-    prd_text = _prd_text(prd)
-    backend_text = _backend_text(backend_design)
-    frontend_text = _frontend_text(frontend_skeleton)
-    missing_terms: list[str] = []
-    for term in _important_terms(prd_text):
-        if term not in backend_text and term not in frontend_text:
-            missing_terms.append(term)
-
-    if missing_terms:
+    must_requirements = [trace for trace in traceability if trace.priority == "MUST"]
+    if not must_requirements:
         issues.append(
             EvaluationIssue(
-                severity="MEDIUM",
-                issue_type="REQUIREMENT_COVERAGE",
-                description=f"Important requirement terms are missing from downstream artifacts: {', '.join(missing_terms)}.",
-                suggestion="Reflect each core PRD capability in backend APIs or frontend pages.",
-                evidence=missing_terms,
+                severity="HIGH",
+                issue_type="MISSING_MUST_REQUIREMENT",
+                description="The PRD does not identify any MUST requirement.",
+                suggestion="Classify at least one core capability as MUST before approval.",
+                evidence=["prd.core_features"],
+                artifact_path="PRD.core_features",
+                blocking=True,
             )
         )
         return EvaluationDimensionScore(
             dimension="REQUIREMENT_COVERAGE",
-            score=max(60, 100 - len(missing_terms) * 10),
-            rationale="Some PRD capability terms are missing from backend and frontend artifacts.",
+            score=0,
+            rationale="No mandatory requirement was declared, so trace coverage cannot be established.",
         )
 
+    missing = [trace for trace in must_requirements if not trace.covered]
+    for trace in missing:
+        missing_layers = []
+        if not trace.api_evidence:
+            missing_layers.append("API")
+        if not trace.data_evidence:
+            missing_layers.append("data")
+        if not trace.ui_evidence:
+            missing_layers.append("UI")
+        if not trace.acceptance_evidence:
+            missing_layers.append("acceptance criteria")
+        issues.append(
+            EvaluationIssue(
+                severity="HIGH",
+                issue_type="MUST_REQUIREMENT_TRACE_GAP",
+                description=(
+                    f"{trace.requirement_id} is missing trace evidence for: "
+                    + ", ".join(missing_layers)
+                    + "."
+                ),
+                suggestion=(
+                    "Link the mandatory requirement to a user story, acceptance criteria, "
+                    "API, table/field, and UI page or binding."
+                ),
+                evidence=[trace.requirement],
+                requirement_id=trace.requirement_id,
+                artifact_path="requirement_traceability",
+                blocking=True,
+            )
+        )
+
+    score = round(
+        100
+        * (len(must_requirements) - len(missing))
+        / len(must_requirements)
+    )
+    if missing:
+        return EvaluationDimensionScore(
+            dimension="REQUIREMENT_COVERAGE",
+            score=score,
+            rationale=(
+                f"{len(must_requirements) - len(missing)}/{len(must_requirements)} "
+                "MUST requirements have complete PRD/API/data/UI/acceptance trace evidence."
+            ),
+        )
     return EvaluationDimensionScore(
         dimension="REQUIREMENT_COVERAGE",
         score=100,
-        rationale="Core PRD capability terms are represented in downstream artifacts.",
+        rationale="Every MUST requirement has PRD/API/data/UI/acceptance trace evidence.",
     )
+
+
+def _build_requirement_traceability(
+    prd: PrdArtifact,
+    architecture_design: ArchitectureDesignArtifact,
+    backend_design: BackendDesignArtifact,
+    frontend_skeleton: FrontendSkeletonArtifact,
+) -> list[RequirementTrace]:
+    traces: list[RequirementTrace] = []
+    for feature in prd.core_features:
+        requirement_id = feature.requirement_id
+        if requirement_id is None:
+            raise ValueError("PRD requirement identity was not assigned")
+        requirement = f"{feature.name}: {feature.description}"
+        linked_stories = [
+            story
+            for story in prd.user_stories
+            if requirement_id in story.requirement_refs
+        ]
+        acceptance_evidence = [
+            f"{criterion.acceptance_id}:{criterion.criterion}"
+            for story in linked_stories
+            for criterion in story.acceptance_criteria
+            if requirement_id in criterion.requirement_refs
+        ]
+        architecture_evidence = [
+            *(f"module:{module.module_id}" for module in architecture_design.modules
+              if requirement_id in module.requirement_refs),
+            *(f"decision:{decision.decision_id}" for decision in architecture_design.decisions
+              if requirement_id in decision.requirement_refs),
+            *(f"constraint:{constraint.constraint_id}"
+              for constraint in architecture_design.non_functional_constraints
+              if requirement_id in constraint.requirement_refs),
+        ]
+        api_evidence = [
+            f"api:{api.api_id}:{api.method} {api.path}"
+            for api in backend_design.apis
+            if requirement_id in api.requirement_refs
+        ]
+        data_evidence = [
+            *(f"table:{table.table_id}:{table.name}" for table in backend_design.tables
+              if requirement_id in table.requirement_refs),
+            *(f"field:{field.field_id}:{table.name}.{field.name}"
+              for table in backend_design.tables
+              for field in table.fields
+              if requirement_id in field.requirement_refs),
+        ]
+        ui_evidence = [
+            *(f"route:{route.route_id}:{route.path}" for route in frontend_skeleton.routes
+              if requirement_id in route.requirement_refs),
+            *(f"page:{page.page_id}:{page.name}" for page in frontend_skeleton.pages
+              if requirement_id in page.requirement_refs),
+            *(f"component:{component.component_id}:{component.name}"
+              for component in frontend_skeleton.components
+              if requirement_id in component.requirement_refs),
+            *(f"binding:{binding.binding_id}:{binding.method} {binding.path}"
+              for binding in frontend_skeleton.api_bindings
+              if requirement_id in binding.requirement_refs),
+        ]
+        traces.append(
+            RequirementTrace(
+                requirement_id=requirement_id,
+                requirement=requirement,
+                priority=feature.priority,
+                prd_evidence=[
+                    f"requirement:{requirement_id}",
+                    *[
+                        f"story:{story.story_id}"
+                        for story in linked_stories
+                    ],
+                ],
+                architecture_evidence=architecture_evidence,
+                api_evidence=api_evidence,
+                data_evidence=data_evidence,
+                ui_evidence=ui_evidence,
+                acceptance_evidence=acceptance_evidence,
+                covered=bool(
+                    linked_stories
+                    and acceptance_evidence
+                    and api_evidence
+                    and data_evidence
+                    and ui_evidence
+                ),
+            )
+        )
+    return traces
 
 
 def _cross_artifact_consistency_score(
@@ -103,9 +258,14 @@ def _cross_artifact_consistency_score(
     frontend_skeleton: FrontendSkeletonArtifact,
     issues: list[EvaluationIssue],
 ) -> EvaluationDimensionScore:
-    frontend_paths = {binding.path.lower() for binding in frontend_skeleton.api_bindings}
+    frontend_operations = {
+        (binding.method.upper(), binding.path.lower())
+        for binding in frontend_skeleton.api_bindings
+    }
     missing_bindings = [
-        api.path for api in backend_design.apis if api.method in {"GET", "POST", "PUT", "PATCH", "DELETE"} and api.path.lower() not in frontend_paths
+        f"{api.method} {api.path}"
+        for api in backend_design.apis
+        if (api.method, api.path.lower()) not in frontend_operations
     ]
     if missing_bindings:
         issues.append(
@@ -134,9 +294,31 @@ def _permission_coverage_score(
     backend_design: BackendDesignArtifact,
     issues: list[EvaluationIssue],
 ) -> EvaluationDimensionScore:
+    public_endpoints = ("/login", "/register", "/health", "/public")
     uncovered_paths = [
-        api.path for api in backend_design.apis if "/api/projects" in api.path.lower() and (not api.auth_required or not api.required_roles)
+        api.path
+        for api in backend_design.apis
+        if not any(marker in api.path.lower() for marker in public_endpoints)
+        and (
+            api.method in {"POST", "PUT", "PATCH", "DELETE"}
+            or "{" in api.path
+            or any(
+                term in f"{api.path} {api.description}".lower()
+                for term in ("admin", "approve", "audit", "owner", "permission")
+            )
+        )
+        and (not api.auth_required or not api.required_roles)
     ]
+    admin_role_gaps = [
+        api.path
+        for api in backend_design.apis
+        if any(
+            term in f"{api.path} {api.description}".lower()
+            for term in ("admin", "approve", "audit")
+        )
+        and "ADMIN" not in {role.upper() for role in api.required_roles}
+    ]
+    uncovered_paths = list(dict.fromkeys([*uncovered_paths, *admin_role_gaps]))
     if uncovered_paths:
         issues.append(
             EvaluationIssue(
@@ -184,6 +366,57 @@ def _rag_citation_score(
             rationale="RAG or historical reuse lacks source citation evidence.",
         )
 
+    if needs_sources:
+        citations = prd.source_citations
+        if not citations:
+            issues.append(
+                EvaluationIssue(
+                    severity="HIGH",
+                    issue_type="RAG_CITATION_MISSING",
+                    description="Historical source context is attached, but the PRD has no claim-level citations.",
+                    suggestion="Cite the exact source id and a supported excerpt for every reused claim.",
+                    evidence=["prd.source_citations"],
+                )
+            )
+            return EvaluationDimensionScore(
+                dimension="RAG_CITATION_QUALITY",
+                score=60,
+                rationale="Retrieved context is present without claim-level citation evidence.",
+            )
+
+        source_by_id = {
+            str(source.get("citation_id")): source
+            for source in retrieved_sources
+            if isinstance(source, dict) and source.get("citation_id")
+        }
+        unknown = [citation.citation_id for citation in citations if citation.citation_id not in source_by_id]
+        unfaithful = [
+            citation.citation_id
+            for citation in citations
+            if citation.citation_id in source_by_id
+            and not _excerpt_is_supported(
+                citation.excerpt,
+                str(source_by_id[citation.citation_id].get("content", "")),
+            )
+        ]
+        if unknown or unfaithful:
+            evidence = [f"unknown:{value}" for value in unknown]
+            evidence.extend(f"unsupported:{value}" for value in unfaithful)
+            issues.append(
+                EvaluationIssue(
+                    severity="HIGH",
+                    issue_type="RAG_CITATION_UNFAITHFUL",
+                    description="One or more source citations are unknown or not supported by the cited excerpt.",
+                    suggestion="Use a server-issued citation id and copy a short excerpt from that exact source chunk.",
+                    evidence=evidence,
+                )
+            )
+            return EvaluationDimensionScore(
+                dimension="RAG_CITATION_QUALITY",
+                score=40,
+                rationale="Citation ids or excerpts are not faithful to retrieved source chunks.",
+            )
+
     return EvaluationDimensionScore(
         dimension="RAG_CITATION_QUALITY",
         score=100,
@@ -191,10 +424,33 @@ def _rag_citation_score(
     )
 
 
+def _excerpt_is_supported(excerpt: str, content: str) -> bool:
+    normalized_excerpt = " ".join(excerpt.lower().split())
+    normalized_content = " ".join(content.lower().split())
+    return len(normalized_excerpt) >= 3 and normalized_excerpt in normalized_content
+
+
 def _runtime_reliability_score(
     records: list[Any],
+    model_invocations: list[Any],
     issues: list[EvaluationIssue],
 ) -> EvaluationDimensionScore:
+    if not records:
+        issues.append(
+            EvaluationIssue(
+                severity="HIGH",
+                issue_type="RUNTIME_EVIDENCE_MISSING",
+                description="No Agent execution records were supplied to the evaluator.",
+                suggestion="The control plane must attach every trusted node execution record before approving the run.",
+                evidence=["records"],
+                blocking=True,
+            )
+        )
+        return EvaluationDimensionScore(
+            dimension="RUNTIME_RELIABILITY",
+            score=70,
+            rationale="Runtime reliability is not verified because execution records are absent.",
+        )
     failed_records = [record for record in records if _record_status(record) != "SUCCEEDED"]
     if failed_records:
         failed_nodes = [_record_node_name(record) for record in failed_records]
@@ -213,10 +469,43 @@ def _runtime_reliability_score(
             rationale="One or more Agent nodes failed during execution.",
         )
 
+    failed_invocations = [
+        invocation
+        for invocation in model_invocations
+        if _record_status(invocation) not in {"SUCCEEDED", "COMPLETED"}
+    ]
+    if failed_invocations:
+        failed_models = [
+            str(_record_value(invocation, "model", "model_name", "provider") or "unknown model")
+            for invocation in failed_invocations
+        ]
+        issues.append(
+            EvaluationIssue(
+                severity="HIGH",
+                issue_type="MODEL_INVOCATION_FAILURE",
+                description=(
+                    "Trusted model invocation evidence contains failed calls: "
+                    + ", ".join(failed_models)
+                    + "."
+                ),
+                suggestion="Resolve provider/model failures and rerun the affected nodes before approval.",
+                evidence=failed_models,
+                blocking=True,
+            )
+        )
+        return EvaluationDimensionScore(
+            dimension="RUNTIME_RELIABILITY",
+            score=max(40, 100 - len(failed_invocations) * 30),
+            rationale="One or more trusted model invocations failed.",
+        )
+
     return EvaluationDimensionScore(
         dimension="RUNTIME_RELIABILITY",
         score=100,
-        rationale="All recorded Agent nodes succeeded.",
+        rationale=(
+            f"All recorded Agent nodes succeeded; {len(model_invocations)} model invocations "
+            "were checked when present."
+        ),
     )
 
 
@@ -224,6 +513,12 @@ def _export_readiness_score(
     generated_files: list[dict[str, Any] | str],
     issues: list[EvaluationIssue],
 ) -> EvaluationDimensionScore:
+    if not generated_files:
+        return EvaluationDimensionScore(
+            dimension="EXPORT_READINESS",
+            score=100,
+            rationale="Bundle verification is deferred to the post-generation Build/Delivery Gate.",
+        )
     secret_files = [_file_path(file) for file in generated_files if _contains_secret_marker(file)]
     if secret_files:
         issues.append(
@@ -263,7 +558,8 @@ def _prd_text(prd: PrdArtifact) -> str:
             " ".join(prd.target_users),
             " ".join(f"{feature.name} {feature.description}" for feature in prd.core_features),
             " ".join(
-                f"{story.role} {story.goal} {story.benefit} {' '.join(story.acceptance_criteria)}"
+                f"{story.role} {story.goal} {story.benefit} "
+                f"{' '.join(criterion.criterion for criterion in story.acceptance_criteria)}"
                 for story in prd.user_stories
             ),
             " ".join(prd.business_boundaries),
@@ -296,7 +592,16 @@ def _frontend_text(frontend_skeleton: FrontendSkeletonArtifact) -> str:
 
 
 def _has_valid_retrieved_source(retrieved_sources: list[dict[str, Any]]) -> bool:
-    return any(source.get("artifact_id") or source.get("document_id") or source.get("chunk_id") for source in retrieved_sources)
+    return any(
+        source.get("artifact_id")
+        or source.get("artifactId")
+        or source.get("document_id")
+        or source.get("documentId")
+        or source.get("chunk_id")
+        or source.get("chunkId")
+        for source in retrieved_sources
+        if isinstance(source, dict)
+    )
 
 
 def _record_status(record: Any) -> str:
@@ -309,6 +614,14 @@ def _record_node_name(record: Any) -> str:
     if isinstance(record, dict):
         return str(record.get("node_name", "unknown"))
     return str(getattr(record, "node_name", "unknown"))
+
+
+def _record_value(record: Any, *names: str) -> Any:
+    for name in names:
+        value = record.get(name) if isinstance(record, dict) else getattr(record, name, None)
+        if value is not None:
+            return value
+    return None
 
 
 def _contains_secret_marker(generated_file: dict[str, Any] | str) -> bool:

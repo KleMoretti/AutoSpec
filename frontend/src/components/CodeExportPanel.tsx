@@ -6,9 +6,10 @@ import { generateCodeSkeleton } from '../api/v3';
 interface CodeExportPanelProps {
   projectId: number;
   disabled?: boolean;
+  onGenerated?: () => Promise<void> | void;
 }
 
-function CodeExportPanel({ projectId, disabled }: CodeExportPanelProps) {
+function CodeExportPanel({ projectId, disabled, onGenerated }: CodeExportPanelProps) {
   const [exporting, setExporting] = useState(false);
 
   async function handleGenerate() {
@@ -17,7 +18,8 @@ function CodeExportPanel({ projectId, disabled }: CodeExportPanelProps) {
       const response = await generateCodeSkeleton(projectId);
       const bytes = Uint8Array.from(atob(response.content), (char) => char.charCodeAt(0));
       downloadBlob(bytes, response.fileName, response.mediaType);
-      message.success('Code skeleton exported');
+      message.success('Code bundle passed verification and was exported');
+      await onGenerated?.();
     } catch (error) {
       message.error(error instanceof Error ? error.message : 'Code export failed');
     } finally {

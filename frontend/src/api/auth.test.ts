@@ -22,14 +22,14 @@ describe('auth session store', () => {
       displayName: 'Owner',
       sessionToken: 'session-abc'
     });
+    expect(storage.get('autospec.session')).not.toContain('session-abc');
     clearSession();
     unsubscribe();
 
     expect(listener).toHaveBeenNthCalledWith(1, {
       userId: 3,
       username: 'owner',
-      displayName: 'Owner',
-      sessionToken: 'session-abc'
+      displayName: 'Owner'
     });
     expect(listener).toHaveBeenNthCalledWith(2, null);
   });

@@ -4,12 +4,15 @@ import com.autospec.dto.KnowledgeSourceResponse;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -20,13 +23,34 @@ public class HttpAgentEngineClient implements AgentEngineClient {
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
 
+    @Autowired
     public HttpAgentEngineClient(
             RestClient.Builder restClientBuilder,
             ObjectMapper objectMapper,
-            @Value("${autospec.agent-engine.base-url:http://localhost:8000}") String baseUrl
+            @Value("${autospec.agent-engine.base-url:http://localhost:8000}") String baseUrl,
+            @Value("${autospec.agent-engine.service-token:}") String serviceToken,
+            @Value("${autospec.agent-engine.connect-timeout:5s}") Duration connectTimeout,
+            @Value("${autospec.agent-engine.read-timeout:60s}") Duration readTimeout
     ) {
-        this.restClient = restClientBuilder.baseUrl(baseUrl).build();
+        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(connectTimeout);
+        requestFactory.setReadTimeout(readTimeout);
+        RestClient.Builder configured = restClientBuilder
+                .baseUrl(baseUrl)
+                .requestFactory(requestFactory);
+        if (serviceToken != null && !serviceToken.isBlank()) {
+            configured.defaultHeader("X-AutoSpec-Service-Token", serviceToken);
+        }
+        this.restClient = configured.build();
         this.objectMapper = objectMapper;
+    }
+
+    public HttpAgentEngineClient(
+            RestClient.Builder restClientBuilder,
+            ObjectMapper objectMapper,
+            String baseUrl
+    ) {
+        this(restClientBuilder, objectMapper, baseUrl, "", Duration.ofSeconds(5), Duration.ofSeconds(60));
     }
 
     @Override

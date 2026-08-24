@@ -16,6 +16,7 @@ public record WorkflowApprovalResponse(
         String decision,
         Long candidateArtifactId,
         Long revisedArtifactId,
+        Integer lockVersion,
         String decisionReason,
         LocalDateTime decidedAt,
         LocalDateTime createdAt
@@ -36,6 +37,7 @@ public record WorkflowApprovalResponse(
                 approval.getDecision(),
                 approval.getCandidateArtifactId(),
                 approval.getRevisedArtifactId(),
+                approval.getLockVersion(),
                 approval.getDecisionReason(),
                 approval.getDecidedAt(),
                 approval.getCreatedAt()

@@ -8,6 +8,7 @@ import com.autospec.service.WorkflowVersionManagementService;
 import com.autospec.workflow.runtime.CompiledWorkflow;
 import com.autospec.workflow.runtime.DagCompiler;
 import com.autospec.workflow.runtime.WorkflowSnapshotParser;
+import com.autospec.workflow.runtime.WorkflowExecutableContractValidator;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -91,6 +92,7 @@ public class WorkflowVersionManagementServiceImpl implements WorkflowVersionMana
         WorkflowVersion version = requireVersion(versionId);
         try {
             var document = snapshotParser.parse(version.getSpecJson());
+            WorkflowExecutableContractValidator.validate(document);
             if (!version.getVersion().equals(document.version())) {
                 return new ValidationResult(
                         versionId,

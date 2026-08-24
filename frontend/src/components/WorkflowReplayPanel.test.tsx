@@ -30,6 +30,7 @@ describe('WorkflowReplayPanel', () => {
         versions={[version]}
         onStart={vi.fn()}
         onReplay={vi.fn()}
+        onCancel={vi.fn()}
         onLoadTimeline={vi.fn()}
         onLoadMetrics={vi.fn()}
       />
@@ -39,7 +40,7 @@ describe('WorkflowReplayPanel', () => {
     expect(html).toContain('Original snapshot');
     expect(html).toContain('Replay mode');
     expect(html).toContain('View timeline');
-    expect(html).toContain('Start V5 run');
+    expect(html).toContain('Generate specification');
   });
 
   it('renders the first-run entry point without existing history', () => {
@@ -51,22 +52,47 @@ describe('WorkflowReplayPanel', () => {
         versions={[version]}
         onStart={vi.fn()}
         onReplay={vi.fn()}
+        onCancel={vi.fn()}
         onLoadTimeline={vi.fn()}
         onLoadMetrics={vi.fn()}
       />
     );
 
     expect(html).toContain('Start from a published workflow');
-    expect(html).toContain('Start V5 run');
+    expect(html).toContain('Generate specification');
     expect(html).not.toContain('Create an immutable replay');
+  });
+
+  it('keeps active-run cancellation and failure evidence visible in runtime recovery', () => {
+    const html = renderToStaticMarkup(
+      <WorkflowReplayPanel
+        projectId={3}
+        requirement="Build AutoSpec"
+        runs={[
+          { ...run, id: 13, status: 'RUNNING' },
+          { ...run, id: 14, status: 'FAILED', errorMessage: 'Provider unavailable' }
+        ]}
+        versions={[version]}
+        onStart={vi.fn()}
+        onReplay={vi.fn()}
+        onCancel={vi.fn()}
+        onLoadTimeline={vi.fn()}
+        onLoadMetrics={vi.fn()}
+      />
+    );
+
+    expect(html).toContain('Runtime details and recovery');
+    expect(html).toContain('Cancel run');
+    expect(html).toContain('Provider unavailable');
   });
 
   it('builds a frozen root input for a new V5 run', () => {
     expect(buildStartPayload(3, 7, 'Build AutoSpec', 'start-key')).toEqual({
       projectId: 3,
       workflowVersionId: 7,
-      input: { requirement: 'Build AutoSpec', retrieved_sources: [] },
-      idempotencyKey: 'start-key'
+      input: { requirement: 'Build AutoSpec' },
+      idempotencyKey: 'start-key',
+      executionPolicy: { qualityProfile: 'BALANCED' }
     });
   });
 

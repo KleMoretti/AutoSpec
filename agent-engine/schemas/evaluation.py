@@ -4,6 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from schemas.traceability import RequirementId
+
 
 EvaluationDimension = Literal[
     "SCHEMA_VALIDITY",
@@ -35,6 +37,24 @@ class EvaluationIssue(BaseModel):
     description: str = Field(min_length=1)
     suggestion: str = Field(min_length=1)
     evidence: list[str] = Field(default_factory=list)
+    requirement_id: str | None = None
+    artifact_path: str | None = None
+    blocking: bool = False
+
+
+class RequirementTrace(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    requirement_id: RequirementId
+    requirement: str = Field(min_length=1)
+    priority: Literal["MUST", "SHOULD", "COULD"]
+    prd_evidence: list[str] = Field(default_factory=list)
+    architecture_evidence: list[str] = Field(default_factory=list)
+    api_evidence: list[str] = Field(default_factory=list)
+    data_evidence: list[str] = Field(default_factory=list)
+    ui_evidence: list[str] = Field(default_factory=list)
+    acceptance_evidence: list[str] = Field(default_factory=list)
+    covered: bool
 
 
 class EvaluationDimensionScore(BaseModel):
@@ -52,6 +72,9 @@ class EvaluationReport(BaseModel):
     final_grade: Literal["A", "B", "C", "D", "F"]
     dimension_scores: list[EvaluationDimensionScore] = Field(min_length=1)
     issues: list[EvaluationIssue] = Field(default_factory=list)
+    gate_status: Literal["PASSED", "BLOCKED"] = "PASSED"
+    blocking_issue_count: int = Field(default=0, ge=0)
+    requirement_traceability: list[RequirementTrace] = Field(default_factory=list)
 
     def dimension(self, dimension: EvaluationDimension) -> EvaluationDimensionScore:
         for score in self.dimension_scores:
@@ -70,8 +93,11 @@ class EvaluationInput(BaseModel):
     frontend_skeleton: dict
     review_report: dict
     records: list[dict] = Field(default_factory=list)
+    model_invocations: list[dict] = Field(default_factory=list)
     retrieved_sources: list[dict] = Field(default_factory=list)
     generated_files: list[dict | str] = Field(default_factory=list)
+    retrieval_policy: str | None = None
+    execution_policy: dict = Field(default_factory=dict)
 
 
 class ExperimentRun(BaseModel):
@@ -87,6 +113,8 @@ class ExperimentRun(BaseModel):
     status: str = Field(min_length=1)
     estimated_cost: float = Field(default=0.0, ge=0.0)
     failure_count: int = Field(default=0, ge=0)
+    human_quality_score: float | None = Field(default=None, ge=0, le=100)
+    human_reviewer_count: int = Field(default=0, ge=0)
 
 
 class ExperimentComparison(BaseModel):
@@ -98,6 +126,9 @@ class ExperimentComparison(BaseModel):
     duration_delta_ms: int
     cost_delta: float
     failure_delta: int
+    human_quality_score_delta: float | None = None
+    changed_prompt_keys: list[str] = Field(default_factory=list)
+    changed_model_keys: list[str] = Field(default_factory=list)
 
 
 class ExperimentComparisonReport(BaseModel):

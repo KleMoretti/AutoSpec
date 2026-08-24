@@ -48,10 +48,13 @@ public class WorkflowRunReconciliationService implements WorkflowRunReconciliati
         if (run == null) {
             throw new IllegalArgumentException("workflow run not found: " + workflowRunId);
         }
+        if (!"RUNNING".equals(run.getStatus())) {
+            return;
+        }
         CompiledWorkflow graph = dagCompiler.compile(
                 snapshotParser.parse(run.getWorkflowSnapshotJson())
         );
-        workflowReconciler.reconcile(workflowRunId, graph);
+        workflowReconciler.reconcile(workflowRunId, run.getCorrelationId(), graph);
         completeIfTerminal(run, graph);
     }
 
@@ -81,7 +84,7 @@ public class WorkflowRunReconciliationService implements WorkflowRunReconciliati
                 .eq(WorkflowRun::getStatus, "RUNNING")
                 .set(WorkflowRun::getStatus, complete ? "COMPLETED" : "FAILED")
                 .set(WorkflowRun::getResponseStatus, complete ? "COMPLETED" : "FAILED")
-                .set(WorkflowRun::getResponsePercent, complete ? 100 : run.getResponsePercent())
+                .set(complete, WorkflowRun::getResponsePercent, 100)
                 .set(WorkflowRun::getCompletedAt, now)
                 .set(WorkflowRun::getUpdatedAt, now));
     }

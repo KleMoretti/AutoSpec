@@ -1,0 +1,14 @@
+apiVersion: 1
+
+deleteDatasources:
+  - name: AutoSpec Prometheus
+    orgId: 1
+
+datasources:
+  - name: AutoSpec Prometheus
+    uid: autospec-prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false

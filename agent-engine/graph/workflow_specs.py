@@ -1,14 +1,23 @@
 from __future__ import annotations
 
-from copy import deepcopy
+import json
+from pathlib import Path
 
 from schemas.workflow_spec import WorkflowSpec
 
 
 def get_workflow_spec(workflow_key: str) -> WorkflowSpec:
+    if workflow_key == "autospec-v5":
+        contract_path = (
+            Path(__file__).resolve().parents[1]
+            / "contracts"
+            / "autospec-v5.workflow.json"
+        )
+        return WorkflowSpec.model_validate(
+            json.loads(contract_path.read_text(encoding="utf-8"))
+        )
     specs = {
         "autospec-v4": _AUTOSPEC_V4_SPEC,
-        "autospec-v5": _AUTOSPEC_V5_SPEC,
     }
     if workflow_key not in specs:
         raise KeyError(f"unknown workflow spec: {workflow_key}")
@@ -138,50 +147,3 @@ _AUTOSPEC_V4_SPEC = {
         {"from_node": "reviewer", "to_node": "evaluator"},
     ],
 }
-
-
-_AUTOSPEC_V5_SPEC = deepcopy(_AUTOSPEC_V4_SPEC)
-_AUTOSPEC_V5_SPEC["workflow_key"] = "autospec-v5"
-_AUTOSPEC_V5_SPEC["version"] = "v5"
-_AUTOSPEC_V5_SPEC["runtime"] = {
-    "max_parallel_nodes": 4,
-    "max_review_rounds": 2,
-    "default_timeout_ms": 60000,
-}
-
-_V5_NODES = {node["node_id"]: node for node in _AUTOSPEC_V5_SPEC["nodes"]}
-_V5_NODES["product_manager"]["approval"] = {
-    "mode": "AFTER_NODE",
-    "allowed_actions": ["APPROVE", "REJECT", "EDIT_AND_APPROVE"],
-}
-_V5_NODES["backend_engineer"]["depends_on"] = ["architect"]
-_V5_NODES["frontend_engineer"]["depends_on"] = ["architect"]
-_V5_NODES["reviewer"]["depends_on"] = ["backend_engineer", "frontend_engineer"]
-
-_AUTOSPEC_V5_SPEC["edges"] = [
-    {"from_node": "product_manager", "to_node": "human_prd_approval"},
-    {"from_node": "human_prd_approval", "to_node": "architect"},
-    {"from_node": "architect", "to_node": "backend_engineer"},
-    {"from_node": "architect", "to_node": "frontend_engineer"},
-    {"from_node": "backend_engineer", "to_node": "reviewer"},
-    {"from_node": "frontend_engineer", "to_node": "reviewer"},
-    {"from_node": "reviewer", "to_node": "evaluator"},
-    {
-        "from_node": "reviewer",
-        "to_node": "architect",
-        "edge_type": "REWORK",
-        "condition": {"path": "$.routes", "operator": "EXISTS"},
-    },
-    {
-        "from_node": "reviewer",
-        "to_node": "backend_engineer",
-        "edge_type": "REWORK",
-        "condition": {"path": "$.routes", "operator": "EXISTS"},
-    },
-    {
-        "from_node": "reviewer",
-        "to_node": "frontend_engineer",
-        "edge_type": "REWORK",
-        "condition": {"path": "$.routes", "operator": "EXISTS"},
-    },
-]

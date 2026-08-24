@@ -81,6 +81,7 @@ public class WorkflowApprovalController {
         projectAccessService.requireProjectRole(run.getProjectId(), userId, "OWNER", "EDITOR");
         WorkflowApproval decided = approvalService.decide(
                 approvalId,
+                request.expectedLockVersion(),
                 new WorkflowApprovalService.ApprovalDecision(
                         request.decision(),
                         request.reason(),

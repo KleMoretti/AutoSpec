@@ -22,6 +22,7 @@ public class WorkflowApproval {
     private Long decidedByUserId;
     private String decisionReason;
     private String idempotencyKey;
+    private Integer lockVersion = 0;
     private LocalDateTime decidedAt;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

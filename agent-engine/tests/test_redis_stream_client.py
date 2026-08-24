@@ -2,6 +2,7 @@ import pytest
 
 from runtime.node_executor import NodeExecutionEvent
 from runtime.redis_stream_client import RedisWorkflowStreamClient
+from runtime.worker import InvalidWorkflowCommandError, StreamMessage
 
 
 class ResponseError(Exception):
@@ -24,8 +25,8 @@ class FakeRedis:
         self.calls.append(("xreadgroup", kwargs))
         return self.read_response
 
-    async def xadd(self, stream, fields):
-        self.calls.append(("xadd", stream, fields))
+    async def xadd(self, stream, fields, **kwargs):
+        self.calls.append(("xadd", stream, fields, kwargs))
         return b"1710000000001-0"
 
     async def xack(self, stream, group, message_id):
@@ -35,6 +36,10 @@ class FakeRedis:
     async def xautoclaim(self, **kwargs):
         self.calls.append(("xautoclaim", kwargs))
         return self.claim_response
+
+    async def xclaim(self, **kwargs):
+        self.calls.append(("xclaim", kwargs))
+        return [kwargs["message_ids"][0]]
 
 
 def event():
@@ -50,6 +55,8 @@ def event():
         execution_id="7:fixture:1:1",
         duration_ms=12,
         output_payload={"doubled": 6},
+        correlation_id="123e4567-e89b-12d3-a456-426614174000",
+        traceparent="00-123e4567e89b12d3a456426614174000-123e4567e89b12d3-01",
     )
 
 
@@ -85,7 +92,7 @@ async def test_read_commands_decodes_stream_message():
 @pytest.mark.asyncio
 async def test_publish_and_acknowledge_use_stream_commands():
     redis = FakeRedis()
-    client = RedisWorkflowStreamClient(redis)
+    client = RedisWorkflowStreamClient(redis, event_stream_max_length=250)
 
     await client.publish_event("events", event())
     await client.acknowledge("commands", "workers", "171-0")
@@ -93,14 +100,59 @@ async def test_publish_and_acknowledge_use_stream_commands():
     xadd = redis.calls[0]
     assert xadd[0:2] == ("xadd", "events")
     assert '"event_type":"NODE_SUCCEEDED"' in xadd[2]["payload"]
+    assert '"correlation_id":"123e4567-e89b-12d3-a456-426614174000"' in xadd[2]["payload"]
+    assert '"traceparent":"00-123e4567e89b12d3a456426614174000-123e4567e89b12d3-01"' in xadd[2]["payload"]
+    assert xadd[3] == {"maxlen": 250, "approximate": True}
     assert redis.calls[1] == ("xack", "commands", "workers", "171-0")
 
 
 @pytest.mark.asyncio
-async def test_claim_stale_commands_returns_decoded_messages():
+async def test_touch_pending_refreshes_the_active_consumers_claim_lease():
+    redis = FakeRedis()
+    client = RedisWorkflowStreamClient(redis)
+
+    await client.touch_pending("commands", "workers", "worker-1", "171-0")
+
+    assert redis.calls == [("xclaim", {
+        "name": "commands",
+        "groupname": "workers",
+        "consumername": "worker-1",
+        "min_idle_time": 0,
+        "message_ids": ["171-0"],
+        "justid": True,
+    })]
+
+
+@pytest.mark.asyncio
+async def test_publish_dead_letter_preserves_source_and_original_fields_safely():
+    redis = FakeRedis()
+    client = RedisWorkflowStreamClient(redis, dead_letter_stream_max_length=50)
+    message = StreamMessage("171-0", {"payload": "{not-json", "trace_id": "t-1"})
+
+    await client.publish_dead_letter(
+        "commands.dlq",
+        "commands",
+        message,
+        InvalidWorkflowCommandError("INVALID_JSON"),
+    )
+
+    fields = redis.calls[0][2]
+    assert fields == {
+        "source_stream": "commands",
+        "source_message_id": "171-0",
+        "error_category": "PROTOCOL_VALIDATION",
+        "error_type": "INVALID_JSON",
+        "original_fields": '{"payload":"{not-json","trace_id":"t-1"}',
+    }
+    assert "exception" not in fields
+    assert redis.calls[0][3] == {"maxlen": 50, "approximate": True}
+
+
+@pytest.mark.asyncio
+async def test_claim_stale_commands_decodes_messages_and_advances_cursor():
     redis = FakeRedis()
     redis.claim_response = (
-        b"0-0",
+        b"173-0",
         [(b"172-0", {b"payload": b'{"event_id":"c2"}'})],
         [],
     )
@@ -111,3 +163,11 @@ async def test_claim_stale_commands_returns_decoded_messages():
     )
 
     assert [message.message_id for message in messages] == ["172-0"]
+    assert redis.calls[-1][1]["start_id"] == "0-0"
+
+    redis.claim_response = (b"0-0", [], [])
+    await client.claim_stale_commands(
+        "commands", "workers", "worker-2", minimum_idle_ms=30000, count=5
+    )
+
+    assert redis.calls[-1][1]["start_id"] == "173-0"

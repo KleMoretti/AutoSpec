@@ -13,7 +13,10 @@ class QueuedNodeCommandTest {
         QueuedNodeCommand command = new QueuedNodeCommand(
                 "command-1", 7L, 11L, "backend", 1, 2, "7:backend:1:2",
                 "BackendEngineerAgent", "v2", 45000,
-                new ObjectMapper().readTree("{\"requirement\":\"build API\"}")
+                new ObjectMapper().readTree("{\"requirement\":\"build API\"}"),
+                "123e4567-e89b-12d3-a456-426614174000",
+                "00-123e4567e89b12d3a456426614174000-123e4567e89b12d3-01",
+                "autospec=backend"
         );
 
         JsonNode json = new ObjectMapper().readTree(new ObjectMapper().writeValueAsString(command));
@@ -27,6 +30,11 @@ class QueuedNodeCommandTest {
         assertThat(json.path("timeout_ms").asInt()).isEqualTo(45000);
         assertThat(json.path("input_payload").path("requirement").asText())
                 .isEqualTo("build API");
+        assertThat(json.path("correlation_id").asText())
+                .isEqualTo("123e4567-e89b-12d3-a456-426614174000");
+        assertThat(json.path("traceparent").asText())
+                .isEqualTo("00-123e4567e89b12d3a456426614174000-123e4567e89b12d3-01");
+        assertThat(json.path("tracestate").asText()).isEqualTo("autospec=backend");
         assertThat(json.has("workflowRunId")).isFalse();
     }
 }

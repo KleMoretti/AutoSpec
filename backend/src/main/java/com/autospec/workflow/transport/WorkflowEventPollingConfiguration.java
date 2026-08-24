@@ -3,11 +3,13 @@ package com.autospec.workflow.transport;
 import com.autospec.mapper.ProcessedWorkflowEventMapper;
 import com.autospec.mapper.WorkflowNodeRunMapper;
 import com.autospec.mapper.WorkflowRunMapper;
+import com.autospec.observability.WorkflowEventTracer;
 import com.autospec.workflow.runtime.WorkflowFailureDecisionService;
 import com.autospec.workflow.runtime.WorkflowApprovalCoordinator;
 import com.autospec.workflow.runtime.WorkflowArtifactProjector;
 import com.autospec.workflow.runtime.ReviewerReworkCoordinator;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.opentelemetry.api.OpenTelemetry;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.convert.DurationStyle;
@@ -37,6 +39,8 @@ public class WorkflowEventPollingConfiguration {
             ObjectProvider<WorkflowApprovalCoordinator> approvalCoordinatorProvider,
             ObjectProvider<WorkflowArtifactProjector> artifactProjectorProvider,
             ObjectProvider<ReviewerReworkCoordinator> reworkCoordinatorProvider,
+            ObjectProvider<WorkflowUsageRecorder> usageRecorderProvider,
+            ObjectProvider<OpenTelemetry> openTelemetryProvider,
             ObjectMapper objectMapper
     ) {
         return new WorkflowEventConsumer(
@@ -46,7 +50,11 @@ public class WorkflowEventPollingConfiguration {
                 approvalCoordinatorProvider.getIfAvailable(WorkflowApprovalCoordinator::none),
                 artifactProjectorProvider.getIfAvailable(WorkflowArtifactProjector::none),
                 reworkCoordinatorProvider.getIfAvailable(ReviewerReworkCoordinator::none),
-                runMapperProvider.getIfAvailable()
+                runMapperProvider.getIfAvailable(),
+                new WorkflowEventTracer(
+                        openTelemetryProvider.getIfAvailable(OpenTelemetry::noop)
+                ),
+                usageRecorderProvider.getIfAvailable(WorkflowUsageRecorder::none)
         );
     }
 
@@ -64,9 +72,21 @@ public class WorkflowEventPollingConfiguration {
             WorkflowEventStreamClient streamClient,
             WorkflowEventConsumer eventConsumer,
             @Value("${autospec.workflow.events.polling.consumer-name:control-plane}") String consumerName,
-            @Value("${autospec.workflow.events.polling.batch-size:10}") int batchSize
+            @Value("${autospec.workflow.events.polling.batch-size:10}") int batchSize,
+            @Value("${autospec.workflow.events.polling.claim-min-idle:30s}") String claimMinIdle,
+            ObjectProvider<WorkflowTransportMetrics> metricsProvider,
+            ObjectProvider<WorkflowEventDeadLetterSink> deadLetterSinkProvider
     ) {
-        return new WorkflowEventPoller(streamClient, eventConsumer::consume, consumerName, batchSize);
+        Duration parsedClaimMinIdle = DurationStyle.detectAndParse(claimMinIdle);
+        return new WorkflowEventPoller(
+                streamClient,
+                eventConsumer::consume,
+                consumerName,
+                batchSize,
+                parsedClaimMinIdle,
+                metricsProvider.getIfAvailable(WorkflowTransportMetrics::isolated),
+                deadLetterSinkProvider.getIfAvailable(WorkflowEventDeadLetterSink::none)
+        );
     }
 
     @Bean

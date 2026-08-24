@@ -1014,6 +1014,48 @@ class SchemaInitSqlTest {
         }
     }
 
+    @Test
+    void flywayMigrationsCreateP1ProvenanceBudgetAndInboundDeadLetterSchema() throws Exception {
+        JdbcDataSource dataSource = new JdbcDataSource();
+        dataSource.setURL("jdbc:h2:mem:p1_schema;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1");
+        dataSource.setUser("sa");
+        dataSource.setPassword("");
+
+        Flyway.configure()
+                .dataSource(dataSource)
+                .locations("classpath:db/migration")
+                .load()
+                .migrate();
+
+        try (Connection connection = dataSource.getConnection()) {
+            assertThatCode(() -> execute(connection, """
+                    select content_hash, schema_version, prompt_key, model_provider,
+                           source_citations_json, provenance_json
+                    from artifact where 1 = 0
+                    """)).doesNotThrowAnyException();
+            assertThatCode(() -> execute(connection, """
+                    select issue_key, artifact_type, artifact_path, requirement_id,
+                           evidence, owner_user_id, resolution, resolved_in_artifact_id
+                    from review_issue where 1 = 0
+                    """)).doesNotThrowAnyException();
+            assertThatCode(() -> execute(connection, """
+                    select quality_profile, max_tokens, max_cost, max_model_calls,
+                           max_wall_time_ms, consumed_tokens, consumed_cost, model_call_count
+                    from workflow_run where 1 = 0
+                    """)).doesNotThrowAnyException();
+            assertThatCode(() -> execute(connection, "select id from workflow_event_dead_letter where 1 = 0"))
+                    .doesNotThrowAnyException();
+            assertThatCode(() -> execute(connection, """
+                    select content_hash, embedding_model, embedding_dimensions, embedding_json
+                    from knowledge_chunk where 1 = 0
+                    """)).doesNotThrowAnyException();
+            assertThatCode(() -> execute(connection, """
+                    select route_key, route_reason, fallback_used, context_manifest_json
+                    from model_invocation where 1 = 0
+                    """)).doesNotThrowAnyException();
+        }
+    }
+
     private void execute(Connection connection, String sql) throws Exception {
         try (Statement statement = connection.createStatement()) {
             assertThat(statement.execute(sql)).isTrue();

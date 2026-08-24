@@ -1,6 +1,8 @@
 package com.autospec.workflow.runtime;
 
 import com.autospec.entity.WorkflowNodeRun;
+import com.autospec.entity.ModelInvocation;
+import com.autospec.mapper.ModelInvocationMapper;
 import com.autospec.mapper.WorkflowNodeRunMapper;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
@@ -8,6 +10,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayDeque;
@@ -21,24 +24,33 @@ import java.util.Set;
 public class WorkflowNodeInputAssembler {
     private final WorkflowNodeRunMapper nodeRunMapper;
     private final ObjectMapper objectMapper;
+    private final ModelInvocationMapper modelInvocationMapper;
 
     public WorkflowNodeInputAssembler(
             WorkflowNodeRunMapper nodeRunMapper,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            ModelInvocationMapper modelInvocationMapper
     ) {
         this.nodeRunMapper = nodeRunMapper;
         this.objectMapper = objectMapper;
+        this.modelInvocationMapper = modelInvocationMapper;
     }
 
     public void assemble(CompiledWorkflow graph, WorkflowNodeRun target) {
         ObjectNode input = objectInput(target.getInputJson());
         Map<String, WorkflowNodeRun> latest = latestRuns(target.getWorkflowRunId());
-        for (String ancestor : ancestors(graph, target.getNodeId())) {
+        Set<String> ancestorIds = ancestors(graph, target.getNodeId());
+        for (String ancestor : ancestorIds) {
             WorkflowNodeRun source = latest.get(ancestor);
             if (source == null || !"SUCCEEDED".equals(source.getStatus()) || source.getOutputJson() == null) {
                 continue;
             }
             input.set(inputField(graph.nodes().get(ancestor)), json(source.getOutputJson()));
+        }
+        if ("evaluator".equals(target.getNodeId())) {
+            input.set("records", trustedRecords(latest, ancestorIds));
+            input.set("model_invocations", trustedModelInvocations(target.getWorkflowRunId()));
+            input.putArray("generated_files");
         }
         String assembled = input.toString();
         int updated = nodeRunMapper.update(null, new LambdaUpdateWrapper<WorkflowNodeRun>()
@@ -60,6 +72,53 @@ public class WorkflowNodeInputAssembler {
             latest.putIfAbsent(candidate.getNodeId(), candidate);
         }
         return latest;
+    }
+
+    private ArrayNode trustedRecords(
+            Map<String, WorkflowNodeRun> latest,
+            Set<String> ancestorIds
+    ) {
+        ArrayNode records = objectMapper.createArrayNode();
+        for (String nodeId : ancestorIds) {
+            WorkflowNodeRun run = latest.get(nodeId);
+            if (run == null) {
+                continue;
+            }
+            ObjectNode record = records.addObject();
+            record.put("node_name", run.getNodeId());
+            record.put("execution_id", run.getExecutionId());
+            record.put("revision", run.getRevision());
+            record.put("attempt", run.getAttempt());
+            record.put("status", run.getStatus());
+            if (run.getDurationMs() != null) {
+                record.put("duration_ms", run.getDurationMs());
+            }
+            if (run.getErrorCode() != null) {
+                record.put("error_code", run.getErrorCode());
+            }
+        }
+        return records;
+    }
+
+    private ArrayNode trustedModelInvocations(long workflowRunId) {
+        ArrayNode values = objectMapper.createArrayNode();
+        for (ModelInvocation invocation : modelInvocationMapper.selectList(
+                new LambdaQueryWrapper<ModelInvocation>()
+                        .eq(ModelInvocation::getWorkflowRunId, workflowRunId)
+                        .orderByAsc(ModelInvocation::getId))) {
+            ObjectNode value = values.addObject();
+            value.put("invocation_id", invocation.getId());
+            value.put("node_run_id", invocation.getWorkflowNodeRunId());
+            value.put("provider", invocation.getProviderKey());
+            value.put("model", invocation.getModelName());
+            value.put("status", invocation.getStatus());
+            value.put("model_call_count", invocation.getCallCount());
+            value.put("input_tokens", invocation.getInputTokens());
+            value.put("output_tokens", invocation.getOutputTokens());
+            value.put("prompt_version", invocation.getPromptVersion());
+            value.put("contract_hash", invocation.getContractHash());
+        }
+        return values;
     }
 
     private Set<String> ancestors(CompiledWorkflow graph, String nodeId) {

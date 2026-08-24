@@ -8,6 +8,7 @@ import com.autospec.entity.Artifact;
 import com.autospec.entity.Project;
 import com.autospec.entity.ReviewIssue;
 import com.autospec.entity.WorkflowRun;
+import com.autospec.util.ContentHash;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.http.HttpStatus;
@@ -100,12 +101,15 @@ public class AgentOrchestrationService {
 
     @Transactional
     public ProjectProgressResponse generate(Long projectId) {
+        return generate(projectId, getProjectOrThrow(projectId).getUserId());
+    }
+
+    @Transactional
+    public ProjectProgressResponse generate(Long projectId, Long actorUserId) {
         Project project = getProjectOrThrow(projectId);
         workflowSnapshotService.ensureDefaultSnapshot(projectId);
         project.setStatus("GENERATING");
         projectService.updateById(project);
-
-        clearGeneratedData(projectId);
 
         AgentGenerationResult generationResult = agentEngineClient.generate(project.getOriginalRequirement());
         recordTasks(projectId, generationResult);
@@ -122,9 +126,14 @@ public class AgentOrchestrationService {
 
     @Transactional(noRollbackFor = ResponseStatusException.class)
     public ProjectProgressResponse generateV4(Long projectId, String idempotencyKey) {
+        return generateV4(projectId, idempotencyKey, getProjectOrThrow(projectId).getUserId());
+    }
+
+    @Transactional(noRollbackFor = ResponseStatusException.class)
+    public ProjectProgressResponse generateV4(Long projectId, String idempotencyKey, Long actorUserId) {
         String normalizedKey = normalizeIdempotencyKey(idempotencyKey);
         if (normalizedKey == null) {
-            return generateV4(projectId);
+            return generateV4Internal(projectId, null, null, null, actorUserId);
         }
 
         WorkflowRun existing = workflowRunService.lambdaQuery()
@@ -151,40 +160,55 @@ public class AgentOrchestrationService {
         run.setStatus("RUNNING");
         run.setStartedAt(LocalDateTime.now());
         workflowRunService.save(run);
-        auditWorkflowRun(projectId, run, "WORKFLOW_RUN_STARTED", "V4 workflow run started");
+        auditWorkflowRun(projectId, run, actorUserId, "WORKFLOW_RUN_STARTED", "V4 workflow run started");
 
         try {
-            ProjectProgressResponse response = generateV4Internal(projectId, normalizedKey, run.getId(), run.getCorrelationId());
+            ProjectProgressResponse response = generateV4Internal(
+                    projectId,
+                    normalizedKey,
+                    run.getId(),
+                    run.getCorrelationId(),
+                    actorUserId
+            );
             run.setStatus("COMPLETED");
             run.setResponseStatus(response.status());
             run.setResponsePercent(response.percent());
             run.setCompletedAt(LocalDateTime.now());
             workflowRunService.updateById(run);
-            auditWorkflowRun(projectId, run, "WORKFLOW_RUN_COMPLETED", "V4 workflow run completed");
+            auditWorkflowRun(projectId, run, actorUserId, "WORKFLOW_RUN_COMPLETED", "V4 workflow run completed");
             return response;
         } catch (ResponseStatusException ex) {
-            markWorkflowRunFailed(projectId, run, ex.getReason() == null ? ex.getMessage() : ex.getReason());
+            markWorkflowRunFailed(projectId, run, actorUserId, ex.getReason() == null ? ex.getMessage() : ex.getReason());
             throw ex;
         } catch (Exception ex) {
-            markWorkflowRunFailed(projectId, run, ex.getMessage());
+            markWorkflowRunFailed(projectId, run, actorUserId, ex.getMessage());
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Workflow generation failed", ex);
         }
     }
 
     @Transactional
     public ProjectProgressResponse generateV4(Long projectId) {
-        return generateV4Internal(projectId, null, null, null);
+        Project project = getProjectOrThrow(projectId);
+        return generateV4Internal(projectId, null, null, null, project.getUserId());
     }
 
-    private ProjectProgressResponse generateV4Internal(Long projectId, String idempotencyKey, Long workflowRunId, String correlationId) {
+    private ProjectProgressResponse generateV4Internal(
+            Long projectId,
+            String idempotencyKey,
+            Long workflowRunId,
+            String correlationId,
+            Long actorUserId
+    ) {
         Project project = getProjectOrThrow(projectId);
         workflowSnapshotService.ensureDefaultSnapshot(projectId);
         project.setStatus("GENERATING");
         projectService.updateById(project);
 
-        clearGeneratedData(projectId);
-
-        List<KnowledgeSourceResponse> retrievedSources = knowledgeIndexService.retrieve(project.getOriginalRequirement(), 5, project.getUserId());
+        List<KnowledgeSourceResponse> retrievedSources = knowledgeIndexService.retrieveForProject(
+                project.getOriginalRequirement(),
+                5,
+                projectId
+        );
         AgentGenerationResult generationResult = callGenerateV4AgentEngine(project, retrievedSources, idempotencyKey, workflowRunId, correlationId);
         recordTasks(projectId, generationResult, workflowRunId, correlationId);
         saveArtifact(projectId, "PRD", project.getName() + " PRD", generationResult.prdJson(), "ProductManagerAgent_v1", "GENERATED");
@@ -283,7 +307,7 @@ public class AgentOrchestrationService {
         return idempotencyKey.trim();
     }
 
-    private void markWorkflowRunFailed(Long projectId, WorkflowRun run, String message) {
+    private void markWorkflowRunFailed(Long projectId, WorkflowRun run, Long actorUserId, String message) {
         run.setStatus("FAILED");
         run.setErrorMessage(message == null || message.isBlank() ? "Workflow generation failed" : message);
         run.setCompletedAt(LocalDateTime.now());
@@ -293,14 +317,19 @@ public class AgentOrchestrationService {
             project.setStatus("FAILED");
             projectService.updateById(project);
         }
-        auditWorkflowRun(projectId, run, "WORKFLOW_RUN_FAILED", "V4 workflow run failed");
+        auditWorkflowRun(projectId, run, actorUserId, "WORKFLOW_RUN_FAILED", "V4 workflow run failed");
     }
 
-    private void auditWorkflowRun(Long projectId, WorkflowRun run, String eventType, String message) {
-        Project project = projectService.getById(projectId);
+    private void auditWorkflowRun(
+            Long projectId,
+            WorkflowRun run,
+            Long actorUserId,
+            String eventType,
+            String message
+    ) {
         auditEventService.record(
                 projectId,
-                project == null ? null : project.getUserId(),
+                actorUserId,
                 run.getCorrelationId(),
                 eventType,
                 "WORKFLOW_RUN",
@@ -325,16 +354,19 @@ public class AgentOrchestrationService {
 
     @Transactional
     public ProjectProgressResponse generatePrd(Long projectId) {
+        return generatePrd(projectId, getProjectOrThrow(projectId).getUserId());
+    }
+
+    @Transactional
+    public ProjectProgressResponse generatePrd(Long projectId, Long actorUserId) {
         Project project = getProjectOrThrow(projectId);
         workflowSnapshotService.ensureDefaultSnapshot(projectId);
         project.setStatus("GENERATING");
         projectService.updateById(project);
 
-        clearGeneratedData(projectId);
-
         AgentGenerationResult result = agentEngineClient.generatePrd(
                 project.getOriginalRequirement(),
-                knowledgeIndexService.retrieve(project.getOriginalRequirement(), 5, project.getUserId())
+                knowledgeIndexService.retrieveForProject(project.getOriginalRequirement(), 5, projectId)
         );
         recordTasks(projectId, result);
         saveArtifact(projectId, "PRD", project.getName() + " PRD", result.prdJson(), "ProductManagerAgent_v1", "PENDING_REVIEW");
@@ -346,6 +378,11 @@ public class AgentOrchestrationService {
 
     @Transactional
     public ProjectProgressResponse continueAfterApprovedPrd(Long projectId) {
+        return continueAfterApprovedPrd(projectId, getProjectOrThrow(projectId).getUserId());
+    }
+
+    @Transactional
+    public ProjectProgressResponse continueAfterApprovedPrd(Long projectId, Long actorUserId) {
         Project project = getProjectOrThrow(projectId);
         Artifact approvedPrd = artifactVersionService.latestApproved(projectId, "PRD");
         workflowSnapshotService.ensureDefaultSnapshot(projectId);
@@ -353,16 +390,10 @@ public class AgentOrchestrationService {
         project.setStatus("GENERATING");
         projectService.updateById(project);
 
-        artifactService.lambdaUpdate()
-                .eq(Artifact::getProjectId, projectId)
-                .ne(Artifact::getType, "PRD")
-                .remove();
-        reviewIssueService.lambdaUpdate().eq(ReviewIssue::getProjectId, projectId).remove();
-
         AgentGenerationResult result = agentEngineClient.continueAfterPrd(
                 project.getOriginalRequirement(),
                 approvedPrd.getContent(),
-                knowledgeIndexService.retrieve(project.getOriginalRequirement(), 5, project.getUserId())
+                knowledgeIndexService.retrieveForProject(project.getOriginalRequirement(), 5, projectId)
         );
         recordTasks(projectId, result);
         saveArtifact(projectId, "ARCHITECTURE_DESIGN", project.getName() + " Architecture Design", result.architectureDesignJson(), "ArchitectAgent_v1", "GENERATED");
@@ -440,12 +471,6 @@ public class AgentOrchestrationService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Project not found");
         }
         return project;
-    }
-
-    private void clearGeneratedData(Long projectId) {
-        artifactService.lambdaUpdate().eq(Artifact::getProjectId, projectId).remove();
-        reviewIssueService.lambdaUpdate().eq(ReviewIssue::getProjectId, projectId).remove();
-        agentTaskService.lambdaUpdate().eq(AgentTask::getProjectId, projectId).remove();
     }
 
     private void recordTasks(Long projectId, AgentGenerationResult generationResult) {
@@ -532,6 +557,12 @@ public class AgentOrchestrationService {
         if (content == null || content.isBlank()) {
             return;
         }
+        artifactService.lambdaUpdate()
+                .eq(Artifact::getProjectId, projectId)
+                .eq(Artifact::getType, type)
+                .in(Artifact::getStatus, "GENERATED", "PENDING_REVIEW")
+                .set(Artifact::getStatus, "SUPERSEDED")
+                .update();
         Artifact artifact = new Artifact();
         artifact.setProjectId(projectId);
         artifact.setType(type);
@@ -541,6 +572,9 @@ public class AgentOrchestrationService {
         artifact.setVersion(nextArtifactVersion(projectId, type));
         artifact.setStatus(status);
         artifact.setSourceAgent(sourceAgent);
+        artifact.setContentHash(ContentHash.sha256(content));
+        artifact.setSchemaVersion("v1");
+        artifact.setPromptKey(sourceAgent);
         artifactService.save(artifact);
     }
 
@@ -648,6 +682,11 @@ public class AgentOrchestrationService {
             if (!issues.isArray()) {
                 return;
             }
+            reviewIssueService.lambdaUpdate()
+                    .eq(ReviewIssue::getProjectId, projectId)
+                    .eq(ReviewIssue::getStatus, "OPEN")
+                    .set(ReviewIssue::getStatus, "SUPERSEDED")
+                    .update();
             for (JsonNode issueNode : issues) {
                 ReviewIssue issue = new ReviewIssue();
                 issue.setProjectId(projectId);
@@ -655,7 +694,18 @@ public class AgentOrchestrationService {
                 issue.setIssueType(issueNode.path("issue_type").asText("SEMANTIC_REVIEW"));
                 issue.setDescription(issueNode.path("description").asText(""));
                 issue.setSuggestion(issueNode.path("suggestion").asText(""));
+                issue.setIssueKey("LEGACY:" + ContentHash.sha256(
+                        issue.getIssueType() + "|"
+                                + issueNode.path("requirement_id").asText() + "|"
+                                + issueNode.path("artifact_path").asText() + "|"
+                                + issue.getDescription()
+                ).substring(0, 24));
+                issue.setRequirementId(issueNode.path("requirement_id").asText(null));
+                issue.setArtifactPath(issueNode.path("artifact_path").asText(null));
+                issue.setEvidence(issueNode.path("evidence").toString());
                 issue.setStatus("OPEN");
+                issue.setCreatedAt(LocalDateTime.now());
+                issue.setUpdatedAt(LocalDateTime.now());
                 reviewIssueService.save(issue);
             }
         } catch (Exception ex) {

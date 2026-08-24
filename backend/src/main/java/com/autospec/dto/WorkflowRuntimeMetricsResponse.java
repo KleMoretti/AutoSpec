@@ -1,6 +1,7 @@
 package com.autospec.dto;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 public record WorkflowRuntimeMetricsResponse(
         Long workflowRunId,
@@ -10,7 +11,18 @@ public record WorkflowRuntimeMetricsResponse(
         int retryCount,
         int recoveryCount,
         long tokenCount,
+        long cacheTokenCount,
         BigDecimal estimatedCost,
-        int acceptedDuplicateEventCount
+        int modelCallCount,
+        int acceptedDuplicateEventCount,
+        String qualityProfile,
+        Long maxTokens,
+        BigDecimal maxCost,
+        Integer maxModelCalls,
+        Long maxWallTimeMs,
+        Long remainingTokens,
+        BigDecimal remainingCost,
+        Integer remainingModelCalls,
+        List<ModelUsageResponse> modelUsage
 ) {
 }

@@ -82,7 +82,8 @@ function ApprovalCard({ approval, candidateContent, onDecide }: ApprovalCardProp
           reason,
           editedContent,
           rollbackNodeId,
-          idempotencyKey.current
+          idempotencyKey.current,
+          approval.lockVersion
         )
       );
     } finally {
@@ -184,14 +185,16 @@ export function buildApprovalDecisionPayload(
   reason: string,
   editedContent: string,
   rollbackNodeId: string,
-  idempotencyKey: string
+  idempotencyKey: string,
+  expectedLockVersion: number
 ): ApprovalDecisionPayload {
   return {
     decision,
     reason: reason.trim() || undefined,
     editedContent: decision === 'EDIT_AND_APPROVE' ? editedContent : undefined,
     rollbackNodeId: decision === 'ROLLBACK_TO_NODE' ? rollbackNodeId.trim() : undefined,
-    idempotencyKey
+    idempotencyKey,
+    expectedLockVersion
   };
 }
 

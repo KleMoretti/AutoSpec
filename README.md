@@ -1,110 +1,109 @@
 # AutoSpec
 
-AutoSpec is a multi-agent SOP orchestration and evaluation platform for software requirements engineering. It is inspired by MetaGPT's role-based software-company workflow, but focuses on a narrower Java/enterprise scenario: turning a natural-language requirement into structured PRD, architecture, backend design, frontend skeleton, review report, code export, and evaluator report artifacts.
+AutoSpec is an auditable requirements-to-contract platform. A user submits a software requirement and a durable multi-Agent workflow produces structured PRD, architecture, backend, frontend, review, evaluation, and code-scaffold artifacts with approval, replay, and recovery support.
 
-## V5 Dynamic Workflow
+## Canonical V5 workflow
 
-V5 replaces the fixed cross-Agent call chain with a durable, versioned DAG runtime:
+The product UI now exposes one generation path: the published `autospec-v5:v5` workflow.
 
-- Spring Boot owns immutable workflow versions, frozen run snapshots, DAG reconciliation, transactional Outbox, idempotent event consumption, approval, targeted rework, recovery, replay, and runtime metrics.
-- Redis Streams transports at-least-once node commands and terminal/heartbeat events.
-- Two or more Python Workers consume commands through a shared consumer group and execute versioned Pydantic-validated handlers.
-- MySQL remains the source of truth for runs, attempts, artifacts, transitions, approvals, and recovery checkpoints.
-- The React workspace can start a published V5 version, approve candidate artifacts, inspect attempts and metrics, and create immutable replays.
+- Spring Boot owns immutable workflow versions, frozen run snapshots, DAG reconciliation, transactional Outbox, approval, targeted rework, cancellation, recovery, replay, and artifact history.
+- Redis Streams transports at-least-once node commands and terminal or heartbeat events to Python Workers.
+- Python handlers load versioned prompts, validate every role output with Pydantic, and can use an OpenAI-compatible live model gateway.
+- Backend and frontend engineering run in parallel after architecture; Reviewer joins both branches and Evaluator applies the final delivery gate.
+- The canonical graph lives in `agent-engine/contracts/autospec-v5.workflow.json`; CI verifies that it is identical to the immutable database seed.
 
-The built-in `autospec-v5:v5` graph runs Backend Engineer and Frontend Engineer in parallel after Architect, joins them at Reviewer, supports bounded structured rework, and finishes with Evaluator.
+The local `fixture` model mode is deterministic and intended only for development and tests. Production rejects fixture mode and requires explicit live-model configuration.
 
-## V4 Focus
+## Trust and delivery boundaries
 
-V4 shifts the project from a fixed document-generation pipeline toward Agent engineering depth:
+- Demo login is opt-in; the backend no longer creates `owner / owner-pass` during login.
+- Browser sessions use an `HttpOnly`, `SameSite` cookie. SSE no longer sends a reusable session token in its URL.
+- Backend-to-Agent calls require a service token and have explicit connect/read deadlines.
+- Compose binds published ports to `127.0.0.1` by default and protects Redis with a password.
+- Production startup fails closed when demo login is enabled, cookies are not Secure/Strict, the database user is root, service/data-store secrets are blank, or database/Redis TLS is not explicitly enabled.
+- Retrieval is restricted to the current project, so an editor cannot pull knowledge from the owner's other projects.
+- Reruns preserve artifact history. Cancelling a run closes pending commands and prevents late Worker events from projecting artifacts.
+- Evaluator builds a `REQ-* -> story/acceptance -> API -> data -> UI` trace matrix. Missing MUST coverage or any HIGH/CRITICAL issue blocks completion and delivery.
+- Markdown/PDF/ZIP export and code generation are permitted only after the latest V5 run and its own evaluation report pass the gate.
+- Generated code ZIPs derive routes, tables, pages, and project metadata from the latest artifacts and contain Maven/Vite buildable scaffolds.
 
-- **Configurable SOP workflow spec**: `autospec-v4` declares Agent nodes, edges, input/output schemas, prompt versions, model policy, retry policy, human approval gates, and artifact mapping.
-- **Typed node contracts**: Agent outputs are validated as structured Pydantic artifacts instead of opaque text.
-- **Evaluation loop**: `EvaluatorAgent_v1` scores schema validity, requirement coverage, cross-artifact consistency, permission coverage, RAG citation quality, runtime reliability, and export readiness.
-- **Traceability**: backend persistence records Agent tasks, artifacts, events, model invocations, workflow snapshots, and V4 evaluation reports.
+## P1 product capabilities
+
+- Artifact history now distinguishes latest, approved, and candidate versions. Every artifact records its parent/upstream versions, content hash, schema and prompt version, selected model route, context policy, and exact knowledge citations; users can inspect field-level diffs and restore an older version as a new candidate without rewriting history.
+- Review findings are actionable records with a stable issue key, artifact path, requirement evidence, owner, resolution, and resolved artifact version. High-severity findings must be resolved or explicitly ignored with a reason before approval.
+- Every V5 run freezes a Fast, Balanced, or Deep execution policy. Provider/model decisions, fallback reason, input/output/cache tokens, model calls, estimated cost, and compacted-context manifest are persisted, while atomic token/cost/call/time budgets stop over-budget runs.
+- Project knowledge retrieval combines lexical and stored-vector ranking with reciprocal-rank fusion, remains project-scoped, and returns exact chunk identifiers and excerpts. Evaluation rejects unknown or unfaithful citations.
+- The frontend now provides a searchable project dashboard and a staged Intake -> Generate -> Review & fix -> Deliver workspace, with specialized PRD, architecture, API/data, frontend, evaluation, provenance, version-diff, and runtime-usage views.
+- The evaluation catalog contains 20 cross-domain cases and experiment comparison supports automatic metrics, human scores, and prompt/model A/B deltas.
 
 ## Architecture
 
 ```text
 React frontend
-  -> Spring Boot backend
-    -> MySQL checkpoints + transactional Outbox
+  -> Spring Boot control plane + MySQL source of truth
     -> Redis command/event Streams
-      -> Python Worker consumer group
-        -> versioned Product Manager / Architect / Engineer / Reviewer / Evaluator handlers
-    -> DAG reconciliation / approval / rework / recovery / replay
+      -> Python Product Manager / Architect / Engineer / Reviewer / Evaluator Workers
+    -> approval / rework / recovery / replay / delivery gate
 ```
 
-The backend remains the system of record for projects, artifacts, review issues, execution events, prompt/model metadata, workflow snapshots, exports, and evaluation reports. The Agent Engine owns role execution, schemas, workflow contracts, and deterministic evaluation rules.
+Key locations:
 
-## Key Modules
+- `backend/src/main/java/com/autospec/workflow`: V5 state machine, reconciliation, transport, recovery, and replay.
+- `agent-engine/model_gateway.py`: live OpenAI-compatible JSON model client and production configuration checks.
+- `agent-engine/review/evaluator.py`: deterministic traceability and hard quality-gate rules.
+- `frontend/src/components/WorkflowReplayPanel.tsx`: generation, approval, attempts, metrics, and replay workspace.
+- `.github/workflows/quality.yml`: full-stack release gate.
 
-- `backend/src/main/java/com/autospec/workflow`: V5 DAG compiler, runtime state machine, reconciliation, rework, recovery, and Redis transport.
-- `agent-engine/runtime`: versioned handler registry, node executor, Redis Stream Worker, pending-message claim, and production entry point.
-- `frontend/src/components/WorkflowReplayPanel.tsx`: V5 start, run history, metrics, attempt timeline, and immutable replay workspace.
-- `docs/examples/v5-dynamic-workflow-run.md`: sanitized lifecycle and failure-evidence trace.
+## Local startup
 
-- `agent-engine/schemas/workflow_spec.py`: V4 workflow contract models.
-- `agent-engine/graph/workflow_specs.py`: built-in `autospec-v4` workflow registry.
-- `agent-engine/schemas/evaluation.py`: evaluation case, score, issue, and report schemas.
-- `agent-engine/evaluation/case_catalog.py`: reproducible V4 evaluation cases.
-- `agent-engine/review/experiments.py`: experiment comparison by workflow version, prompt version, model config, score, cost, duration, and failure count.
-- `agent-engine/review/evaluator.py`: deterministic evaluator rules.
-- `backend/src/main/java/com/autospec/service/AgentOrchestrationService.java`: persists generated artifacts, including `EVALUATION_REPORT`.
-- `docs/examples/v4-sample-artifacts.md`: sanitized V4 sample outputs.
+Copy `.env.example` to an untracked `.env` and replace at least these local secrets:
 
-## Verification
+```dotenv
+MYSQL_PASSWORD=...
+MYSQL_ROOT_PASSWORD=...
+REDIS_PASSWORD=...
+AGENT_ENGINE_SERVICE_TOKEN=...
+AUTH_DEMO_USER_PASSWORD=...
+```
 
-### Run the complete V5 stack
-
-Copy `.env.example` to a local untracked `.env`, replace the placeholder MySQL values, then run:
+Then start the local development stack:
 
 ```powershell
 docker compose up --build
 ```
 
-The stack exposes the frontend on `http://localhost:5173`, backend on `http://localhost:8080`, and Agent API on `http://localhost:8000`. Compose starts MySQL, persistent Redis, the control plane, two Worker consumers, and nginx.
+The frontend is available at `http://localhost:5173`. Backend and Agent API ports are also published on localhost for diagnostics. The supplied Compose file is a local-development topology, not a production deployment manifest.
 
-### V5 control-plane APIs
+To exercise real model output, set:
 
-- `POST /api/workflows`, `POST /api/workflows/{versionId}/validate`, `POST /api/workflows/{versionId}/publish`
-- `POST /api/workflow-runs`, `GET /api/workflow-runs/{runId}/nodes`, `GET /api/workflow-runs/{runId}/metrics`
-- `POST /api/workflow-approvals/{approvalId}/decide`
-- `POST /api/workflow-runs/{runId}/replay`
-
-Useful Agent Engine endpoints:
-
-- `POST /generate/v4`: run the V4 workflow and return `evaluation_report`.
-- `GET /evaluation/cases`: list built-in reproducible benchmark cases.
-- `POST /experiments/compare`: compare multiple Agent runs by score, runtime, cost, model/prompt config, and failure count.
-
-Useful backend/frontend path:
-
-- `POST /api/projects/{projectId}/generate-v4`: run the V4 Agent workflow through the backend and persist `EVALUATION_REPORT`.
-- `generateProjectV4(projectId)`: frontend API client helper for V4 generation.
-
-Run Agent Engine tests:
-
-```powershell
-& 'D:\miniconda3\envs\CrewAI_Study\python.exe' -m pytest agent-engine -q
+```dotenv
+AGENT_MODEL_MODE=live
+MODEL_API_KEY=...
+MODEL_BASE_URL=https://your-openai-compatible-endpoint/v1
+MODEL_NAME=...
 ```
 
-Run backend tests:
+For production, also use `AUTOSPEC_ENV=production`, disable the demo user, enable Secure/Strict cookies, use a non-root database user, supply a TLS-enabled `DB_URL` (for example with `sslMode=VERIFY_IDENTITY`), enable Redis TLS, and deploy data/internal services on private networks.
+
+## Verification
+
+Run the same core checks as the repository quality workflow:
 
 ```powershell
-& 'D:\apache-maven-3.8.9\bin\mvn.cmd' -f backend\pom.xml test
+cd backend
+mvn test
+
+cd ../agent-engine
+python -m pytest -q
+
+cd ../frontend
+npm test
+npm run build
+
+cd ..
+python scripts/verify_workflow_contract.py
+docker compose config --quiet
+docker compose --profile monitoring config --quiet
 ```
 
-Run frontend build:
-
-```powershell
-npm --prefix frontend test
-npm --prefix frontend run build
-docker compose config
-```
-
-## Resume Positioning
-
-AutoSpec can be presented as:
-
-> Designed and implemented a configurable multi-agent SOP orchestration and evaluation platform inspired by MetaGPT, with typed Agent node contracts, prompt/model traceability, failure retry, human approval gates, benchmark-style deterministic evaluation, and rule-based cross-artifact consistency scoring for PRD, architecture, database, API, permissions, frontend skeleton, and export readiness.
+CI additionally runs Testcontainers integration tests and builds the backend, Agent, and frontend images. The legacy V4 HTTP APIs remain temporarily available for compatibility, but they are no longer exposed as a competing product path in the UI.

@@ -254,7 +254,8 @@ def _prd_text(prd: PrdArtifact) -> str:
             " ".join(prd.target_users),
             _feature_text(prd),
             " ".join(
-                f"{story.role} {story.goal} {story.benefit} {' '.join(story.acceptance_criteria)}"
+                f"{story.role} {story.goal} {story.benefit} "
+                f"{' '.join(criterion.criterion for criterion in story.acceptance_criteria)}"
                 for story in prd.user_stories
             ),
             " ".join(prd.business_boundaries),

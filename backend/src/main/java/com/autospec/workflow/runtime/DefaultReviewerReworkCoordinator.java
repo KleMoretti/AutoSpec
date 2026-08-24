@@ -43,7 +43,8 @@ public class DefaultReviewerReworkCoordinator implements ReviewerReworkCoordinat
         executionService.execute(
                 reviewerNode.getWorkflowRunId(),
                 reviewerNode.getNodeId(),
-                targets.stream().distinct().toList()
+                targets.stream().distinct().toList(),
+                output
         );
         return true;
     }

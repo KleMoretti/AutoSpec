@@ -5,6 +5,7 @@ from schemas.architecture_design import ArchitectureDesignArtifact
 from schemas.backend_design import BackendDesignArtifact
 from schemas.frontend_skeleton import FrontendSkeletonArtifact
 from schemas.prd import PrdArtifact
+from schemas.traceability import fallback_requirement_mapping, remap_requirement_refs
 
 
 class FrontendEngineerAgent:
@@ -20,12 +21,14 @@ class FrontendEngineerAgent:
         architecture_design: ArchitectureDesignArtifact,
         backend_design: BackendDesignArtifact | None = None,
         retrieved_sources: list[dict[str, Any]] | None = None,
+        context_manifest: dict[str, Any] | None = None,
     ) -> FrontendSkeletonArtifact:
         input_payload: dict[str, Any] = {
             "requirement": requirement,
             "prd": prd.model_dump(),
             "architecture_design": architecture_design.model_dump(),
             "retrieved_sources": retrieved_sources or [],
+            "context_manifest": context_manifest or {},
         }
         if backend_design is not None:
             input_payload["backend_design"] = backend_design.model_dump()
@@ -34,58 +37,111 @@ class FrontendEngineerAgent:
                 self.model_client.generate_json(self.prompt_name, input_payload)
             )
 
-        return FrontendSkeletonArtifact.model_validate(
-            {
-                "routes": [{"path": "/projects/:projectId", "page": "ProjectDetailPage"}],
+        fallback = {
+                "routes": [
+                    {
+                        "route_id": "ROUTE-PRODUCTS",
+                        "path": "/products",
+                        "page": "MarketplacePage",
+                        "requirement_refs": ["REQ-PUBLISH", "REQ-SEARCH", "REQ-FAVORITE"],
+                    },
+                    {
+                        "route_id": "ROUTE-ADMIN-AUDIT",
+                        "path": "/admin/audit",
+                        "page": "AdminAuditPage",
+                        "requirement_refs": ["REQ-AUDIT"],
+                    },
+                ],
                 "pages": [
                     {
-                        "name": "ProjectDetailPage",
-                        "purpose": "Approve PRD, monitor Agent execution, inspect artifacts, and retry failed nodes.",
-                        "components": [
-                            "PrdEditor",
-                            "AgentTimeline",
-                            "ExecutionEventList",
-                            "ArtifactTabs",
-                            "ReviewIssueTable",
-                        ],
-                    }
+                        "page_id": "PAGE-MARKETPLACE",
+                        "name": "MarketplacePage",
+                        "purpose": "Publish, search, browse, and favorite campus product listings.",
+                        "components": ["ProductPublishForm", "ProductSearchList", "FavoriteButton"],
+                        "requirement_refs": ["REQ-PUBLISH", "REQ-SEARCH", "REQ-FAVORITE"],
+                    },
+                    {
+                        "page_id": "PAGE-ADMIN-AUDIT",
+                        "name": "AdminAuditPage",
+                        "purpose": "Allow administrators to approve or reject pending listings with reasons.",
+                        "components": ["AdminAuditTable"],
+                        "requirement_refs": ["REQ-AUDIT"],
+                    },
                 ],
                 "components": [
                     {
-                        "name": "PrdEditor",
+                        "component_id": "COMP-PRODUCT-PUBLISH",
+                        "name": "ProductPublishForm",
                         "type": "form",
-                        "props": ["artifact", "onSave", "onApprove"],
-                        "state": ["draftContent", "saving"],
+                        "props": ["onSubmit"],
+                        "state": ["draft", "submitting", "error"],
+                        "requirement_refs": ["REQ-PUBLISH"],
                     },
                     {
-                        "name": "AgentTimeline",
-                        "type": "timeline",
-                        "props": ["progress", "events", "onRetry"],
-                        "state": [],
+                        "component_id": "COMP-PRODUCT-SEARCH",
+                        "name": "ProductSearchList",
+                        "type": "table",
+                        "props": ["items", "onSearch"],
+                        "state": ["keyword", "loading", "error"],
+                        "requirement_refs": ["REQ-SEARCH"],
                     },
                     {
-                        "name": "ArtifactTabs",
-                        "type": "tabs",
-                        "props": ["artifacts", "activeType", "onChange"],
-                        "state": ["activeType"],
+                        "component_id": "COMP-FAVORITE",
+                        "name": "FavoriteButton",
+                        "type": "toolbar",
+                        "props": ["productId", "onFavorite"],
+                        "state": ["saving", "error"],
+                        "requirement_refs": ["REQ-FAVORITE"],
+                    },
+                    {
+                        "component_id": "COMP-ADMIN-AUDIT",
+                        "name": "AdminAuditTable",
+                        "type": "table",
+                        "props": ["pendingProducts", "onDecide"],
+                        "state": ["submitting", "error"],
+                        "requirement_refs": ["REQ-AUDIT"],
                     },
                 ],
                 "api_bindings": [
                     {
+                        "binding_id": "BIND-PRODUCT-CREATE",
                         "method": "POST",
-                        "path": "/api/projects/{projectId}/artifacts/{artifactId}/approve",
-                        "consumer": "PrdEditor",
+                        "path": "/api/products",
+                        "consumer": "ProductPublishForm",
+                        "backend_api_id": "API-PRODUCT-CREATE",
+                        "requirement_refs": ["REQ-PUBLISH"],
                     },
                     {
+                        "binding_id": "BIND-PRODUCT-SEARCH",
                         "method": "GET",
-                        "path": "/api/projects/{projectId}/events",
-                        "consumer": "ExecutionEventList",
+                        "path": "/api/products",
+                        "consumer": "ProductSearchList",
+                        "backend_api_id": "API-PRODUCT-SEARCH",
+                        "requirement_refs": ["REQ-SEARCH"],
                     },
                     {
+                        "binding_id": "BIND-FAVORITE-CREATE",
                         "method": "POST",
-                        "path": "/api/projects/{projectId}/tasks/{taskId}/retry",
-                        "consumer": "AgentTimeline",
+                        "path": "/api/favorites",
+                        "consumer": "FavoriteButton",
+                        "backend_api_id": "API-FAVORITE-CREATE",
+                        "requirement_refs": ["REQ-FAVORITE"],
+                    },
+                    {
+                        "binding_id": "BIND-PRODUCT-AUDIT",
+                        "method": "POST",
+                        "path": "/api/admin/products/{productId}/audit",
+                        "consumer": "AdminAuditTable",
+                        "backend_api_id": "API-PRODUCT-AUDIT",
+                        "requirement_refs": ["REQ-AUDIT"],
                     },
                 ],
             }
+        return FrontendSkeletonArtifact.model_validate(
+            remap_requirement_refs(
+                fallback,
+                fallback_requirement_mapping(
+                    feature.requirement_id for feature in prd.core_features
+                ),
+            )
         )

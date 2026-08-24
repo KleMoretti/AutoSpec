@@ -11,6 +11,7 @@ const pendingApproval: WorkflowApprovalResponse = {
   mode: 'AFTER_NODE',
   allowedActions: ['APPROVE', 'EDIT_AND_APPROVE', 'REJECT'],
   status: 'PENDING',
+  lockVersion: 0,
   candidateArtifactId: 7
 };
 
@@ -28,12 +29,20 @@ describe('WorkflowApprovalPanel', () => {
   });
 
   it('builds an edit decision with content and idempotency key', () => {
-    expect(buildApprovalDecisionPayload('EDIT_AND_APPROVE', ' fixes ', '{"title":"v2"}', '', 'key-1')).toEqual({
+    expect(buildApprovalDecisionPayload(
+      'EDIT_AND_APPROVE',
+      ' fixes ',
+      '{"title":"v2"}',
+      '',
+      'key-1',
+      3
+    )).toEqual({
       decision: 'EDIT_AND_APPROVE',
       reason: 'fixes',
       editedContent: '{"title":"v2"}',
       rollbackNodeId: undefined,
-      idempotencyKey: 'key-1'
+      idempotencyKey: 'key-1',
+      expectedLockVersion: 3
     });
   });
 

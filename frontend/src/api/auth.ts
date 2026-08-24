@@ -1,11 +1,14 @@
-export interface LoginResponse {
+export interface SessionUser {
   userId: number;
   username: string;
   displayName: string;
-  sessionToken: string;
 }
 
-type SessionListener = (session: LoginResponse | null) => void;
+export interface LoginResponse extends SessionUser {
+  sessionToken?: string;
+}
+
+type SessionListener = (session: SessionUser | null) => void;
 
 const sessionListeners = new Set<SessionListener>();
 
@@ -21,7 +24,7 @@ export async function login(username: string, password: string): Promise<LoginRe
   return response.json() as Promise<LoginResponse>;
 }
 
-export function readSession(): LoginResponse | null {
+export function readSession(): SessionUser | null {
   if (typeof localStorage === 'undefined') {
     return null;
   }
@@ -30,15 +33,25 @@ export function readSession(): LoginResponse | null {
     return null;
   }
   try {
-    return JSON.parse(raw) as LoginResponse;
+    const parsed = JSON.parse(raw) as SessionUser;
+    return {
+      userId: parsed.userId,
+      username: parsed.username,
+      displayName: parsed.displayName
+    };
   } catch {
     return null;
   }
 }
 
 export function writeSession(session: LoginResponse): void {
-  localStorage.setItem('autospec.session', JSON.stringify(session));
-  notifySessionListeners(session);
+  const publicSession: SessionUser = {
+    userId: session.userId,
+    username: session.username,
+    displayName: session.displayName
+  };
+  localStorage.setItem('autospec.session', JSON.stringify(publicSession));
+  notifySessionListeners(publicSession);
 }
 
 export function clearSession(): void {
@@ -51,6 +64,6 @@ export function subscribeSession(listener: SessionListener): () => void {
   return () => sessionListeners.delete(listener);
 }
 
-function notifySessionListeners(session: LoginResponse | null): void {
+function notifySessionListeners(session: SessionUser | null): void {
   sessionListeners.forEach((listener) => listener(session));
 }

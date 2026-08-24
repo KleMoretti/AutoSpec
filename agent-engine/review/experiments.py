@@ -22,6 +22,15 @@ def compare_experiment_runs(runs: list[ExperimentRun]) -> ExperimentComparisonRe
             duration_delta_ms=run.duration_ms - baseline.duration_ms,
             cost_delta=round(run.estimated_cost - baseline.estimated_cost, 6),
             failure_delta=run.failure_count - baseline.failure_count,
+            human_quality_score_delta=_human_score_delta(baseline, run),
+            changed_prompt_keys=_changed_keys(
+                baseline.prompt_versions,
+                run.prompt_versions,
+            ),
+            changed_model_keys=_changed_keys(
+                baseline.model_configurations,
+                run.model_configurations,
+            ),
         )
         for run in runs[1:]
     ]
@@ -34,9 +43,30 @@ def compare_experiment_runs(runs: list[ExperimentRun]) -> ExperimentComparisonRe
     )
 
 
-def _ranking_key(run: ExperimentRun) -> tuple[int, int, float, int]:
+def _ranking_key(run: ExperimentRun) -> tuple[int, int, float, float, int]:
     status_penalty = 0 if run.status.upper() == "SUCCEEDED" else 1
-    return (run.failure_count + status_penalty, -run.overall_score, run.estimated_cost, run.duration_ms)
+    human_score = run.human_quality_score if run.human_quality_score is not None else -1.0
+    return (
+        run.failure_count + status_penalty,
+        -run.overall_score,
+        -human_score,
+        run.estimated_cost,
+        run.duration_ms,
+    )
+
+
+def _human_score_delta(baseline: ExperimentRun, candidate: ExperimentRun) -> float | None:
+    if baseline.human_quality_score is None or candidate.human_quality_score is None:
+        return None
+    return round(candidate.human_quality_score - baseline.human_quality_score, 2)
+
+
+def _changed_keys(baseline: dict[str, str], candidate: dict[str, str]) -> list[str]:
+    return sorted(
+        key
+        for key in baseline.keys() | candidate.keys()
+        if baseline.get(key) != candidate.get(key)
+    )
 
 
 def _comparison_issues(runs: list[ExperimentRun]) -> list[EvaluationIssue]:

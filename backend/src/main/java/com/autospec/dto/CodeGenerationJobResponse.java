@@ -9,10 +9,14 @@ public record CodeGenerationJobResponse(
         Long retryOfJobId,
         String status,
         String manifest,
+        String gateStatus,
+        String manifestHash,
+        String verificationJson,
         String errorMessage,
         LocalDateTime createdAt,
         LocalDateTime completedAt,
-        LocalDateTime cancelledAt
+        LocalDateTime cancelledAt,
+        LocalDateTime verifiedAt
 ) {
 
     public static CodeGenerationJobResponse from(CodeGenerationJob job) {
@@ -21,10 +25,14 @@ public record CodeGenerationJobResponse(
                 job.getRetryOfJobId(),
                 job.getStatus(),
                 job.getManifest(),
+                job.getGateStatus(),
+                job.getManifestHash(),
+                job.getVerificationJson(),
                 job.getErrorMessage(),
                 job.getCreatedAt(),
                 job.getCompletedAt(),
-                job.getCancelledAt()
+                job.getCancelledAt(),
+                job.getVerifiedAt()
         );
     }
 }

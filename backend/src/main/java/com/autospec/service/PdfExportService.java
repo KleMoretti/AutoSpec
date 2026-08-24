@@ -1,5 +1,6 @@
 package com.autospec.service;
 
+import com.autospec.entity.Artifact;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
@@ -31,6 +32,14 @@ public class PdfExportService {
 
     public byte[] exportProject(Long projectId) {
         String markdown = markdownExportService.exportProject(projectId);
+        return render(markdown);
+    }
+
+    public byte[] exportProject(Long projectId, java.util.List<Artifact> deliverableArtifacts) {
+        return render(markdownExportService.exportProject(projectId, deliverableArtifacts));
+    }
+
+    private byte[] render(String markdown) {
         try (PDDocument document = new PDDocument();
              ByteArrayOutputStream output = new ByteArrayOutputStream()) {
             PDType1Font font = new PDType1Font(Standard14Fonts.FontName.HELVETICA);

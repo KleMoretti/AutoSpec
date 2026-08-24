@@ -1,6 +1,7 @@
 package com.autospec.controller;
 
 import com.autospec.dto.ApiErrorResponse;
+import com.autospec.exception.OptimisticLockConflictException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -15,6 +16,22 @@ import java.util.Map;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    @ExceptionHandler(OptimisticLockConflictException.class)
+    public ResponseEntity<ApiErrorResponse> handleOptimisticLockConflict(
+            OptimisticLockConflictException ex,
+            HttpServletRequest request
+    ) {
+        return ResponseEntity
+                .status(HttpStatus.CONFLICT)
+                .body(ApiErrorResponse.of(
+                        "OPTIMISTIC_LOCK_CONFLICT",
+                        HttpStatus.CONFLICT.value(),
+                        ex.getMessage(),
+                        request.getRequestURI(),
+                        ex.getDetails()
+                ));
+    }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<ApiErrorResponse> handleValidation(
@@ -39,6 +56,7 @@ public class GlobalExceptionHandler {
         HttpStatus resolvedStatus = status == null ? HttpStatus.INTERNAL_SERVER_ERROR : status;
         return ResponseEntity
                 .status(resolvedStatus)
+                .headers(ex.getHeaders())
                 .body(ApiErrorResponse.of(
                         errorCode(resolvedStatus),
                         resolvedStatus.value(),
@@ -54,7 +72,9 @@ public class GlobalExceptionHandler {
             case FORBIDDEN -> "FORBIDDEN";
             case NOT_FOUND -> "NOT_FOUND";
             case CONFLICT -> "CONFLICT";
+            case TOO_MANY_REQUESTS -> "RATE_LIMITED";
             case BAD_GATEWAY -> "BAD_GATEWAY";
+            case SERVICE_UNAVAILABLE -> "SERVICE_UNAVAILABLE";
             default -> "INTERNAL_ERROR";
         };
     }

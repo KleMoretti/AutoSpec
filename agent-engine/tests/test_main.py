@@ -48,7 +48,7 @@ def test_generate_v2_continue_endpoint_uses_approved_prd_payload():
     assert response.status_code == 200
     body = response.json()
     assert body["architecture_design"]["modules"][0]["name"] == "backend"
-    assert body["frontend_skeleton"]["routes"][0]["path"] == "/projects/:projectId"
+    assert body["frontend_skeleton"]["routes"][0]["path"] == "/products"
     assert [record["node_name"] for record in body["records"]] == [
         "architect",
         "backend_engineer",
@@ -70,7 +70,7 @@ def test_generate_v2_and_node_runner_endpoints_return_v2_artifacts():
     )
 
     assert v2_response.status_code == 200
-    assert v2_response.json()["frontend_skeleton"]["pages"][0]["name"] == "ProjectDetailPage"
+    assert v2_response.json()["frontend_skeleton"]["pages"][0]["name"] == "MarketplacePage"
     assert node_response.status_code == 200
     assert node_response.json()["node_name"] == "frontend_engineer"
 

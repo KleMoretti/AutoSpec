@@ -1,133 +1,136 @@
+import { DownloadOutlined, FilePdfOutlined, ReloadOutlined } from '@ant-design/icons';
+import { Alert, Button, Descriptions, Result, Space, Spin, Steps, Tag, Typography, message } from 'antd';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useParams } from 'react-router-dom';
 import {
-  CheckCircleOutlined,
-  DownloadOutlined,
-  FilePdfOutlined,
-  PlayCircleOutlined,
-  ReloadOutlined
-} from '@ant-design/icons';
-import { Button, Result, Space, Spin, Typography, message } from 'antd';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
-import {
-  type AgentEventResponse,
   type ArtifactResponse,
-  type ProjectProgressResponse,
   type ProjectResponse,
   type ReviewResponse,
-  approveArtifact,
-  continueGeneration,
   exportMarkdown,
   exportPdf,
-  generatePrd,
-  generateProject,
   getArtifacts,
-  getEventHistory,
-  getProgress,
   getProject,
-  getReview,
-  retryTask,
-  subscribeProjectEvents,
-  updateArtifact
+  getReview
 } from '../api/projects';
 import {
   type ApprovalDecisionPayload,
+  type DeliveryReadinessResponse,
   type WorkflowApprovalResponse,
   type WorkflowNodeRunResponse,
   type WorkflowReplayPayload,
   type WorkflowRunResponse,
   type WorkflowRunStartPayload,
   type WorkflowRuntimeMetricsResponse,
-  type WorkflowSnapshotResponse,
   type WorkflowVersionResponse,
+  cancelWorkflowRun,
   decideWorkflowApproval,
-  getWorkflow,
+  getDeliveryReadiness,
   getWorkflowApprovals,
-  getWorkflowRunNodes,
   getWorkflowRunMetrics,
+  getWorkflowRunNodes,
   getWorkflowRuns,
   getWorkflowVersions,
   replayWorkflowRun,
   startWorkflowRun
 } from '../api/v3';
-import AgentTimeline from '../components/AgentTimeline';
 import ArtifactTabs from '../components/ArtifactTabs';
 import CodeExportPanel from '../components/CodeExportPanel';
-import ExecutionEventList from '../components/ExecutionEventList';
-import PrdEditor from '../components/PrdEditor';
 import ReviewIssueTable from '../components/ReviewIssueTable';
-import WorkflowGraph from '../components/WorkflowGraph';
 import WorkflowApprovalPanel from '../components/WorkflowApprovalPanel';
 import WorkflowReplayPanel from '../components/WorkflowReplayPanel';
+
+type AuxiliaryResource = 'review' | 'approvals' | 'runs' | 'versions' | 'readiness';
 
 function ProjectDetailPage() {
   const params = useParams();
   const projectId = useMemo(() => Number(params.projectId), [params.projectId]);
   const [project, setProject] = useState<ProjectResponse | null>(null);
-  const [progress, setProgress] = useState<ProjectProgressResponse | null>(null);
   const [artifacts, setArtifacts] = useState<ArtifactResponse[]>([]);
   const [review, setReview] = useState<ReviewResponse | null>(null);
-  const [events, setEvents] = useState<AgentEventResponse[]>([]);
-  const [workflow, setWorkflow] = useState<WorkflowSnapshotResponse | null>(null);
   const [approvals, setApprovals] = useState<WorkflowApprovalResponse[]>([]);
   const [workflowRuns, setWorkflowRuns] = useState<WorkflowRunResponse[]>([]);
   const [workflowVersions, setWorkflowVersions] = useState<WorkflowVersionResponse[]>([]);
+  const [deliveryReadiness, setDeliveryReadiness] = useState<DeliveryReadinessResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [generating, setGenerating] = useState(false);
-  const [continuing, setContinuing] = useState(false);
   const [downloadingMarkdown, setDownloadingMarkdown] = useState(false);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
-  const [retryingTaskId, setRetryingTaskId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const latestPrd = useMemo(() => latestArtifact(artifacts, 'PRD'), [artifacts]);
-  const projectStatus = useMemo(() => deriveProjectStatus(progress, artifacts), [artifacts, progress]);
-  const failedTask = useMemo(
-    () => progress?.steps.find((step) => step.status === 'FAILED' && step.taskId),
-    [progress]
-  );
+  const [resourceErrors, setResourceErrors] = useState<Partial<Record<AuxiliaryResource, string>>>({});
+  const [selectedStage, setSelectedStage] = useState<number | null>(null);
+  const loadInFlight = useRef<{ projectId: number; promise: Promise<void> } | null>(null);
+  const activeProjectId = useRef(projectId);
+  activeProjectId.current = projectId;
 
-  const loadProject = useCallback(async () => {
+  const latestRun = useMemo(
+    () => workflowRuns.slice().sort((left, right) => right.id - left.id)[0],
+    [workflowRuns]
+  );
+  const workflowStatus = latestRun?.status ?? project?.status ?? 'CREATED';
+  const specificationReady = deliveryReadiness?.specReady === true;
+  const deliverable = isDeliveryReady(deliveryReadiness);
+  const openReviewIssues = review?.issues.filter((issue) =>
+    issue.status === 'OPEN' || issue.status === 'IN_PROGRESS'
+  ) ?? [];
+  const inferredStage = useMemo(() => {
+    if (specificationReady || deliverable) return 3;
+    if (approvals.some((approval) => approval.status === 'PENDING') || openReviewIssues.length > 0) return 2;
+    if (latestRun) return 1;
+    return 0;
+  }, [approvals, deliverable, latestRun, openReviewIssues.length, specificationReady]);
+  const activeStage = selectedStage ?? inferredStage;
+
+  const loadProject = useCallback((): Promise<void> => {
     if (!Number.isFinite(projectId)) {
       setError('Invalid project id');
       setLoading(false);
-      return;
+      return Promise.resolve();
     }
-    try {
-      const [
-        nextProject,
-        nextProgress,
-        nextArtifacts,
-        nextReview,
-        nextEvents,
-        nextWorkflow,
-        nextApprovals,
-        nextRuns,
-        nextVersions
-      ] = await Promise.all([
-        getProject(projectId),
-        getProgress(projectId),
-        getArtifacts(projectId),
-        getReview(projectId).catch(() => null),
-        getEventHistory(projectId).catch(() => []),
-        getWorkflow(projectId).catch(() => null),
-        getWorkflowApprovals(projectId).catch(() => []),
-        getWorkflowRuns(projectId).catch(() => []),
-        getWorkflowVersions('autospec-v5').catch(() => [])
-      ]);
-      setProject(nextProject);
-      setProgress(nextProgress);
-      setArtifacts(nextArtifacts);
-      setReview(nextReview);
-      setEvents(nextEvents);
-      setWorkflow(nextWorkflow);
-      setApprovals(nextApprovals);
-      setWorkflowRuns(nextRuns);
-      setWorkflowVersions(nextVersions);
-      setError(null);
-    } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'Load failed');
-    } finally {
+    if (loadInFlight.current?.projectId === projectId) {
+      return loadInFlight.current.promise;
+    }
+    const requestedProjectId = projectId;
+    const request = (async () => {
+      const [projectResult, artifactResult, reviewResult, approvalResult, runResult, versionResult, readinessResult] =
+        await Promise.allSettled([
+          getProject(projectId),
+          getArtifacts(projectId),
+          getReview(projectId),
+          getWorkflowApprovals(projectId),
+          getWorkflowRuns(projectId),
+          getWorkflowVersions('autospec-v5'),
+          getDeliveryReadiness(projectId)
+        ]);
+      if (activeProjectId.current !== requestedProjectId) return;
+
+      const coreErrors: string[] = [];
+      if (projectResult.status === 'fulfilled') setProject(projectResult.value);
+      else coreErrors.push(`project: ${errorMessage(projectResult.reason)}`);
+      if (artifactResult.status === 'fulfilled') setArtifacts(artifactResult.value);
+      else coreErrors.push(`artifacts: ${errorMessage(artifactResult.reason)}`);
+
+      const nextErrors: Partial<Record<AuxiliaryResource, string>> = {};
+      if (reviewResult.status === 'fulfilled') setReview(reviewResult.value);
+      else nextErrors.review = errorMessage(reviewResult.reason);
+      if (approvalResult.status === 'fulfilled') setApprovals(approvalResult.value);
+      else nextErrors.approvals = errorMessage(approvalResult.reason);
+      if (runResult.status === 'fulfilled') setWorkflowRuns(runResult.value);
+      else nextErrors.runs = errorMessage(runResult.reason);
+      if (versionResult.status === 'fulfilled') setWorkflowVersions(versionResult.value);
+      else nextErrors.versions = errorMessage(versionResult.reason);
+      if (readinessResult.status === 'fulfilled') setDeliveryReadiness(readinessResult.value);
+      else {
+        setDeliveryReadiness(null);
+        nextErrors.readiness = errorMessage(readinessResult.reason);
+      }
+      setResourceErrors(nextErrors);
+      setError(coreErrors.length > 0 ? `Could not refresh ${coreErrors.join('; ')}` : null);
       setLoading(false);
-    }
+    })();
+    const tracked = request.finally(() => {
+      if (loadInFlight.current?.promise === tracked) loadInFlight.current = null;
+    });
+    loadInFlight.current = { projectId, promise: tracked };
+    return tracked;
   }, [projectId]);
 
   useEffect(() => {
@@ -135,107 +138,12 @@ function ProjectDetailPage() {
   }, [loadProject]);
 
   useEffect(() => {
-    if (!progress || progress.percent >= 100) {
+    if (!latestRun || !['RUNNING', 'PENDING'].includes(latestRun.status)) {
       return undefined;
     }
-    const timer = window.setInterval(() => {
-      void loadProject();
-    }, 2000);
+    const timer = window.setInterval(() => void loadProject(), 2000);
     return () => window.clearInterval(timer);
-  }, [loadProject, progress]);
-
-  useEffect(() => {
-    if (projectStatus !== 'GENERATING' || !Number.isFinite(projectId)) {
-      return undefined;
-    }
-
-    const source = subscribeProjectEvents(
-      projectId,
-      (event) => {
-        setEvents((current) => mergeEvent(current, event));
-      },
-      () => {
-        source.close();
-      }
-    );
-
-    return () => source.close();
-  }, [projectId, projectStatus]);
-
-  async function handleGeneratePrd() {
-    setGenerating(true);
-    try {
-      await generatePrd(projectId);
-      await loadProject();
-    } catch (generateError) {
-      message.error(generateError instanceof Error ? generateError.message : 'PRD generation failed');
-    } finally {
-      setGenerating(false);
-    }
-  }
-
-  async function handleRunAgents() {
-    setGenerating(true);
-    try {
-      await generateProject(projectId);
-      await loadProject();
-    } catch (generateError) {
-      message.error(generateError instanceof Error ? generateError.message : 'Generation failed');
-    } finally {
-      setGenerating(false);
-    }
-  }
-
-  async function handleSavePrd(content: string) {
-    if (!latestPrd) {
-      return;
-    }
-    try {
-      await updateArtifact(projectId, latestPrd.id, content);
-      message.success('PRD saved');
-      await loadProject();
-    } catch (saveError) {
-      message.error(saveError instanceof Error ? saveError.message : 'PRD save failed');
-    }
-  }
-
-  async function handleApprovePrd() {
-    if (!latestPrd) {
-      return;
-    }
-    try {
-      await approveArtifact(projectId, latestPrd.id);
-      message.success('PRD approved');
-      await loadProject();
-    } catch (approveError) {
-      message.error(approveError instanceof Error ? approveError.message : 'PRD approval failed');
-    }
-  }
-
-  async function handleContinueGeneration() {
-    setContinuing(true);
-    try {
-      await continueGeneration(projectId);
-      await loadProject();
-    } catch (continueError) {
-      message.error(continueError instanceof Error ? continueError.message : 'Generation failed');
-    } finally {
-      setContinuing(false);
-    }
-  }
-
-  async function handleRetryTask(taskId: number) {
-    setRetryingTaskId(taskId);
-    try {
-      await retryTask(projectId, taskId);
-      message.success('Retry started');
-      await loadProject();
-    } catch (retryError) {
-      message.error(retryError instanceof Error ? retryError.message : 'Retry failed');
-    } finally {
-      setRetryingTaskId(null);
-    }
-  }
+  }, [latestRun, loadProject]);
 
   async function handleApprovalDecision(approvalId: number, payload: ApprovalDecisionPayload) {
     try {
@@ -243,6 +151,7 @@ function ProjectDetailPage() {
       message.success('Workflow decision applied');
       await loadProject();
     } catch (decisionError) {
+      await loadProject().catch(() => undefined);
       message.error(decisionError instanceof Error ? decisionError.message : 'Decision failed');
       throw decisionError;
     }
@@ -260,6 +169,18 @@ function ProjectDetailPage() {
     }
   }
 
+  async function handleCancelRun(runId: number): Promise<WorkflowRunResponse> {
+    try {
+      const cancelled = await cancelWorkflowRun(projectId, runId);
+      message.success(`Workflow run #${runId} cancelled`);
+      await loadProject();
+      return cancelled;
+    } catch (cancelError) {
+      message.error(cancelError instanceof Error ? cancelError.message : 'Cancellation failed');
+      throw cancelError;
+    }
+  }
+
   async function handleStartWorkflow(payload: WorkflowRunStartPayload): Promise<WorkflowRunResponse> {
     try {
       const run = await startWorkflowRun(payload);
@@ -273,21 +194,11 @@ function ProjectDetailPage() {
   }
 
   async function handleLoadTimeline(runId: number): Promise<WorkflowNodeRunResponse[]> {
-    try {
-      return await getWorkflowRunNodes(runId);
-    } catch (timelineError) {
-      message.error(timelineError instanceof Error ? timelineError.message : 'Timeline load failed');
-      throw timelineError;
-    }
+    return getWorkflowRunNodes(runId);
   }
 
   async function handleLoadMetrics(runId: number): Promise<WorkflowRuntimeMetricsResponse> {
-    try {
-      return await getWorkflowRunMetrics(runId);
-    } catch (metricsError) {
-      message.error(metricsError instanceof Error ? metricsError.message : 'Metrics load failed');
-      throw metricsError;
-    }
+    return getWorkflowRunMetrics(runId);
   }
 
   async function handleExportMarkdown() {
@@ -315,145 +226,170 @@ function ProjectDetailPage() {
     }
   }
 
-  if (loading) {
+  if (loading && !project) {
     return (
-      <main className="workspace center-pane">
+      <main className="workspace center-pane" id="main-content">
         <Spin size="large" />
       </main>
     );
   }
 
-  if (error) {
+  if (error && !project) {
     return (
-      <main className="workspace">
+      <main className="workspace" id="main-content">
         <Result
           status="warning"
           title={error}
-          extra={
-            <Button>
-              <Link to="/">Back</Link>
-            </Button>
-          }
+          extra={(
+            <Space>
+              <Button icon={<ReloadOutlined />} onClick={() => void loadProject()}>Retry</Button>
+              <Button href="/">Back</Button>
+            </Space>
+          )}
         />
       </main>
     );
   }
 
   return (
-    <main className="workspace detail-stack">
+    <main className="workspace detail-stack" id="main-content">
+      {error ? (
+        <Alert
+          type="error"
+          showIcon
+          message="Some core project data could not be refreshed"
+          description={error}
+          action={<Button size="small" onClick={() => void loadProject()}>Retry</Button>}
+        />
+      ) : null}
+      {Object.keys(resourceErrors).length > 0 ? (
+        <Alert
+          type="warning"
+          showIcon
+          message="Some project data is temporarily unavailable"
+          description={Object.entries(resourceErrors)
+            .map(([name, reason]) => `${name}: ${reason}`)
+            .join(' · ')}
+          action={<Button size="small" onClick={() => void loadProject()}>Retry all</Button>}
+        />
+      ) : null}
       <section className="page-toolbar">
         <div>
-          <Typography.Title level={1}>Project #{projectId}</Typography.Title>
-          <Typography.Text className="muted">{projectStatus}</Typography.Text>
+          <Typography.Title level={1}>{project?.name ?? `Project #${projectId}`}</Typography.Title>
+          <Space wrap>
+            <Tag color={workflowStatus === 'COMPLETED' ? 'green' : 'blue'}>{workflowStatus}</Tag>
+            {latestRun?.qualityProfile ? <Tag>{latestRun.qualityProfile}</Tag> : null}
+            <Typography.Text className="muted">V5 canonical workflow</Typography.Text>
+          </Space>
         </div>
         <Space wrap>
-          {projectStatus === 'CREATED' ? (
-            <>
-              <Button type="primary" icon={<PlayCircleOutlined />} loading={generating} onClick={handleGeneratePrd}>
-                Generate PRD
-              </Button>
-              <Button icon={<ReloadOutlined />} loading={generating} onClick={handleRunAgents}>
-                Run agents
-              </Button>
-            </>
-          ) : null}
-          {projectStatus === 'PRD_APPROVED' ? (
-            <Button type="primary" icon={<CheckCircleOutlined />} loading={continuing} onClick={handleContinueGeneration}>
-              Continue generation
-            </Button>
-          ) : null}
-          {projectStatus === 'FAILED' && failedTask?.taskId ? (
-            <Button
-              type="primary"
-              icon={<ReloadOutlined />}
-              loading={retryingTaskId === failedTask.taskId}
-              onClick={() => handleRetryTask(failedTask.taskId as number)}
-            >
-              Retry failed task
-            </Button>
-          ) : null}
-          {projectStatus === 'COMPLETED' ? (
-            <>
-              <Button
-                icon={<DownloadOutlined />}
-                loading={downloadingMarkdown}
-                onClick={handleExportMarkdown}
-                disabled={artifacts.length === 0}
-              >
-                Export Markdown
-              </Button>
-              <Button
-                type="primary"
-                icon={<FilePdfOutlined />}
-                loading={downloadingPdf}
-                onClick={handleExportPdf}
-                disabled={artifacts.length === 0}
-              >
-                Export PDF
-              </Button>
-            </>
-          ) : null}
+          <Button
+            icon={<DownloadOutlined />}
+            loading={downloadingMarkdown}
+            onClick={handleExportMarkdown}
+            disabled={!deliverable}
+          >
+            Export Markdown
+          </Button>
+          <Button
+            type="primary"
+            icon={<FilePdfOutlined />}
+            loading={downloadingPdf}
+            onClick={handleExportPdf}
+            disabled={!deliverable}
+          >
+            Export PDF
+          </Button>
         </Space>
       </section>
-      {projectStatus === 'PRD_REVIEW' && latestPrd ? (
-        <PrdEditor artifact={latestPrd} onSave={handleSavePrd} onApprove={handleApprovePrd} />
+
+      <section className="panel stage-navigation" aria-label="Project stages">
+        <Steps
+          current={activeStage}
+          onChange={setSelectedStage}
+          responsive
+          items={[
+            { title: 'Intake', description: 'Requirement baseline' },
+            { title: 'Generate', description: 'Agents and approvals' },
+            { title: 'Review & fix', description: 'Quality decisions' },
+            { title: 'Deliver', description: 'Approved outputs' }
+          ]}
+        />
+      </section>
+
+      {activeStage === 0 ? (
+        <section className="panel intake-stage" aria-labelledby="intake-title">
+          <Typography.Title level={2} id="intake-title">Requirement baseline</Typography.Title>
+          <Alert
+            type="info"
+            showIcon
+            message="This requirement is frozen into every workflow run"
+            description="Use a new run or immutable replay for changes; previous outputs stay available."
+          />
+          <Typography.Paragraph className="requirement-baseline">
+            {project?.originalRequirement}
+          </Typography.Paragraph>
+          <Descriptions size="small" column={{ xs: 1, md: 3 }}>
+            <Descriptions.Item label="Project status">{project?.status}</Descriptions.Item>
+            <Descriptions.Item label="Latest workflow">{latestRun ? `#${latestRun.id}` : 'Not started'}</Descriptions.Item>
+            <Descriptions.Item label="Quality profile">{latestRun?.qualityProfile ?? 'Choose at generation'}</Descriptions.Item>
+          </Descriptions>
+          <Button type="primary" onClick={() => setSelectedStage(1)}>Continue to generation</Button>
+        </section>
       ) : null}
-      <AgentTimeline progress={progress} onRetryTask={handleRetryTask} retryingTaskId={retryingTaskId} />
-      <WorkflowGraph workflow={workflow} />
-      <WorkflowApprovalPanel approvals={approvals} artifacts={artifacts} onDecide={handleApprovalDecision} />
-      <WorkflowReplayPanel
-        projectId={projectId}
-        requirement={project?.originalRequirement ?? ''}
-        runs={workflowRuns}
-        versions={workflowVersions}
-        onStart={handleStartWorkflow}
-        onReplay={handleReplay}
-        onLoadTimeline={handleLoadTimeline}
-        onLoadMetrics={handleLoadMetrics}
-      />
-      {projectStatus === 'GENERATING' || events.length > 0 ? <ExecutionEventList events={events} /> : null}
-      {projectStatus === 'COMPLETED' ? <CodeExportPanel projectId={projectId} disabled={artifacts.length === 0} /> : null}
-      <ArtifactTabs artifacts={artifacts} />
-      <ReviewIssueTable review={review} />
+
+      {activeStage === 1 ? (
+        <WorkflowReplayPanel
+          projectId={projectId}
+          requirement={project?.originalRequirement ?? ''}
+          runs={workflowRuns}
+          versions={workflowVersions}
+          onStart={handleStartWorkflow}
+          onReplay={handleReplay}
+          onCancel={handleCancelRun}
+          onLoadTimeline={handleLoadTimeline}
+          onLoadMetrics={handleLoadMetrics}
+        />
+      ) : null}
+
+      {activeStage === 2 ? (
+        <>
+          <WorkflowApprovalPanel approvals={approvals} artifacts={artifacts} onDecide={handleApprovalDecision} />
+          <ReviewIssueTable
+            projectId={projectId}
+            review={review}
+            loadError={resourceErrors.review}
+            artifacts={artifacts}
+            onChanged={loadProject}
+            onRetry={loadProject}
+          />
+        </>
+      ) : null}
+
+      {activeStage === 3 ? (
+        <>
+          {!deliverable ? (
+            <Alert
+              type={specificationReady ? 'info' : 'warning'}
+              showIcon
+              message={specificationReady ? 'Build verification is required' : 'Specification gate is blocked'}
+              description={deliveryReadiness?.blockers.join(' · ')
+                ?? resourceErrors.readiness
+                ?? 'Complete the workflow, approvals, and blocking review findings.'}
+            />
+          ) : null}
+          {specificationReady ? (
+            <CodeExportPanel
+              projectId={projectId}
+              disabled={false}
+              onGenerated={loadProject}
+            />
+          ) : null}
+          <ArtifactTabs projectId={projectId} artifacts={artifacts} onChanged={loadProject} />
+        </>
+      ) : null}
     </main>
   );
-}
-
-function latestArtifact(artifacts: ArtifactResponse[], type: string): ArtifactResponse | undefined {
-  return artifacts
-    .filter((artifact) => artifact.type === type)
-    .sort((left, right) => right.version - left.version || right.id - left.id)[0];
-}
-
-function deriveProjectStatus(progress: ProjectProgressResponse | null, artifacts: ArtifactResponse[]): string {
-  if (progress?.status) {
-    return progress.status;
-  }
-  if (progress?.steps.some((step) => step.status === 'FAILED')) {
-    return 'FAILED';
-  }
-  if ((progress?.percent ?? 0) >= 100) {
-    return 'COMPLETED';
-  }
-  if ((progress?.percent ?? 0) > 0) {
-    return 'GENERATING';
-  }
-
-  const prd = latestArtifact(artifacts, 'PRD');
-  if (prd?.status === 'APPROVED') {
-    return 'PRD_APPROVED';
-  }
-  if (prd?.status === 'PENDING_REVIEW' || prd) {
-    return 'PRD_REVIEW';
-  }
-  return 'CREATED';
-}
-
-function mergeEvent(events: AgentEventResponse[], event: AgentEventResponse): AgentEventResponse[] {
-  if (events.some((existing) => existing.id === event.id)) {
-    return events;
-  }
-  return [...events, event];
 }
 
 function downloadBlob(content: BlobPart, fileName: string, type: string) {
@@ -464,6 +400,16 @@ function downloadBlob(content: BlobPart, fileName: string, type: string) {
   link.download = fileName;
   link.click();
   URL.revokeObjectURL(url);
+}
+
+function errorMessage(value: unknown): string {
+  return value instanceof Error ? value.message : 'Request failed';
+}
+
+export function isDeliveryReady(readiness: DeliveryReadinessResponse | null): boolean {
+  return readiness?.specReady === true
+    && readiness.buildReady === true
+    && readiness.status === 'READY';
 }
 
 export default ProjectDetailPage;

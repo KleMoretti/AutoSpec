@@ -42,7 +42,9 @@ import com.autospec.entity.ProjectMember;
 import com.autospec.entity.ReviewIssue;
 import com.autospec.entity.UserAccount;
 import com.autospec.entity.WorkflowRun;
+import com.autospec.entity.WorkflowNodeRun;
 import com.autospec.entity.WorkflowSnapshot;
+import com.autospec.mapper.WorkflowNodeRunMapper;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -131,6 +133,9 @@ class ProjectControllerTest {
     @Autowired
     private WorkflowRunService workflowRunService;
 
+    @Autowired
+    private WorkflowNodeRunMapper workflowNodeRunMapper;
+
     @Test
     void loginReturnsDemoSessionUser() throws Exception {
         mockMvc.perform(post("/api/auth/login")
@@ -142,7 +147,12 @@ class ProjectControllerTest {
                 .andExpect(jsonPath("$.userId").isNumber())
                 .andExpect(jsonPath("$.username").value("owner"))
                 .andExpect(jsonPath("$.displayName").value("Owner"))
-                .andExpect(jsonPath("$.sessionToken").isString());
+                .andExpect(jsonPath("$.sessionToken").isString())
+                .andExpect(result -> assertThat(result.getResponse().getHeader("Set-Cookie"))
+                        .contains("AUTOSPEC_SESSION=")
+                        .contains("HttpOnly")
+                        .contains("SameSite=Strict")
+                        .contains("Path=/"));
     }
 
     @Test
@@ -362,7 +372,7 @@ class ProjectControllerTest {
         mockMvc.perform(put("/api/projects/{projectId}/artifacts/{artifactId}", projectId, prd.getId())
                         .header(SESSION_HEADER, viewerToken)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"content\":\"{\\\"project_name\\\":\\\"Viewer Edit\\\"}\"}"))
+                        .content("{\"content\":\"{\\\"project_name\\\":\\\"Viewer Edit\\\"}\",\"expectedLockVersion\":0}"))
                 .andExpect(status().isForbidden());
 
         mockMvc.perform(post("/api/projects/{projectId}/generate-v4", projectId)
@@ -496,7 +506,18 @@ class ProjectControllerTest {
                         .header(SESSION_HEADER, token))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].artifactType").value("PRD"))
-                .andExpect(jsonPath("$[0].title").value("Knowledge Source PRD"));
+                .andExpect(jsonPath("$[0].title").value("Knowledge Source PRD"))
+                .andExpect(jsonPath("$[0].chunkId").isNumber())
+                .andExpect(jsonPath("$[0].citationLocation").value("chunk[0]"));
+
+        assertThat(knowledgeIndexService.retrieveForProject("campus favorites", 5, projectId))
+                .singleElement()
+                .satisfies(source -> {
+                    assertThat(source.chunkId()).isNotNull();
+                    assertThat(source.chunkIndex()).isZero();
+                    assertThat(source.retrievalStrategy()).isEqualTo("HYBRID_RRF_HASHING_V1");
+                    assertThat(source.relevanceScore()).isPositive();
+                });
     }
 
     @Test
@@ -573,7 +594,55 @@ class ProjectControllerTest {
     }
 
     @Test
-    void generationRetrievesOnlySourcesVisibleToProjectOwner() throws Exception {
+    void modelInvocationCursorPageRemainsStableAcrossConcurrentInserts() throws Exception {
+        String token = loginToken();
+        long projectId = createProject(token, "Model Invocation Cursor Project", "Build cursor model history.");
+        modelInvocation(projectId, "model-node-1");
+        modelInvocation(projectId, "model-node-2");
+        modelInvocation(projectId, "model-node-3");
+
+        String firstPageJson = mockMvc.perform(get(
+                                "/api/projects/{projectId}/model-invocations/page?limit=2",
+                                projectId
+                        )
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(2))
+                .andExpect(jsonPath("$.items[0].agentNode").value("model-node-1"))
+                .andExpect(jsonPath("$.items[1].agentNode").value("model-node-2"))
+                .andExpect(jsonPath("$.hasMore").value(true))
+                .andExpect(jsonPath("$.nextCursor").isString())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String cursor = objectMapper.readTree(firstPageJson).path("nextCursor").asText();
+
+        modelInvocation(projectId, "model-node-4");
+
+        mockMvc.perform(get(
+                                "/api/projects/{projectId}/model-invocations/page?limit=2&cursor={cursor}",
+                                projectId,
+                                cursor
+                        )
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(2))
+                .andExpect(jsonPath("$.items[0].agentNode").value("model-node-3"))
+                .andExpect(jsonPath("$.items[1].agentNode").value("model-node-4"))
+                .andExpect(jsonPath("$.hasMore").value(false))
+                .andExpect(jsonPath("$.nextCursor").doesNotExist());
+
+        mockMvc.perform(get(
+                                "/api/projects/{projectId}/model-invocations/page?cursor=invalid!",
+                                projectId
+                        )
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+    }
+
+    @Test
+    void generationRetrievesOnlySourcesFromCurrentProject() throws Exception {
         String token = loginToken();
         long ownerSourceProjectId = createProject(token, "Owner Source", "Build model routing marketplace.");
         Artifact ownerArtifact = approvedArtifact(ownerSourceProjectId, "Owner Source PRD", "model routing marketplace owner source");
@@ -597,6 +666,14 @@ class ProjectControllerTest {
         Artifact otherArtifact = approvedArtifact(otherProject.getId(), "Other Tenant PRD", "model routing marketplace other source");
         knowledgeIndexService.indexApprovedArtifact(otherArtifact);
 
+        long projectId = createProject(token, "Routed Project", "Build model routing marketplace.");
+        Artifact currentArtifact = approvedArtifact(
+                projectId,
+                "Current Project PRD",
+                "model routing marketplace current project source"
+        );
+        knowledgeIndexService.indexApprovedArtifact(currentArtifact);
+
         when(agentEngineClient.generatePrd(contains("model routing"), anyList()))
                 .thenReturn(new AgentGenerationResult("""
                         {
@@ -610,7 +687,6 @@ class ProjectControllerTest {
                         }
                         """, null, null, List.of()));
 
-        long projectId = createProject(token, "Routed Project", "Build model routing marketplace.");
         mockMvc.perform(post("/api/projects/{projectId}/generate-prd", projectId)
                         .header(SESSION_HEADER, token))
                 .andExpect(status().isOk());
@@ -618,7 +694,8 @@ class ProjectControllerTest {
         ArgumentCaptor<List> sourcesCaptor = ArgumentCaptor.forClass(List.class);
         verify(agentEngineClient).generatePrd(eq("Build model routing marketplace."), sourcesCaptor.capture());
         assertThat(sourcesCaptor.getValue().toString())
-                .contains("Owner Source PRD")
+                .contains("Current Project PRD")
+                .doesNotContain("Owner Source PRD")
                 .doesNotContain("Other Tenant PRD");
     }
 
@@ -664,6 +741,54 @@ class ProjectControllerTest {
                 .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
 
         mockMvc.perform(get("/api/projects/{projectId}/events/history?offset=-1", projectId)
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+    }
+
+    @Test
+    void agentEventCursorPageRemainsStableAcrossConcurrentInserts() throws Exception {
+        String token = loginToken();
+        long projectId = createProject(token, "Agent Event Cursor Project", "Build cursor event history.");
+        agentEvent(projectId, "event-node-1");
+        agentEvent(projectId, "event-node-2");
+        agentEvent(projectId, "event-node-3");
+
+        String firstPageJson = mockMvc.perform(get(
+                                "/api/projects/{projectId}/events/history/page?limit=2",
+                                projectId
+                        )
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(2))
+                .andExpect(jsonPath("$.items[0].nodeName").value("event-node-1"))
+                .andExpect(jsonPath("$.items[1].nodeName").value("event-node-2"))
+                .andExpect(jsonPath("$.hasMore").value(true))
+                .andExpect(jsonPath("$.nextCursor").isString())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String cursor = objectMapper.readTree(firstPageJson).path("nextCursor").asText();
+
+        agentEvent(projectId, "event-node-4");
+
+        mockMvc.perform(get(
+                                "/api/projects/{projectId}/events/history/page?limit=2&cursor={cursor}",
+                                projectId,
+                                cursor
+                        )
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(2))
+                .andExpect(jsonPath("$.items[0].nodeName").value("event-node-3"))
+                .andExpect(jsonPath("$.items[1].nodeName").value("event-node-4"))
+                .andExpect(jsonPath("$.hasMore").value(false))
+                .andExpect(jsonPath("$.nextCursor").doesNotExist());
+
+        mockMvc.perform(get(
+                                "/api/projects/{projectId}/events/history/page?cursor=invalid!",
+                                projectId
+                        )
                         .header(SESSION_HEADER, token))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
@@ -752,6 +877,99 @@ class ProjectControllerTest {
     }
 
     @Test
+    void editorCanResolveReviewIssueWithEvidenceAndRequiredRationale() throws Exception {
+        String token = loginToken();
+        long projectId = createProject(token, "Review Resolution", "Resolve review findings.");
+        Artifact fixedArtifact = approvedArtifact(
+                projectId,
+                "Fixed API design",
+                "{\"apis\":[\"POST /api/items\"]}"
+        );
+        ReviewIssue issue = new ReviewIssue();
+        issue.setProjectId(projectId);
+        issue.setIssueKey("REQ-001:API_COVERAGE");
+        issue.setSeverity("HIGH");
+        issue.setIssueType("API_COVERAGE");
+        issue.setRequirementId("REQ-001");
+        issue.setArtifactPath("$.apis");
+        issue.setDescription("A required API is missing.");
+        issue.setSuggestion("Add the API.");
+        issue.setStatus("OPEN");
+        reviewIssueService.save(issue);
+
+        mockMvc.perform(put("/api/projects/{projectId}/review/issues/{issueId}", projectId, issue.getId())
+                        .header(SESSION_HEADER, token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "status": "RESOLVED",
+                                  "resolution": "Added and validated the missing API.",
+                                  "resolvedInArtifactId": %d
+                                }
+                                """.formatted(fixedArtifact.getId())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.issueKey").value("REQ-001:API_COVERAGE"))
+                .andExpect(jsonPath("$.status").value("RESOLVED"))
+                .andExpect(jsonPath("$.resolution").value("Added and validated the missing API."))
+                .andExpect(jsonPath("$.resolvedInArtifactId").value(fixedArtifact.getId()))
+                .andExpect(jsonPath("$.ownerUserId").isNumber());
+
+        mockMvc.perform(put("/api/projects/{projectId}/review/issues/{issueId}", projectId, issue.getId())
+                        .header(SESSION_HEADER, token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"IGNORED\"}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void artifactCursorPageRemainsStableAcrossConcurrentInserts() throws Exception {
+        String token = loginToken();
+        long projectId = createProject(token, "Artifact Cursor Project", "Build cursor artifact history.");
+        artifact(projectId, "PRD", "Artifact 1", "{}");
+        artifact(projectId, "BACKEND_DESIGN", "Artifact 2", "{}");
+        artifact(projectId, "REVIEW_REPORT", "Artifact 3", "{}");
+
+        String firstPageJson = mockMvc.perform(get(
+                                "/api/projects/{projectId}/artifacts/page?limit=2",
+                                projectId
+                        )
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(2))
+                .andExpect(jsonPath("$.items[0].title").value("Artifact 1"))
+                .andExpect(jsonPath("$.items[1].title").value("Artifact 2"))
+                .andExpect(jsonPath("$.hasMore").value(true))
+                .andExpect(jsonPath("$.nextCursor").isString())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String cursor = objectMapper.readTree(firstPageJson).path("nextCursor").asText();
+
+        artifact(projectId, "FRONTEND_DESIGN", "Artifact 4", "{}");
+
+        mockMvc.perform(get(
+                                "/api/projects/{projectId}/artifacts/page?limit=2&cursor={cursor}",
+                                projectId,
+                                cursor
+                        )
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(2))
+                .andExpect(jsonPath("$.items[0].title").value("Artifact 3"))
+                .andExpect(jsonPath("$.items[1].title").value("Artifact 4"))
+                .andExpect(jsonPath("$.hasMore").value(false))
+                .andExpect(jsonPath("$.nextCursor").doesNotExist());
+
+        mockMvc.perform(get(
+                                "/api/projects/{projectId}/artifacts/page?cursor=invalid!",
+                                projectId
+                        )
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+    }
+
+    @Test
     void artifactVersionHistorySupportsBoundedPagination() throws Exception {
         String token = loginToken();
         long projectId = createProject(token, "Artifact Version Project", "Track artifact versions.");
@@ -761,10 +979,12 @@ class ProjectControllerTest {
                         .header(SESSION_HEADER, token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(java.util.Map.of(
-                                "content", "{\"project_name\":\"second\"}"
+                                "content", "{\"project_name\":\"second\"}",
+                                "expectedLockVersion", 0
                         ))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.version").value(2))
+                .andExpect(jsonPath("$.lockVersion").value(0))
                 .andReturn()
                 .getResponse()
                 .getContentAsString();
@@ -774,7 +994,8 @@ class ProjectControllerTest {
                         .header(SESSION_HEADER, token)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(java.util.Map.of(
-                                "content", "{\"project_name\":\"third\"}"
+                                "content", "{\"project_name\":\"third\"}",
+                                "expectedLockVersion", 0
                         ))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.version").value(3))
@@ -1151,6 +1372,148 @@ class ProjectControllerTest {
     }
 
     @Test
+    void staleArtifactEditReturnsLatestVersionDetails() throws Exception {
+        String token = loginToken();
+        long projectId = createProject(token, "Artifact Lock Project", "Protect concurrent artifact edits.");
+        Artifact original = artifact(projectId, "PRD", "Concurrent PRD", "{\"project_name\":\"original\"}");
+
+        String firstResponse = mockMvc.perform(put("/api/projects/{projectId}/artifacts/{artifactId}", projectId, original.getId())
+                        .header(SESSION_HEADER, token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(java.util.Map.of(
+                                "content", "{\"project_name\":\"first editor\"}",
+                                "expectedLockVersion", 0
+                        ))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.version").value(2))
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        long latestArtifactId = objectMapper.readTree(firstResponse).get("id").asLong();
+
+        mockMvc.perform(post("/api/projects/{projectId}/artifacts/{artifactId}/approve", projectId, original.getId())
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("OPTIMISTIC_LOCK_CONFLICT"))
+                .andExpect(jsonPath("$.details.latestResourceId").value(Long.toString(latestArtifactId)));
+
+        mockMvc.perform(put("/api/projects/{projectId}/artifacts/{artifactId}", projectId, original.getId())
+                        .header(SESSION_HEADER, token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(java.util.Map.of(
+                                "content", "{\"project_name\":\"stale editor\"}",
+                                "expectedLockVersion", 0
+                        ))))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("OPTIMISTIC_LOCK_CONFLICT"))
+                .andExpect(jsonPath("$.details.expectedLockVersion").value("0"))
+                .andExpect(jsonPath("$.details.currentLockVersion").value("1"))
+                .andExpect(jsonPath("$.details.latestResourceId").value(Long.toString(latestArtifactId)))
+                .andExpect(jsonPath("$.details.latestResourceVersion").value("2"));
+
+        assertThat(artifactService.listVersionsByProjectIdAndType(projectId, "PRD", 10, 0))
+                .hasSize(2);
+        assertThat(artifactService.getById(original.getId()).getLockVersion()).isEqualTo(1);
+    }
+
+    @Test
+    void workflowRunCursorPageRemainsStableAcrossConcurrentInserts() throws Exception {
+        String token = loginToken();
+        long projectId = createProject(token, "Workflow Cursor Project", "Build cursor history.");
+        workflowRun(projectId, "cursor-run-1");
+        workflowRun(projectId, "cursor-run-2");
+        workflowRun(projectId, "cursor-run-3");
+
+        String firstPageJson = mockMvc.perform(get(
+                                "/api/projects/{projectId}/workflow-runs/page?limit=2",
+                                projectId
+                        )
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(2))
+                .andExpect(jsonPath("$.items[0].idempotencyKey").value("cursor-run-1"))
+                .andExpect(jsonPath("$.items[1].idempotencyKey").value("cursor-run-2"))
+                .andExpect(jsonPath("$.hasMore").value(true))
+                .andExpect(jsonPath("$.nextCursor").isString())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String cursor = objectMapper.readTree(firstPageJson).path("nextCursor").asText();
+
+        workflowRun(projectId, "cursor-run-4");
+
+        mockMvc.perform(get(
+                                "/api/projects/{projectId}/workflow-runs/page?limit=2&cursor={cursor}",
+                                projectId,
+                                cursor
+                        )
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(2))
+                .andExpect(jsonPath("$.items[0].idempotencyKey").value("cursor-run-3"))
+                .andExpect(jsonPath("$.items[1].idempotencyKey").value("cursor-run-4"))
+                .andExpect(jsonPath("$.hasMore").value(false))
+                .andExpect(jsonPath("$.nextCursor").doesNotExist());
+
+        mockMvc.perform(get(
+                                "/api/projects/{projectId}/workflow-runs/page?cursor=invalid!",
+                                projectId
+                        )
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+    }
+
+    @Test
+    void workflowNodeRunCursorPageRemainsStableAcrossConcurrentInserts() throws Exception {
+        String token = loginToken();
+        long projectId = createProject(token, "Node Cursor Project", "Build cursor node history.");
+        WorkflowRun run = workflowRun(projectId, "node-cursor-run");
+        workflowNodeRun(run.getId(), "node-1");
+        workflowNodeRun(run.getId(), "node-2");
+        workflowNodeRun(run.getId(), "node-3");
+
+        String firstPageJson = mockMvc.perform(get(
+                                "/api/workflow-runs/{runId}/nodes/page?limit=2",
+                                run.getId()
+                        )
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(2))
+                .andExpect(jsonPath("$.items[0].nodeId").value("node-1"))
+                .andExpect(jsonPath("$.items[1].nodeId").value("node-2"))
+                .andExpect(jsonPath("$.hasMore").value(true))
+                .andExpect(jsonPath("$.nextCursor").isString())
+                .andReturn()
+                .getResponse()
+                .getContentAsString();
+        String cursor = objectMapper.readTree(firstPageJson).path("nextCursor").asText();
+
+        workflowNodeRun(run.getId(), "node-4");
+
+        mockMvc.perform(get(
+                                "/api/workflow-runs/{runId}/nodes/page?limit=2&cursor={cursor}",
+                                run.getId(),
+                                cursor
+                        )
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items.length()").value(2))
+                .andExpect(jsonPath("$.items[0].nodeId").value("node-3"))
+                .andExpect(jsonPath("$.items[1].nodeId").value("node-4"))
+                .andExpect(jsonPath("$.hasMore").value(false))
+                .andExpect(jsonPath("$.nextCursor").doesNotExist());
+
+        mockMvc.perform(get(
+                                "/api/workflow-runs/{runId}/nodes/page?cursor=invalid!",
+                                run.getId()
+                        )
+                        .header(SESSION_HEADER, token))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
+    }
+
+    @Test
     void runningWorkflowRunCanBeCancelled() throws Exception {
         String token = loginToken();
         long projectId = createProject(token, "Cancelable Workflow Project", "Build cancellable workflow orchestration.");
@@ -1252,7 +1615,13 @@ class ProjectControllerTest {
         String token = loginToken();
         long projectId = createProject(token, "Retryable Code Job Project", "Build retryable code export.");
         artifact(projectId, "PRD", "Retry PRD", "{\"project_name\":\"Retry\"}");
-        artifact(projectId, "BACKEND_DESIGN", "Retry Backend", "{\"apis\":[]}");
+        artifact(projectId, "BACKEND_DESIGN", "Retry Backend", """
+                {"apis":[{"method":"GET","path":"/api/retry","description":"Retry status"}]}
+                """);
+        artifact(projectId, "FRONTEND_SKELETON", "Retry Frontend", """
+                {"routes":[{"path":"/retry","page":"RetryPage"}],
+                 "pages":[{"name":"RetryPage","purpose":"Show retry status","components":["RetryStatus"]}]}
+                """);
 
         CodeGenerationJob failedJob = new CodeGenerationJob();
         failedJob.setProjectId(projectId);
@@ -1315,7 +1684,7 @@ class ProjectControllerTest {
         return authService.issueSession(user);
     }
 
-    private void workflowRun(Long projectId, String idempotencyKey) {
+    private WorkflowRun workflowRun(Long projectId, String idempotencyKey) {
         WorkflowRun run = new WorkflowRun();
         run.setProjectId(projectId);
         run.setOperation("GENERATE_V4");
@@ -1326,6 +1695,21 @@ class ProjectControllerTest {
         run.setStartedAt(LocalDateTime.now().minusSeconds(1));
         run.setCompletedAt(LocalDateTime.now());
         workflowRunService.save(run);
+        return run;
+    }
+
+    private WorkflowNodeRun workflowNodeRun(Long workflowRunId, String nodeId) {
+        WorkflowNodeRun nodeRun = new WorkflowNodeRun();
+        nodeRun.setWorkflowRunId(workflowRunId);
+        nodeRun.setNodeId(nodeId);
+        nodeRun.setRevision(1);
+        nodeRun.setAttempt(1);
+        nodeRun.setExecutionId(workflowRunId + ":" + nodeId + ":1:1");
+        nodeRun.setStatus("SUCCEEDED");
+        nodeRun.setHandlerKey(nodeId);
+        nodeRun.setHandlerVersion("v1");
+        workflowNodeRunMapper.insert(nodeRun);
+        return nodeRun;
     }
 
     private void codeGenerationJob(Long projectId, String status) {

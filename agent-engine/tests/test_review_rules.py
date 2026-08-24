@@ -178,7 +178,13 @@ def _frontend_without_api_binding(path: str) -> FrontendSkeletonArtifact:
                     "type": "form",
                     "props": ["artifact"],
                     "state": ["draftContent"],
-                }
+                },
+                {
+                    "name": "ArtifactTabs",
+                    "type": "tabs",
+                    "props": ["artifacts"],
+                    "state": [],
+                },
             ],
             "api_bindings": [
                 {
@@ -390,7 +396,8 @@ def test_reviewer_routes_backend_issues_to_structured_rework_target():
 
     assert report.decision == "REWORK"
     assert [route.target_node for route in report.routes] == ["backend_engineer"]
-    assert report.routes[0].issue_ids == ["R-1"]
+    assert report.routes[0].issue_ids == [report.issues[0].issue_id]
+    assert report.issues[0].issue_id.startswith("ISS-")
     assert report.routes[0].required_changes == [report.issues[0].suggestion]
     assert report.routes[0].invalidate_downstream is True
 

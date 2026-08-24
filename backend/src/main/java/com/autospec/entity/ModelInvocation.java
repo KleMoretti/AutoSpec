@@ -21,6 +21,8 @@ public class ModelInvocation {
 
     private Long workflowRunId;
 
+    private Long workflowNodeRunId;
+
     private String correlationId;
 
     private String providerKey;
@@ -38,6 +40,26 @@ public class ModelInvocation {
     private Integer inputTokens;
 
     private Integer outputTokens;
+
+    private Integer cacheTokens;
+
+    private String promptKey;
+
+    private String promptVersion;
+
+    private String promptChecksum;
+
+    private String contractHash;
+
+    private String routeKey;
+
+    private String routeReason;
+
+    private Boolean fallbackUsed;
+
+    private String contextManifestJson;
+
+    private Integer callCount;
 
     private BigDecimal estimatedCost;
 

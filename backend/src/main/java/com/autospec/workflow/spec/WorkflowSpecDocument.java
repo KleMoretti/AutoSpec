@@ -5,6 +5,7 @@ import java.util.List;
 public record WorkflowSpecDocument(
         String workflowKey,
         String version,
+        int protocolVersion,
         int maxParallelNodes,
         int maxReviewRounds,
         List<WorkflowNodeDocument> nodes,
@@ -21,10 +22,22 @@ public record WorkflowSpecDocument(
             String workflowKey,
             String version,
             int maxParallelNodes,
+            int maxReviewRounds,
             List<WorkflowNodeDocument> nodes,
             List<WorkflowEdgeDocument> edges,
             List<String> entryNodes
     ) {
-        this(workflowKey, version, maxParallelNodes, 0, nodes, edges, entryNodes);
+        this(workflowKey, version, 0, maxParallelNodes, maxReviewRounds, nodes, edges, entryNodes);
+    }
+
+    public WorkflowSpecDocument(
+            String workflowKey,
+            String version,
+            int maxParallelNodes,
+            List<WorkflowNodeDocument> nodes,
+            List<WorkflowEdgeDocument> edges,
+            List<String> entryNodes
+    ) {
+        this(workflowKey, version, 0, maxParallelNodes, 0, nodes, edges, entryNodes);
     }
 }

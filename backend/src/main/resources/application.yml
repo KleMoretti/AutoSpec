@@ -4,7 +4,7 @@ spring:
   config:
     import: optional:file:../.env[.properties]
   datasource:
-    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${MYSQL_DATABASE:autospec}?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+    url: ${DB_URL:jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${MYSQL_DATABASE:autospec}?createDatabaseIfNotExist=true&useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC}
     username: ${MYSQL_USER:root}
     password: ${MYSQL_PASSWORD:}
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -12,6 +12,9 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      ssl:
+        enabled: ${REDIS_SSL_ENABLED:false}
   sql:
     init:
       mode: ${SQL_INIT_MODE:never}
@@ -31,16 +34,93 @@ mybatis-plus:
 server:
   port: ${BACKEND_PORT:8080}
 
+logging:
+  include-application-name: false
+  pattern:
+    correlation: "[${spring.application.name:},%X{traceId:-},%X{spanId:-},%X{correlationId:-},%X{workflowRunId:-},%X{nodeRunId:-},%X{executionId:-}] "
+
+management:
+  tracing:
+    enabled: ${BACKEND_TRACING_ENABLED:false}
+    propagation:
+      type: w3c
+    sampling:
+      probability: ${BACKEND_TRACING_SAMPLING_PROBABILITY:1.0}
+  otlp:
+    tracing:
+      endpoint: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:http://localhost:4318/v1/traces}
+      timeout: ${BACKEND_OTLP_TRACING_TIMEOUT:5s}
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      show-details: never
+      validate-group-membership: false
+      probes:
+        enabled: true
+      group:
+        liveness:
+          include: livenessState,ping
+        readiness:
+          include: readinessState,db,redis
+  metrics:
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+      slo:
+        http.server.requests: 100ms,250ms,500ms,1s,2s,5s
+
 autospec:
+  environment: ${AUTOSPEC_ENV:development}
+  auth:
+    demo-user:
+      enabled: ${AUTH_DEMO_USER_ENABLED:false}
+      username: ${AUTH_DEMO_USER_USERNAME:owner}
+      display-name: ${AUTH_DEMO_USER_DISPLAY_NAME:Owner}
+      password: ${AUTH_DEMO_USER_PASSWORD:}
+    login-rate-limit:
+      enabled: ${AUTH_LOGIN_RATE_LIMIT_ENABLED:true}
+      max-attempts: ${AUTH_LOGIN_RATE_LIMIT_MAX_ATTEMPTS:5}
+      window: ${AUTH_LOGIN_RATE_LIMIT_WINDOW:5m}
+    session:
+      ttl: ${AUTH_SESSION_TTL:12h}
+      cookie-secure: ${AUTH_SESSION_COOKIE_SECURE:false}
+      same-site: ${AUTH_SESSION_SAME_SITE:Strict}
+      expose-token-in-response: ${AUTH_SESSION_EXPOSE_TOKEN:false}
   agent-engine:
     base-url: ${AGENT_ENGINE_BASE_URL:http://localhost:8000}
+    service-token: ${AGENT_ENGINE_SERVICE_TOKEN:}
+    connect-timeout: ${AGENT_ENGINE_CONNECT_TIMEOUT:5s}
+    read-timeout: ${AGENT_ENGINE_READ_TIMEOUT:60s}
+  observability:
+    workflow-backlog:
+      enabled: ${WORKFLOW_BACKLOG_METRICS_ENABLED:false}
+      fixed-delay: ${WORKFLOW_BACKLOG_METRICS_FIXED_DELAY:15000}
+      initial-delay: ${WORKFLOW_BACKLOG_METRICS_INITIAL_DELAY:5000}
+      event-stream: ${WORKFLOW_EVENT_STREAM:autospec.workflow.events}
+      consumer-group: ${WORKFLOW_EVENT_CONSUMER_GROUP:autospec-control-plane}
   workflow:
+    admission:
+      enabled: ${WORKFLOW_ADMISSION_ENABLED:true}
+      max-pending-outbox: ${WORKFLOW_ADMISSION_MAX_PENDING_OUTBOX:10000}
+      max-oldest-outbox-age: ${WORKFLOW_ADMISSION_MAX_OLDEST_OUTBOX_AGE:5m}
+      max-worker-backlog: ${WORKFLOW_ADMISSION_MAX_WORKER_BACKLOG:1000}
+      retry-after: ${WORKFLOW_ADMISSION_RETRY_AFTER:5s}
     available-handlers: ${WORKFLOW_AVAILABLE_HANDLERS:FixtureAgent:v1,ProductManagerAgent:v1,ArchitectAgent:v1,BackendEngineerAgent:v1,BackendEngineerAgent:v2,FrontendEngineerAgent:v1,ReviewerAgent:v1,EvaluatorAgent:v1,author_agent:v1,reviewer_agent:v1}
+    commands:
+      stream-max-length: ${WORKFLOW_COMMAND_STREAM_MAX_LENGTH:1000000}
     outbox:
       enabled: ${WORKFLOW_OUTBOX_ENABLED:false}
       batch-size: ${WORKFLOW_OUTBOX_BATCH_SIZE:20}
       fixed-delay: ${WORKFLOW_OUTBOX_FIXED_DELAY:500}
       initial-delay: ${WORKFLOW_OUTBOX_INITIAL_DELAY:1000}
+      retry:
+        base-delay: ${WORKFLOW_OUTBOX_RETRY_BASE_DELAY:1s}
+        max-delay: ${WORKFLOW_OUTBOX_RETRY_MAX_DELAY:1m}
+        jitter-ratio: ${WORKFLOW_OUTBOX_RETRY_JITTER_RATIO:0.2}
+        max-attempts: ${WORKFLOW_OUTBOX_RETRY_MAX_ATTEMPTS:5}
     recovery:
       enabled: ${WORKFLOW_RECOVERY_ENABLED:false}
       lease-timeout: ${WORKFLOW_RECOVERY_LEASE_TIMEOUT:30s}
@@ -52,5 +132,6 @@ autospec:
         consumer-name: ${WORKFLOW_EVENT_CONSUMER_NAME:control-plane}
         batch-size: ${WORKFLOW_EVENT_BATCH_SIZE:10}
         block-timeout: ${WORKFLOW_EVENT_BLOCK_TIMEOUT:1s}
+        claim-min-idle: ${WORKFLOW_EVENT_CLAIM_MIN_IDLE:30s}
         fixed-delay: ${WORKFLOW_EVENT_FIXED_DELAY:1000}
         initial-delay: ${WORKFLOW_EVENT_INITIAL_DELAY:1000}

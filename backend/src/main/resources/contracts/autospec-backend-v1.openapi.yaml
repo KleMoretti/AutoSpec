@@ -21,7 +21,7 @@ paths:
                 type: string
   /api/auth/login:
     post:
-      summary: Create a demo session token.
+      summary: Create an authenticated persistent session.
       security: []
       requestBody:
         required: true
@@ -38,6 +38,18 @@ paths:
                 $ref: '#/components/schemas/LoginResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /api/auth/logout:
+    post:
+      summary: Revoke the current persistent session token.
+      parameters:
+        - $ref: '#/components/parameters/SessionToken'
+      responses:
+        '204':
+          description: Session revoked.
         '401':
           $ref: '#/components/responses/Unauthorized'
   /api/prompts/active:
@@ -90,6 +102,26 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CreateProjectResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/projects/dashboard:
+    get:
+      summary: List project dashboard summaries visible to the session user.
+      parameters:
+        - $ref: '#/components/parameters/SessionToken'
+        - $ref: '#/components/parameters/PaginationLimit'
+        - $ref: '#/components/parameters/PaginationOffset'
+      responses:
+        '200':
+          description: Project dashboard summaries.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProjectDashboardItemResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -222,6 +254,52 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '422':
+          description: Specification or build verification gate rejected the bundle.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorResponse'
+  /api/projects/{projectId}/delivery-readiness:
+    get:
+      summary: Evaluate trusted specification and post-generation build delivery gates.
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/SessionToken'
+      responses:
+        '200':
+          description: Current delivery gate state and blockers.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeliveryReadinessResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/projects/{projectId}/trace-graph:
+    get:
+      summary: Fetch stable artifact components and explicit trace edges for one workflow run.
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/SessionToken'
+        - name: workflowRunId
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Artifact trace graph.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ArtifactTraceGraphResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /api/projects/{projectId}/code-generation-jobs:
     get:
       summary: List durable code generation jobs.
@@ -323,6 +401,191 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+  /api/projects/{projectId}/workflow-approvals:
+    get:
+      summary: List workflow approvals for a project.
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/SessionToken'
+      responses:
+        '200':
+          description: Workflow approval list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WorkflowApprovalResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/workflow-approvals/{approvalId}/decide:
+    post:
+      summary: Decide a pending workflow approval using optimistic concurrency control.
+      parameters:
+        - $ref: '#/components/parameters/ApprovalId'
+        - $ref: '#/components/parameters/SessionToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApprovalDecisionRequest'
+      responses:
+        '200':
+          description: Persisted approval decision or an idempotent replay of it.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowApprovalResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/OptimisticLockConflict'
+  /api/workflows/{workflowKey}/versions:
+    get:
+      summary: List immutable workflow definition versions.
+      parameters:
+        - name: workflowKey
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/SessionToken'
+      responses:
+        '200':
+          description: Workflow version list.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WorkflowVersionResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/workflow-runs:
+    post:
+      summary: Start a versioned workflow with a frozen execution policy and server-trusted retrieval context.
+      parameters:
+        - $ref: '#/components/parameters/SessionToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkflowRunStartRequest'
+      responses:
+        '200':
+          description: Started workflow run.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowRunResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/workflow-runs/{runId}:
+    get:
+      summary: Fetch a versioned workflow run and its budget consumption.
+      parameters:
+        - $ref: '#/components/parameters/RunId'
+        - $ref: '#/components/parameters/SessionToken'
+      responses:
+        '200':
+          description: Workflow run.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowRunResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/workflow-runs/{runId}/nodes:
+    get:
+      summary: List all node attempts for a workflow run.
+      parameters:
+        - $ref: '#/components/parameters/RunId'
+        - $ref: '#/components/parameters/SessionToken'
+      responses:
+        '200':
+          description: Workflow node attempts.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WorkflowNodeRunResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/workflow-runs/{runId}/metrics:
+    get:
+      summary: Fetch runtime, model usage, cost, and remaining workflow budgets.
+      parameters:
+        - $ref: '#/components/parameters/RunId'
+        - $ref: '#/components/parameters/SessionToken'
+      responses:
+        '200':
+          description: Workflow runtime metrics.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowRuntimeMetricsResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/workflow-runs/{runId}/replay:
+    post:
+      summary: Create an immutable replay from the original or a selected workflow version.
+      parameters:
+        - $ref: '#/components/parameters/RunId'
+        - $ref: '#/components/parameters/SessionToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkflowReplayRequest'
+      responses:
+        '200':
+          description: Replay workflow run.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowRunResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
   /api/projects/{projectId}/workflow-runs:
     get:
       summary: List workflow run history for a project.
@@ -340,6 +603,27 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/WorkflowRunResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/projects/{projectId}/workflow-runs/page:
+    get:
+      summary: List workflow run history using a stable ascending id cursor.
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/SessionToken'
+        - $ref: '#/components/parameters/PaginationLimit'
+        - $ref: '#/components/parameters/PaginationCursor'
+      responses:
+        '200':
+          description: Cursor page of workflow runs.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowRunCursorPage'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -368,6 +652,30 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+  /api/workflow-runs/{runId}/nodes/page:
+    get:
+      summary: List workflow node runs by stable ascending ID cursor.
+      description: New rows are returned only after the last ID from the previous page, avoiding offset drift.
+      parameters:
+        - $ref: '#/components/parameters/RunId'
+        - $ref: '#/components/parameters/SessionToken'
+        - $ref: '#/components/parameters/PaginationLimit'
+        - $ref: '#/components/parameters/PaginationCursor'
+      responses:
+        '200':
+          description: Cursor page of workflow node runs.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowNodeRunCursorPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /api/projects/{projectId}/audit-events:
     get:
       summary: List project audit events.
@@ -437,13 +745,34 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+  /api/projects/{projectId}/model-invocations/page:
+    get:
+      summary: List model invocations by stable ascending ID cursor.
+      description: The cursor resumes after the previous page's last invocation ID and is unaffected by later inserts.
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/SessionToken'
+        - $ref: '#/components/parameters/PaginationLimit'
+        - $ref: '#/components/parameters/PaginationCursor'
+      responses:
+        '200':
+          description: Cursor page of model invocation telemetry.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelInvocationCursorPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /api/projects/{projectId}/events:
     get:
       summary: Stream live Agent events for a project.
       parameters:
         - $ref: '#/components/parameters/ProjectId'
         - $ref: '#/components/parameters/SessionToken'
-        - $ref: '#/components/parameters/EventSessionToken'
       responses:
         '200':
           description: Server-sent Agent event stream.
@@ -472,6 +801,28 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/AgentEventResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /api/projects/{projectId}/events/history/page:
+    get:
+      summary: List persisted Agent events by stable ascending ID cursor.
+      description: The cursor resumes after the previous page's last event ID and is unaffected by later inserts.
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/SessionToken'
+        - $ref: '#/components/parameters/PaginationLimit'
+        - $ref: '#/components/parameters/PaginationCursor'
+      responses:
+        '200':
+          description: Cursor page of Agent events.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentEventCursorPage'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -563,6 +914,61 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+  /api/projects/{projectId}/review/issues/{issueId}:
+    put:
+      summary: Start, resolve, reopen, or explicitly ignore a first-class review issue.
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - name: issueId
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - $ref: '#/components/parameters/SessionToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewIssueUpdateRequest'
+      responses:
+        '200':
+          description: Updated review issue.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReviewIssueResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/projects/{projectId}/artifacts/page:
+    get:
+      summary: List project artifacts by stable ascending ID cursor.
+      description: New rows are returned only after the previous page's last ID, so inserts do not shift existing pages.
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/SessionToken'
+        - $ref: '#/components/parameters/PaginationLimit'
+        - $ref: '#/components/parameters/PaginationCursor'
+      responses:
+        '200':
+          description: Cursor page of project artifacts.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ArtifactCursorPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /api/projects/{projectId}/artifacts/{artifactId}:
     put:
       summary: Update an artifact by creating a new draft version.
@@ -591,6 +997,8 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/OptimisticLockConflict'
   /api/projects/{projectId}/artifacts/{artifactId}/versions:
     get:
       summary: List artifact version history.
@@ -637,6 +1045,64 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+  /api/projects/{projectId}/artifacts/{artifactId}/diff:
+    get:
+      summary: Compare two versions of the same artifact and return changed JSON paths.
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/ArtifactId'
+        - name: againstArtifactId
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int64
+        - $ref: '#/components/parameters/SessionToken'
+      responses:
+        '200':
+          description: Artifact field diff.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ArtifactDiffResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/projects/{projectId}/artifacts/{artifactId}/restore:
+    post:
+      summary: Restore an earlier artifact as a new candidate version without rewriting history.
+      parameters:
+        - $ref: '#/components/parameters/ProjectId'
+        - $ref: '#/components/parameters/ArtifactId'
+        - $ref: '#/components/parameters/SessionToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ArtifactRestoreRequest'
+      responses:
+        '200':
+          description: Newly created candidate artifact.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ArtifactResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/OptimisticLockConflict'
   /api/projects/{projectId}/exports:
     get:
       summary: List durable export files without large content payloads.
@@ -710,24 +1176,18 @@ components:
   securitySchemes:
     SessionToken:
       type: apiKey
-      in: header
-      name: X-AutoSpec-Session-Token
+      in: cookie
+      name: AUTOSPEC_SESSION
   parameters:
     SessionToken:
-      name: X-AutoSpec-Session-Token
-      in: header
+      name: AUTOSPEC_SESSION
+      in: cookie
       required: true
       schema:
         type: string
     IdempotencyKey:
       name: Idempotency-Key
       in: header
-      required: false
-      schema:
-        type: string
-    EventSessionToken:
-      name: sessionToken
-      in: query
       required: false
       schema:
         type: string
@@ -740,6 +1200,13 @@ components:
         format: int64
     ArtifactId:
       name: artifactId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    ApprovalId:
+      name: approvalId
       in: path
       required: true
       schema:
@@ -790,6 +1257,13 @@ components:
         type: integer
         minimum: 0
         default: 0
+    PaginationCursor:
+      name: cursor
+      in: query
+      required: false
+      description: Opaque cursor returned by the previous page; ordering is ascending by id.
+      schema:
+        type: string
   responses:
     BadRequest:
       description: Invalid request.
@@ -799,6 +1273,17 @@ components:
             $ref: '#/components/schemas/ApiErrorResponse'
     Unauthorized:
       description: Missing or invalid session token.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiErrorResponse'
+    TooManyRequests:
+      description: Login attempt rate limit exceeded.
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+            minimum: 1
       content:
         application/json:
           schema:
@@ -821,6 +1306,26 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/ApiErrorResponse'
+    OptimisticLockConflict:
+      description: The resource changed after the client loaded it.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiErrorResponse'
+          example:
+            code: OPTIMISTIC_LOCK_CONFLICT
+            status: 409
+            message: The artifact was modified by another request
+            path: /api/projects/1/artifacts/10
+            timestamp: '2026-07-31T12:00:00Z'
+            fieldErrors: {}
+            details:
+              resourceType: artifact
+              resourceId: '10'
+              expectedLockVersion: '0'
+              currentLockVersion: '1'
+              latestResourceId: '11'
+              latestResourceVersion: '2'
     BadGateway:
       description: External Agent Engine failed or returned invalid output.
       content:
@@ -838,10 +1343,8 @@ components:
           type: string
     LoginResponse:
       type: object
-      required: [token, userId, username, displayName]
+      required: [userId, username, displayName]
       properties:
-        token:
-          type: string
         userId:
           type: integer
           format: int64
@@ -960,6 +1463,79 @@ components:
           items:
             type: object
             additionalProperties: true
+    WorkflowApprovalResponse:
+      type: object
+      required: [id, workflowRunId, nodeRunId, mode, allowedActions, status, lockVersion]
+      properties:
+        id:
+          type: integer
+          format: int64
+        workflowRunId:
+          type: integer
+          format: int64
+        nodeRunId:
+          type: integer
+          format: int64
+        nodeId:
+          type: string
+          nullable: true
+        mode:
+          type: string
+          enum: [BEFORE_NODE, AFTER_NODE]
+        allowedActions:
+          type: array
+          items:
+            type: string
+            enum: [APPROVE, REJECT, EDIT_AND_APPROVE, ROLLBACK_TO_NODE, CANCEL_WORKFLOW]
+        status:
+          type: string
+        decision:
+          type: string
+          nullable: true
+        candidateArtifactId:
+          type: integer
+          format: int64
+          nullable: true
+        revisedArtifactId:
+          type: integer
+          format: int64
+          nullable: true
+        lockVersion:
+          type: integer
+          minimum: 0
+        decisionReason:
+          type: string
+          nullable: true
+        decidedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+          nullable: true
+    ApprovalDecisionRequest:
+      type: object
+      required: [decision, idempotencyKey, expectedLockVersion]
+      properties:
+        decision:
+          type: string
+          enum: [APPROVE, REJECT, EDIT_AND_APPROVE, ROLLBACK_TO_NODE, CANCEL_WORKFLOW]
+        reason:
+          type: string
+          nullable: true
+        editedContent:
+          type: string
+          nullable: true
+        rollbackNodeId:
+          type: string
+          nullable: true
+        idempotencyKey:
+          type: string
+          minLength: 1
+        expectedLockVersion:
+          type: integer
+          minimum: 0
     KnowledgeSourceResponse:
       type: object
       required: [artifactId, artifactType, title, artifactVersion, content]
@@ -973,8 +1549,24 @@ components:
           type: string
         artifactVersion:
           type: integer
+        chunkId:
+          type: integer
+          format: int64
+          nullable: true
+        chunkIndex:
+          type: integer
+          nullable: true
+        citationLocation:
+          type: string
+          nullable: true
         content:
           type: string
+        retrievalStrategy:
+          type: string
+          nullable: true
+        relevanceScore:
+          type: number
+          nullable: true
     PromptVersionResponse:
       type: object
       required: [id, promptKey, version, checksum, active, createdAt]
@@ -1022,6 +1614,16 @@ components:
           type: string
         manifest:
           type: string
+        gateStatus:
+          type: string
+          nullable: true
+          enum: [PASSED, BLOCKED]
+        manifestHash:
+          type: string
+          nullable: true
+        verificationJson:
+          type: string
+          nullable: true
         errorMessage:
           type: string
           nullable: true
@@ -1036,11 +1638,172 @@ components:
           type: string
           format: date-time
           nullable: true
-    WorkflowRunResponse:
+        verifiedAt:
+          type: string
+          format: date-time
+          nullable: true
+    DeliveryReadinessResponse:
       type: object
-      required: [id, operation, status, startedAt]
+      required: [specReady, buildReady, status, blockers]
+      properties:
+        specReady:
+          type: boolean
+        buildReady:
+          type: boolean
+        status:
+          type: string
+          enum: [NOT_STARTED, SPEC_BLOCKED, BUILD_REQUIRED, READY]
+        workflowRunId:
+          type: integer
+          format: int64
+          nullable: true
+        codeGenerationJobId:
+          type: integer
+          format: int64
+          nullable: true
+        blockers:
+          type: array
+          items:
+            type: string
+    ArtifactTraceGraphResponse:
+      type: object
+      required: [components, edges]
+      properties:
+        workflowRunId:
+          type: integer
+          format: int64
+          nullable: true
+        components:
+          type: array
+          items:
+            $ref: '#/components/schemas/ArtifactTraceComponent'
+        edges:
+          type: array
+          items:
+            $ref: '#/components/schemas/ArtifactTraceEdge'
+    ArtifactTraceComponent:
+      type: object
+      required: [artifactId, artifactType, componentKey, componentType, displayName, jsonPath, contentHash]
+      properties:
+        artifactId:
+          type: integer
+          format: int64
+        artifactType:
+          type: string
+        componentKey:
+          type: string
+        componentType:
+          type: string
+        displayName:
+          type: string
+        jsonPath:
+          type: string
+        contentHash:
+          type: string
+    ArtifactTraceEdge:
+      type: object
+      required: [sourceArtifactId, fromComponentKey, toComponentKey, relationType]
+      properties:
+        sourceArtifactId:
+          type: integer
+          format: int64
+        fromComponentKey:
+          type: string
+        toComponentKey:
+          type: string
+        relationType:
+          type: string
+    WorkflowVersionResponse:
+      type: object
+      required: [id, definitionId, workflowKey, version, specJson, contentHash, status, createdAt]
       properties:
         id:
+          type: integer
+          format: int64
+        definitionId:
+          type: integer
+          format: int64
+        workflowKey:
+          type: string
+        version:
+          type: string
+        specJson:
+          type: string
+        contentHash:
+          type: string
+        status:
+          type: string
+        publishedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+    WorkflowExecutionPolicyRequest:
+      type: object
+      properties:
+        qualityProfile:
+          type: string
+          enum: [FAST, BALANCED, DEEP]
+        maxTokens:
+          type: integer
+          format: int64
+          minimum: 1
+        maxCost:
+          type: number
+          minimum: 0
+          exclusiveMinimum: true
+        maxModelCalls:
+          type: integer
+          minimum: 1
+        maxWallTimeMs:
+          type: integer
+          format: int64
+          minimum: 1000
+    WorkflowRunStartRequest:
+      type: object
+      required: [projectId, workflowVersionId, input]
+      properties:
+        projectId:
+          type: integer
+          format: int64
+        workflowVersionId:
+          type: integer
+          format: int64
+        input:
+          type: object
+          description: Client requirement input. Retrieved sources are ignored and injected by the server from actor-accessible approved artifacts.
+          additionalProperties: true
+        idempotencyKey:
+          type: string
+          maxLength: 128
+          nullable: true
+        executionPolicy:
+          $ref: '#/components/schemas/WorkflowExecutionPolicyRequest'
+    WorkflowReplayRequest:
+      type: object
+      required: [mode]
+      properties:
+        mode:
+          type: string
+          enum: [ORIGINAL_SNAPSHOT, SELECTED_VERSION]
+        selectedWorkflowVersionId:
+          type: integer
+          format: int64
+          nullable: true
+        idempotencyKey:
+          type: string
+          maxLength: 128
+          nullable: true
+    WorkflowRunResponse:
+      type: object
+      required: [id, projectId, operation, qualityProfile, consumedTokens, consumedCost, modelCallCount, status, startedAt]
+      properties:
+        id:
+          type: integer
+          format: int64
+        projectId:
           type: integer
           format: int64
         operation:
@@ -1051,6 +1814,44 @@ components:
         correlationId:
           type: string
           nullable: true
+        workflowVersionId:
+          type: integer
+          format: int64
+          nullable: true
+        replayOfRunId:
+          type: integer
+          format: int64
+          nullable: true
+        reviewRound:
+          type: integer
+          nullable: true
+        maxReviewRounds:
+          type: integer
+          nullable: true
+        qualityProfile:
+          type: string
+          enum: [FAST, BALANCED, DEEP]
+        maxTokens:
+          type: integer
+          format: int64
+          nullable: true
+        maxCost:
+          type: number
+          nullable: true
+        maxModelCalls:
+          type: integer
+          nullable: true
+        maxWallTimeMs:
+          type: integer
+          format: int64
+          nullable: true
+        consumedTokens:
+          type: integer
+          format: int64
+        consumedCost:
+          type: number
+        modelCallCount:
+          type: integer
         status:
           type: string
         responseStatus:
@@ -1068,6 +1869,178 @@ components:
         completedAt:
           type: string
           format: date-time
+          nullable: true
+    ModelUsageResponse:
+      type: object
+      required: [providerKey, modelName, invocationCount, modelCallCount, inputTokens, outputTokens, cacheTokens, estimatedCost]
+      properties:
+        providerKey:
+          type: string
+        modelName:
+          type: string
+        invocationCount:
+          type: integer
+        modelCallCount:
+          type: integer
+        inputTokens:
+          type: integer
+          format: int64
+        outputTokens:
+          type: integer
+          format: int64
+        cacheTokens:
+          type: integer
+          format: int64
+        estimatedCost:
+          type: number
+    WorkflowRuntimeMetricsResponse:
+      type: object
+      required: [workflowRunId, nodeAttemptCount, queueTimeMs, executionDurationMs, retryCount, recoveryCount, tokenCount, cacheTokenCount, estimatedCost, modelCallCount, acceptedDuplicateEventCount, modelUsage]
+      properties:
+        workflowRunId:
+          type: integer
+          format: int64
+        nodeAttemptCount:
+          type: integer
+        queueTimeMs:
+          type: integer
+          format: int64
+        executionDurationMs:
+          type: integer
+          format: int64
+        retryCount:
+          type: integer
+        recoveryCount:
+          type: integer
+        tokenCount:
+          type: integer
+          format: int64
+        cacheTokenCount:
+          type: integer
+          format: int64
+        estimatedCost:
+          type: number
+        modelCallCount:
+          type: integer
+        acceptedDuplicateEventCount:
+          type: integer
+        qualityProfile:
+          type: string
+          nullable: true
+        maxTokens:
+          type: integer
+          format: int64
+          nullable: true
+        maxCost:
+          type: number
+          nullable: true
+        maxModelCalls:
+          type: integer
+          nullable: true
+        maxWallTimeMs:
+          type: integer
+          format: int64
+          nullable: true
+        remainingTokens:
+          type: integer
+          format: int64
+          nullable: true
+        remainingCost:
+          type: number
+          nullable: true
+        remainingModelCalls:
+          type: integer
+          nullable: true
+        modelUsage:
+          type: array
+          items:
+            $ref: '#/components/schemas/ModelUsageResponse'
+    WorkflowRunCursorPage:
+      type: object
+      required: [items, hasMore]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowRunResponse'
+        nextCursor:
+          type: string
+          nullable: true
+        hasMore:
+          type: boolean
+    WorkflowNodeRunCursorPage:
+      type: object
+      required: [items, hasMore]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowNodeRunResponse'
+        nextCursor:
+          type: string
+          nullable: true
+        hasMore:
+          type: boolean
+    WorkflowNodeRunResponse:
+      type: object
+      required: [id, workflowRunId, nodeId, revision, attempt, executionId, status, handlerKey, handlerVersion]
+      properties:
+        id:
+          type: integer
+          format: int64
+        workflowRunId:
+          type: integer
+          format: int64
+        nodeId:
+          type: string
+        revision:
+          type: integer
+        attempt:
+          type: integer
+        executionId:
+          type: string
+        status:
+          type: string
+        handlerKey:
+          type: string
+        handlerVersion:
+          type: string
+        timeoutMs:
+          type: integer
+          nullable: true
+        durationMs:
+          type: integer
+          nullable: true
+        inputJson:
+          type: string
+          nullable: true
+        outputJson:
+          type: string
+          nullable: true
+        errorCode:
+          type: string
+          nullable: true
+        errorMessage:
+          type: string
+          nullable: true
+        queuedAt:
+          type: string
+          format: date-time
+          nullable: true
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        heartbeatAt:
+          type: string
+          format: date-time
+          nullable: true
+        finishedAt:
+          type: string
+          format: date-time
+          nullable: true
+        workerId:
+          type: string
           nullable: true
     AuditEventResponse:
       type: object
@@ -1148,12 +2121,19 @@ components:
           type: integer
           format: int64
           nullable: true
+        workflowNodeRunId:
+          type: integer
+          format: int64
+          nullable: true
         correlationId:
           type: string
           nullable: true
         promptVersionId:
           type: integer
           format: int64
+          nullable: true
+        promptKey:
+          type: string
           nullable: true
         providerKey:
           type: string
@@ -1166,12 +2146,40 @@ components:
         durationMs:
           type: integer
           nullable: true
+        inputTokens:
+          type: integer
+          nullable: true
+        outputTokens:
+          type: integer
+          nullable: true
+        cacheTokens:
+          type: integer
+          nullable: true
+        callCount:
+          type: integer
+          nullable: true
+        estimatedCost:
+          type: number
+          nullable: true
         score:
           type: number
           nullable: true
         errorMessage:
           type: string
           nullable: true
+    ModelInvocationCursorPage:
+      type: object
+      required: [items, hasMore]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ModelInvocationResponse'
+        nextCursor:
+          type: string
+          nullable: true
+        hasMore:
+          type: boolean
     AgentEventResponse:
       type: object
       required: [id, projectId, eventType, nodeName, message, createdAt]
@@ -1198,6 +2206,19 @@ components:
         createdAt:
           type: string
           format: date-time
+    AgentEventCursorPage:
+      type: object
+      required: [items, hasMore]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgentEventResponse'
+        nextCursor:
+          type: string
+          nullable: true
+        hasMore:
+          type: boolean
     ReviewResponse:
       type: object
       required: [score, issues]
@@ -1210,18 +2231,62 @@ components:
             $ref: '#/components/schemas/ReviewIssueResponse'
     ReviewIssueResponse:
       type: object
-      required: [severity, issueType, description, suggestion, status]
+      required: [id, issueKey, severity, issueType, description, suggestion, status]
       properties:
+        id:
+          type: integer
+          format: int64
+        issueKey:
+          type: string
         severity:
           type: string
         issueType:
           type: string
+        artifactType:
+          type: string
+          nullable: true
+        artifactPath:
+          type: string
+          nullable: true
+        requirementId:
+          type: string
+          nullable: true
         description:
           type: string
         suggestion:
           type: string
+        evidence:
+          type: string
+          nullable: true
         status:
           type: string
+          enum: [OPEN, IN_PROGRESS, RESOLVED, IGNORED]
+        ownerUserId:
+          type: integer
+          format: int64
+          nullable: true
+        resolution:
+          type: string
+          nullable: true
+        resolvedInArtifactId:
+          type: integer
+          format: int64
+          nullable: true
+    ReviewIssueUpdateRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [OPEN, IN_PROGRESS, RESOLVED, IGNORED]
+        resolution:
+          type: string
+          maxLength: 2000
+          nullable: true
+        resolvedInArtifactId:
+          type: integer
+          format: int64
+          nullable: true
     RetryTaskResponse:
       type: object
       required: [taskId, agentName, nodeName, status, retryOfTaskId]
@@ -1407,6 +2472,9 @@ components:
           type: string
         version:
           type: integer
+        lockVersion:
+          type: integer
+          minimum: 0
         status:
           type: string
         sourceAgent:
@@ -1415,6 +2483,46 @@ components:
         parentArtifactId:
           type: integer
           format: int64
+          nullable: true
+        workflowNodeRunId:
+          type: integer
+          format: int64
+          nullable: true
+        contentHash:
+          type: string
+          nullable: true
+        schemaVersion:
+          type: string
+          nullable: true
+        promptKey:
+          type: string
+          nullable: true
+        promptVersion:
+          type: string
+          nullable: true
+        modelProvider:
+          type: string
+          nullable: true
+        modelName:
+          type: string
+        routeKey:
+          type: string
+          nullable: true
+        routeReason:
+          type: string
+          nullable: true
+        fallbackUsed:
+          type: boolean
+          nullable: true
+        contextManifestJson:
+          type: string
+          nullable: true
+          nullable: true
+        sourceCitationsJson:
+          type: string
+          nullable: true
+        provenanceJson:
+          type: string
           nullable: true
         approvedAt:
           type: string
@@ -1427,14 +2535,99 @@ components:
         updatedAt:
           type: string
           format: date-time
+    ProjectDashboardItemResponse:
+      type: object
+      required:
+        - projectId
+        - name
+        - requirementSummary
+        - projectStatus
+        - pendingApprovalCount
+        - openReviewIssueCount
+        - blockingReviewIssueCount
+        - estimatedCost
+        - updatedAt
+      properties:
+        projectId:
+          type: integer
+          format: int64
+        name:
+          type: string
+        requirementSummary:
+          type: string
+        projectStatus:
+          type: string
+        latestWorkflowRunId:
+          type: integer
+          format: int64
           nullable: true
+        latestWorkflowStatus:
+          type: string
+          nullable: true
+        pendingApprovalCount:
+          type: integer
+          format: int64
+        openReviewIssueCount:
+          type: integer
+          format: int64
+        blockingReviewIssueCount:
+          type: integer
+          format: int64
+        estimatedCost:
+          type: number
+        qualityScore:
+          type: integer
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+          nullable: true
+    ArtifactCursorPage:
+      type: object
+      required: [items, hasMore]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ArtifactResponse'
+        nextCursor:
+          type: string
+          nullable: true
+        hasMore:
+          type: boolean
     UpdateArtifactRequest:
       type: object
-      required: [content]
+      required: [content, expectedLockVersion]
       properties:
         content:
           type: string
           minLength: 1
+        expectedLockVersion:
+          type: integer
+          minimum: 0
+    ArtifactRestoreRequest:
+      type: object
+      required: [expectedLatestLockVersion]
+      properties:
+        expectedLatestLockVersion:
+          type: integer
+          minimum: 0
+    ArtifactDiffResponse:
+      type: object
+      required: [baseArtifactId, targetArtifactId, changed, changedPaths]
+      properties:
+        baseArtifactId:
+          type: integer
+          format: int64
+        targetArtifactId:
+          type: integer
+          format: int64
+        changed:
+          type: boolean
+        changedPaths:
+          type: array
+          items:
+            type: string
     ApproveArtifactResponse:
       type: object
       required: [id, status, version]
@@ -1489,7 +2682,7 @@ components:
               type: string
     ApiErrorResponse:
       type: object
-      required: [code, status, message, path, timestamp, fieldErrors]
+      required: [code, status, message, path, timestamp, fieldErrors, details]
       properties:
         code:
           type: string
@@ -1503,6 +2696,10 @@ components:
           type: string
           format: date-time
         fieldErrors:
+          type: object
+          additionalProperties:
+            type: string
+        details:
           type: object
           additionalProperties:
             type: string

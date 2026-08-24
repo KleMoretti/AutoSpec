@@ -35,7 +35,7 @@ def test_registry_contains_all_builtin_v5_handlers() -> None:
 
 
 @pytest.mark.asyncio
-async def test_parallel_engineering_handlers_accept_same_architect_output() -> None:
+async def test_frontend_handler_consumes_backend_contract_output() -> None:
     executor = NodeExecutor(build_production_registry())
     product = await executor.execute(
         command("ProductManagerAgent", {"requirement": "Build an AutoSpec project workspace"}, node_id="product_manager")
@@ -57,8 +57,28 @@ async def test_parallel_engineering_handlers_accept_same_architect_output() -> N
         command("BackendEngineerAgent", shared, node_id="backend_engineer")
     )
     frontend = await executor.execute(
-        command("FrontendEngineerAgent", shared, node_id="frontend_engineer")
+        command(
+            "FrontendEngineerAgent",
+            {**shared, "backend_design": backend.output_payload},
+            node_id="frontend_engineer",
+        )
     )
 
     assert backend.event_type == "NODE_SUCCEEDED"
     assert frontend.event_type == "NODE_SUCCEEDED"
+    requirement_ids = {
+        feature["requirement_id"]
+        for feature in product.output_payload["core_features"]
+    }
+    assert _requirement_refs(architect.output_payload) <= requirement_ids
+    assert _requirement_refs(backend.output_payload) <= requirement_ids
+    assert _requirement_refs(frontend.output_payload) <= requirement_ids
+
+
+def _requirement_refs(value: object) -> set[str]:
+    if isinstance(value, dict):
+        direct = set(value.get("requirement_refs", []))
+        return direct | set().union(*(_requirement_refs(child) for child in value.values()))
+    if isinstance(value, list):
+        return set().union(*(_requirement_refs(child) for child in value))
+    return set()

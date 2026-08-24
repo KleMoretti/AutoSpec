@@ -10,7 +10,7 @@ public interface WorkflowApprovalService extends WorkflowApprovalCoordinator {
 
     List<WorkflowApproval> listByProjectId(long projectId);
 
-    WorkflowApproval decide(long approvalId, ApprovalDecision decision);
+    WorkflowApproval decide(long approvalId, int expectedLockVersion, ApprovalDecision decision);
 
     record ApprovalDecision(
             String action,

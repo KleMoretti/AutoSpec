@@ -10,4 +10,6 @@ public interface AgentEventService extends IService<AgentEvent> {
     AgentEvent record(Long projectId, Long taskId, String eventType, String nodeName, String message, String payload);
 
     List<AgentEvent> listByProjectId(Long projectId, int limit, int offset);
+
+    List<AgentEvent> listByProjectIdAfterId(Long projectId, Long afterId, int limit);
 }
