@@ -177,7 +177,7 @@ class MySqlWorkflowEventConsumerConcurrencyIT extends MySqlIntegrationTestSuppor
         try (Connection connection = dataSource.getConnection();
              Statement statement = connection.createStatement()) {
             statement.execute("""
-                    CREATE TABLE processed_workflow_event (
+                    CREATE TABLE IF NOT EXISTS processed_workflow_event (
                         id BIGINT PRIMARY KEY AUTO_INCREMENT,
                         event_id VARCHAR(128) NOT NULL,
                         event_type VARCHAR(64) NOT NULL,

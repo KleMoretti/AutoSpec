@@ -21,6 +21,7 @@ import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.Network;
 import org.testcontainers.containers.ToxiproxyContainer;
 import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
 import java.time.Duration;
@@ -38,6 +39,7 @@ import static org.assertj.core.api.Assertions.assertThat;
         "spring.data.redis.connect-timeout=500ms"
 })
 @ActiveProfiles("integration-test")
+@Testcontainers
 class RedisOutboxRecoveryIT extends MySqlIntegrationTestSupport {
     private static final Logger LOGGER = LoggerFactory.getLogger(RedisOutboxRecoveryIT.class);
     private static final int REDIS_PORT = 6379;
