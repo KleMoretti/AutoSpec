@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
-import type { WorkflowApprovalResponse } from '../api/v3';
+import type { WorkflowApprovalResponse } from '../api/workflow';
 import WorkflowApprovalPanel, { buildApprovalDecisionPayload } from './WorkflowApprovalPanel';
 
 const pendingApproval: WorkflowApprovalResponse = {

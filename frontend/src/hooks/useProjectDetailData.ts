@@ -16,7 +16,7 @@ import {
   getWorkflowApprovals,
   getWorkflowRuns,
   getWorkflowVersions
-} from '../api/v3';
+} from '../api/workflow';
 
 export type AuxiliaryResource = 'review' | 'approvals' | 'runs' | 'versions' | 'readiness';
 

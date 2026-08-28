@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from schemas.citation import SourceCitation
 from schemas.traceability import ComponentId, RequirementId, stable_id, unique_refs
@@ -48,16 +48,6 @@ class UserStory(BaseModel):
     benefit: str = Field(min_length=1)
     requirement_refs: list[RequirementId] = Field(default_factory=list)
     acceptance_criteria: list[AcceptanceCriterion] = Field(default_factory=list)
-
-    @field_validator("acceptance_criteria", mode="before")
-    @classmethod
-    def accept_legacy_criteria(cls, value: object) -> object:
-        if not isinstance(value, list):
-            return value
-        return [
-            {"criterion": item} if isinstance(item, str) else item
-            for item in value
-        ]
 
     @model_validator(mode="after")
     def assign_story_identity(self) -> "UserStory":

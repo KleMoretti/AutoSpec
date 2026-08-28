@@ -2,7 +2,7 @@
 
 ## 1. 背景与目标
 
-AutoSpec V4 已具备 `WorkflowSpec`、节点契约、评测、任务记录和工作流快照，但 V4 运行时仍复用硬编码的顺序调用。V5 将工作流配置升级为真实运行契约：修改节点、依赖、条件、审批或重试策略时，不再修改编排代码。
+AutoSpec 当前版本使用 `WorkflowSpec` 作为真实运行契约：修改节点、依赖、条件、审批或重试策略时，不需要修改跨节点编排代码。
 
 V5 的目标包括：
 
@@ -29,12 +29,12 @@ React 控制台
   -> Spring Boot Event Consumer
        -> MySQL 状态转换
        -> DAG Reconciler
-       -> SSE 运行事件
+       -> REST 运行状态与指标
 ```
 
 Spring Boot 是 DAG 调度、状态机、审批、恢复、回放和审计的所有者。Python Worker 注册并执行单个 Agent Handler，负责输入输出校验、单次超时检测和执行事件上报，但不决定后继节点、重试或工作流最终状态。MySQL 是唯一事实来源；Redis Streams 仅提供至少一次消息传输。
 
-LangGraph 可以继续用于单个复杂 Agent 内部的推理流程，但不再拥有跨节点工作流的持久化生命周期。
+Agent 内部推理实现不拥有跨节点工作流的持久化生命周期。
 
 ## 3. WorkflowSpec V5
 
@@ -206,7 +206,7 @@ Checkpoint 包括：
 - `workflow_outbox`：待发布命令及其投递状态。
 - `processed_workflow_event`：已处理的事件 ID，用于消费幂等。
 
-`workflow_node_run` 对 `(workflow_run_id, node_id, revision, attempt)` 和 `execution_id` 建立唯一约束。现有 `agent_task`、`agent_event`、`workflow_snapshot`、`artifact` 和 `model_invocation` 保留，并增加 `workflow_node_run_id` 关联，保证 V1 至 V4 接口兼容。
+`workflow_node_run` 对 `(workflow_run_id, node_id, revision, attempt)` 和 `execution_id` 建立唯一约束。`artifact` 与 `model_invocation` 通过 `workflow_node_run_id` 关联当前节点尝试，运行本身冻结完整 `workflow_snapshot_json`。
 
 ## 13. API 与前端能力
 
@@ -228,7 +228,7 @@ GET  /api/workflow-runs/{runId}/events
 POST /api/workflow-approvals/{approvalId}/decide
 ```
 
-前端增加工作流版本查看、DAG 运行状态、节点 attempt/revision 时间线、审批操作、定向重做展示和版本回放入口。SSE 推送排队、开始、心跳、重试、降级、审批、重做、恢复和结束事件。
+前端提供工作流版本查看、DAG 运行状态、节点 attempt/revision 时间线、审批操作、定向重做展示和版本回放入口，并通过当前运行、节点与指标 API 刷新状态。
 
 ## 14. 测试与故障验证
 

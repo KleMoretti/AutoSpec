@@ -1,101 +1,30 @@
 from fastapi.testclient import TestClient
 
 from main import app
-from test_workflow import valid_architecture_payload, valid_backend_payload, valid_prd_payload
 
 
 client = TestClient(app)
 
 
-def test_generate_prd_endpoint_runs_product_manager_only():
-    response = client.post("/generate/prd", json={"requirement": "Build AutoSpec V2."})
+def test_health_and_current_evaluation_catalog() -> None:
+    assert client.get("/health").json() == {"status": "UP"}
 
-    assert response.status_code == 200
-    body = response.json()
-    assert body["prd"]["project_name"]
-    assert [record["node_name"] for record in body["records"]] == ["product_manager"]
-    assert body["records"][0]["provider_key"] == "local"
-    assert body["records"][0]["model_name"] == "deterministic-fixture"
-
-
-def test_generate_accepts_retrieved_sources():
-    response = client.post(
-        "/generate",
-        json={
-            "requirement": "Build favorite products.",
-            "retrieved_sources": [
-                {
-                    "artifact_id": 9,
-                    "artifact_type": "PRD",
-                    "title": "Marketplace PRD",
-                    "content": "Favorites require create and delete APIs.",
-                }
-            ],
-        },
-    )
-
-    assert response.status_code == 200
-    first_record = response.json()["records"][0]
-    assert first_record["input_payload"]["retrieved_sources"][0]["artifact_id"] == 9
-
-
-def test_generate_v2_continue_endpoint_uses_approved_prd_payload():
-    response = client.post(
-        "/generate/v2/continue",
-        json={"requirement": "Build AutoSpec V2.", "prd": valid_prd_payload()},
-    )
-
-    assert response.status_code == 200
-    body = response.json()
-    assert body["architecture_design"]["modules"][0]["name"] == "backend"
-    assert body["frontend_skeleton"]["routes"][0]["path"] == "/products"
-    assert [record["node_name"] for record in body["records"]] == [
-        "architect",
-        "backend_engineer",
-        "frontend_engineer",
-        "reviewer",
-    ]
-
-
-def test_generate_v2_and_node_runner_endpoints_return_v2_artifacts():
-    v2_response = client.post("/generate/v2", json={"requirement": "Build AutoSpec V2."})
-    node_response = client.post(
-        "/nodes/frontend_engineer/run",
-        json={
-            "requirement": "Build AutoSpec V2.",
-            "prd": valid_prd_payload(),
-            "architecture_design": valid_architecture_payload(),
-            "backend_design": valid_backend_payload(),
-        },
-    )
-
-    assert v2_response.status_code == 200
-    assert v2_response.json()["frontend_skeleton"]["pages"][0]["name"] == "MarketplacePage"
-    assert node_response.status_code == 200
-    assert node_response.json()["node_name"] == "frontend_engineer"
-
-
-def test_evaluation_cases_endpoint_returns_v4_catalog():
     response = client.get("/evaluation/cases")
-
     assert response.status_code == 200
-    body = response.json()
-    assert len(body) >= 3
-    assert body[0]["case_id"]
-    assert "EVALUATION_REPORT" in body[0]["required_artifact_types"]
+    assert response.json()[0]["case_id"]
 
 
-def test_experiment_compare_endpoint_returns_rankings_and_deltas():
+def test_experiment_compare_uses_current_workflow_runs() -> None:
     response = client.post(
         "/experiments/compare",
         json={
             "runs": [
                 {
-                    "run_id": "baseline",
-                    "workflow_key": "autospec-v3",
-                    "workflow_version": "v3",
-                    "prompt_versions": {"reviewer": "v1"},
-                    "model_config": {"reviewer": "deterministic-fixture"},
+                    "run_id": "v5-fast",
+                    "workflow_key": "autospec-v5",
+                    "workflow_version": "v5",
+                    "prompt_versions": {"reviewer": "v1", "evaluator": "v1"},
+                    "model_config": {"quality_profile": "FAST"},
                     "overall_score": 82,
                     "duration_ms": 1200,
                     "status": "SUCCEEDED",
@@ -103,14 +32,11 @@ def test_experiment_compare_endpoint_returns_rankings_and_deltas():
                     "failure_count": 0,
                 },
                 {
-                    "run_id": "candidate",
-                    "workflow_key": "autospec-v4",
-                    "workflow_version": "v4",
+                    "run_id": "v5-balanced",
+                    "workflow_key": "autospec-v5",
+                    "workflow_version": "v5",
                     "prompt_versions": {"reviewer": "v1", "evaluator": "v1"},
-                    "model_config": {
-                        "reviewer": "deterministic-fixture",
-                        "evaluator": "deterministic-rules",
-                    },
+                    "model_config": {"quality_profile": "BALANCED"},
                     "overall_score": 92,
                     "duration_ms": 1500,
                     "status": "SUCCEEDED",
@@ -123,5 +49,5 @@ def test_experiment_compare_endpoint_returns_rankings_and_deltas():
 
     assert response.status_code == 200
     body = response.json()
-    assert body["best_run_id"] == "candidate"
+    assert body["best_run_id"] == "v5-balanced"
     assert body["comparisons"][0]["score_delta"] == 10

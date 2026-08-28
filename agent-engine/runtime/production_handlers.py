@@ -6,10 +6,10 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from graph.workflow import run_v2_node
 from agents.base import ModelClient
 from model_gateway import model_routing_request
 from review.evaluator import evaluate_artifacts
+from runtime.agent_node_runner import run_agent_node
 from runtime.handler_registry import HandlerRegistry
 from runtime.context_policy import apply_context_policy
 from runtime.model_telemetry import ModelInvocationTelemetry, record_model_invocation
@@ -54,7 +54,7 @@ class QualityGateBlockedError(RuntimeError):
 
 def build_production_registry(model_client: ModelClient | None = None) -> HandlerRegistry:
     registry = HandlerRegistry()
-    _register_v2_node(
+    _register_agent_node(
         registry,
         "ProductManagerAgent",
         "v1",
@@ -66,7 +66,7 @@ def build_production_registry(model_client: ModelClient | None = None) -> Handle
         "product_manager",
         model_client,
     )
-    _register_v2_node(
+    _register_agent_node(
         registry,
         "ArchitectAgent",
         "v1",
@@ -78,20 +78,19 @@ def build_production_registry(model_client: ModelClient | None = None) -> Handle
         "architect",
         model_client,
     )
-    for version in ("v1", "v2"):
-        _register_v2_node(
-            registry,
-            "BackendEngineerAgent",
-            version,
-            "backend_engineer",
-            BackendDesignInput,
-            BackendDesignArtifact,
-            "BackendDesignInput",
-            "BackendDesignArtifact",
-            "backend_engineer",
-            model_client,
-        )
-    _register_v2_node(
+    _register_agent_node(
+        registry,
+        "BackendEngineerAgent",
+        "v1",
+        "backend_engineer",
+        BackendDesignInput,
+        BackendDesignArtifact,
+        "BackendDesignInput",
+        "BackendDesignArtifact",
+        "backend_engineer",
+        model_client,
+    )
+    _register_agent_node(
         registry,
         "FrontendEngineerAgent",
         "v1",
@@ -103,7 +102,7 @@ def build_production_registry(model_client: ModelClient | None = None) -> Handle
         "frontend_engineer",
         model_client,
     )
-    _register_v2_node(
+    _register_agent_node(
         registry,
         "ReviewerAgent",
         "v1",
@@ -130,7 +129,7 @@ def build_production_registry(model_client: ModelClient | None = None) -> Handle
     return registry
 
 
-def _register_v2_node(
+def _register_agent_node(
     registry: HandlerRegistry,
     handler_key: str,
     handler_version: str,
@@ -156,7 +155,7 @@ def _register_v2_node(
             quality_profile,
         )
         with model_routing_request(quality_profile, node_name):
-            record = run_v2_node(
+            record = run_agent_node(
                 node_name,
                 compacted_input,
                 model_client=model_client,

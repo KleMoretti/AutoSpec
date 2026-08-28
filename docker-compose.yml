@@ -98,15 +98,12 @@ services:
       REDIS_PORT: 6379
       REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
       REDIS_SSL_ENABLED: ${REDIS_SSL_ENABLED:-false}
-      AGENT_ENGINE_BASE_URL: http://agent-engine:8000
-      AGENT_ENGINE_SERVICE_TOKEN: ${AGENT_ENGINE_SERVICE_TOKEN:?AGENT_ENGINE_SERVICE_TOKEN is required}
       AUTOSPEC_ENV: ${AUTOSPEC_ENV:-development}
       AUTH_DEMO_USER_ENABLED: ${AUTH_DEMO_USER_ENABLED:-false}
       AUTH_DEMO_USER_USERNAME: ${AUTH_DEMO_USER_USERNAME:-owner}
       AUTH_DEMO_USER_DISPLAY_NAME: ${AUTH_DEMO_USER_DISPLAY_NAME:-Owner}
       AUTH_DEMO_USER_PASSWORD: ${AUTH_DEMO_USER_PASSWORD:-}
       AUTH_SESSION_COOKIE_SECURE: ${AUTH_SESSION_COOKIE_SECURE:-false}
-      SQL_INIT_MODE: never
       WORKFLOW_OUTBOX_ENABLED: "true"
       WORKFLOW_EVENT_POLLING_ENABLED: "true"
       WORKFLOW_EVENT_CONSUMER_NAME: control-plane
@@ -122,8 +119,6 @@ services:
       mysql:
         condition: service_healthy
       redis:
-        condition: service_healthy
-      agent-engine:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/actuator/health/readiness"]

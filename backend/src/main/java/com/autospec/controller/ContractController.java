@@ -17,7 +17,7 @@ import java.nio.charset.StandardCharsets;
 public class ContractController {
 
     private static final MediaType YAML = MediaType.valueOf("application/yaml;charset=utf-8");
-    private static final String OPENAPI_RESOURCE = "contracts/autospec-backend-v1.openapi.yaml";
+    private static final String OPENAPI_RESOURCE = "contracts/autospec.openapi.yaml";
 
     @GetMapping(value = "/openapi", produces = "application/yaml")
     public ResponseEntity<String> openApi() {

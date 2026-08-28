@@ -6,6 +6,7 @@ import com.autospec.mapper.ReviewIssueMapper;
 import com.autospec.service.ArtifactService;
 import com.autospec.service.ReviewIssueService;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,9 +19,11 @@ import java.util.List;
 public class ReviewIssueServiceImpl extends ServiceImpl<ReviewIssueMapper, ReviewIssue> implements ReviewIssueService {
 
     private final ArtifactService artifactService;
+    private final ObjectMapper objectMapper;
 
-    public ReviewIssueServiceImpl(ArtifactService artifactService) {
+    public ReviewIssueServiceImpl(ArtifactService artifactService, ObjectMapper objectMapper) {
         this.artifactService = artifactService;
+        this.objectMapper = objectMapper;
     }
 
     @Override
@@ -30,6 +33,29 @@ public class ReviewIssueServiceImpl extends ServiceImpl<ReviewIssueMapper, Revie
                 .orderByAsc(ReviewIssue::getId)
                 .last("limit " + limit + " offset " + offset)
                 .list();
+    }
+
+    @Override
+    public int latestReviewScore(Long projectId) {
+        Artifact report = artifactService.lambdaQuery()
+                .eq(Artifact::getProjectId, projectId)
+                .eq(Artifact::getType, "REVIEW_REPORT")
+                .orderByDesc(Artifact::getVersion)
+                .last("limit 1")
+                .oneOpt()
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Review report not found"
+                ));
+        try {
+            return objectMapper.readTree(report.getContent()).path("score").asInt(0);
+        } catch (Exception ex) {
+            throw new ResponseStatusException(
+                    HttpStatus.INTERNAL_SERVER_ERROR,
+                    "Invalid review report JSON",
+                    ex
+            );
+        }
     }
 
     @Override

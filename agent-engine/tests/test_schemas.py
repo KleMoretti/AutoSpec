@@ -25,10 +25,12 @@ def test_campus_marketplace_prd_schema_accepts_structured_artifact():
                     "role": "student",
                     "goal": "publish an idle textbook",
                     "benefit": "find a buyer on campus",
-                    "acceptance_criteria": ["Product is visible after approval."],
+                    "acceptance_criteria": [
+                        {"criterion": "Product is visible after approval."}
+                    ],
                 }
             ],
-            "business_boundaries": ["No off-campus delivery workflow in V1."],
+            "business_boundaries": ["Off-campus delivery is outside the current scope."],
             "non_functional_requirements": ["Every agent output is stored as JSON."],
             "risks": ["Listings may contain prohibited goods."],
         }
@@ -116,7 +118,9 @@ def test_architecture_design_schema_accepts_modules_and_decisions():
                     "requirement": "Every Agent node emits persisted events.",
                 }
             ],
-            "integration_risks": ["SSE connections can drop and recover from persisted events."],
+            "integration_risks": [
+                "Redis Streams may redeliver messages, so consumers must be idempotent."
+            ],
         }
     )
 
@@ -131,20 +135,24 @@ def test_frontend_skeleton_schema_accepts_routes_pages_components_and_api_bindin
                 {
                     "name": "ProjectDetailPage",
                     "purpose": "Review PRD, monitor generation, and inspect artifacts.",
-                    "components": ["PrdEditor", "AgentTimeline", "ArtifactTabs"],
+                    "components": [
+                        "WorkflowApprovalPanel",
+                        "ReviewIssueTable",
+                        "ArtifactTabs",
+                    ],
                 }
             ],
             "components": [
                 {
-                    "name": "PrdEditor",
+                    "name": "WorkflowApprovalPanel",
                     "type": "form",
-                    "props": ["artifact", "onSave", "onApprove"],
-                    "state": ["draftContent", "saving"],
+                    "props": ["runId", "approvals", "onResolve"],
+                    "state": ["submitting"],
                 },
                 {
-                    "name": "AgentTimeline",
-                    "type": "timeline",
-                    "props": ["events"],
+                    "name": "ReviewIssueTable",
+                    "type": "table",
+                    "props": ["issues"],
                     "state": [],
                 },
                 {
@@ -158,13 +166,13 @@ def test_frontend_skeleton_schema_accepts_routes_pages_components_and_api_bindin
                 {
                     "method": "POST",
                     "path": "/api/projects/{projectId}/artifacts/{artifactId}/approve",
-                    "consumer": "PrdEditor",
+                    "consumer": "WorkflowApprovalPanel",
                 }
             ],
         }
     )
 
-    assert artifact.api_bindings[0].consumer == "PrdEditor"
+    assert artifact.api_bindings[0].consumer == "WorkflowApprovalPanel"
 
 
 def test_requirement_ids_are_stable_across_array_reordering():
@@ -180,7 +188,7 @@ def test_requirement_ids_are_stable_across_array_reordering():
                 "role": "owner",
                 "goal": "publish a listing",
                 "benefit": "make it visible",
-                "acceptance_criteria": ["The listing is visible"],
+                "acceptance_criteria": [{"criterion": "The listing is visible"}],
             }],
         }
     )
@@ -195,7 +203,7 @@ def test_requirement_ids_are_stable_across_array_reordering():
                 "role": "owner",
                 "goal": "publish a listing",
                 "benefit": "make it visible",
-                "acceptance_criteria": ["The listing is visible"],
+                "acceptance_criteria": [{"criterion": "The listing is visible"}],
             }],
         }
     )

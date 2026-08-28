@@ -516,12 +516,9 @@ public class CodeSkeletonService {
                 }
             }
             if (requirements.isEmpty()) {
-                var legacy = requirements.addObject();
-                legacy.put("requirement_id", "REQ-LEGACY");
-                legacy.put("priority", "SHOULD");
-                legacy.putArray("acceptance_ids");
-                legacy.putArray("api_ids");
-                legacy.putArray("ui_ids");
+                throw new IllegalStateException(
+                        "Current PRD does not contain traceable core_features"
+                );
             }
             return root.toString();
         } catch (Exception exception) {

@@ -4,12 +4,10 @@ import com.autospec.dto.CursorPageResponse;
 import com.autospec.dto.CursorPaginationRequest;
 import com.autospec.dto.PaginationRequest;
 import com.autospec.dto.WorkflowRunResponse;
-import com.autospec.dto.WorkflowSnapshotResponse;
 import com.autospec.entity.WorkflowRun;
 import com.autospec.service.AuditEventService;
 import com.autospec.service.ProjectAccessService;
 import com.autospec.service.WorkflowRunService;
-import com.autospec.service.WorkflowSnapshotService;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -25,36 +23,18 @@ import java.util.List;
 @RequestMapping("/api/projects")
 public class WorkflowController {
 
-    private final WorkflowSnapshotService workflowSnapshotService;
     private final WorkflowRunService workflowRunService;
     private final ProjectAccessService projectAccessService;
     private final AuditEventService auditEventService;
 
     public WorkflowController(
-            WorkflowSnapshotService workflowSnapshotService,
             WorkflowRunService workflowRunService,
             ProjectAccessService projectAccessService,
             AuditEventService auditEventService
     ) {
-        this.workflowSnapshotService = workflowSnapshotService;
         this.workflowRunService = workflowRunService;
         this.projectAccessService = projectAccessService;
         this.auditEventService = auditEventService;
-    }
-
-    @GetMapping("/{projectId}/workflow")
-    public WorkflowSnapshotResponse workflow(
-            @PathVariable Long projectId,
-            @RequestHeader(value = "X-AutoSpec-Session-Token", required = false) String sessionToken
-    ) {
-        projectAccessService.requireProjectRole(
-                projectId,
-                projectAccessService.resolveUserId(sessionToken),
-                "OWNER",
-                "EDITOR",
-                "VIEWER"
-        );
-        return workflowSnapshotService.latestResponse(projectId);
     }
 
     @GetMapping("/{projectId}/workflow-runs")

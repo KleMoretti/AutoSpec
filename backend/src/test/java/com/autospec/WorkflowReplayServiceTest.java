@@ -59,7 +59,7 @@ class WorkflowReplayServiceTest {
 
     @Test
     void originalReplayCreatesIndependentRunFromFrozenSnapshotAndInputs() {
-        Fixture fixture = fixture(snapshot("v5", true), "FixtureAgent", "v1", true);
+        Fixture fixture = fixture(snapshot("v5", true), "ProductManagerAgent", "v1", true);
 
         WorkflowRun replay = replayService.replay(
                 fixture.run().getId(),
@@ -107,7 +107,7 @@ class WorkflowReplayServiceTest {
 
     @Test
     void selectedVersionReplayUsesPublishedVersionAndPreservesOriginalInputs() {
-        Fixture fixture = fixture(snapshot("v5", true), "FixtureAgent", "v1", false);
+        Fixture fixture = fixture(snapshot("v5", true), "ProductManagerAgent", "v1", false);
         WorkflowDefinition definition = new WorkflowDefinition();
         definition.setWorkflowKey("comparison-" + UUID.randomUUID());
         definition.setName("Replay comparison");

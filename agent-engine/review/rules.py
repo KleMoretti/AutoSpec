@@ -59,13 +59,41 @@ def run_rule_checks(prd: PrdArtifact, backend_design: BackendDesignArtifact) -> 
     return issues
 
 
-def run_v2_rule_checks(
+def run_current_rule_checks(
+    prd: PrdArtifact,
+    architecture_design: ArchitectureDesignArtifact,
+    backend_design: BackendDesignArtifact,
+    frontend_skeleton: FrontendSkeletonArtifact,
+    retrieved_sources: list[dict[str, Any]] | None = None,
+    generated_files: list[dict[str, Any] | str] | None = None,
+) -> list[ReviewIssue]:
+    issues = run_rule_checks(prd, backend_design)
+    issues.extend(
+        _run_cross_artifact_checks(
+            prd,
+            architecture_design,
+            backend_design,
+            frontend_skeleton,
+        )
+    )
+    issues.extend(
+        _run_delivery_checks(
+            prd,
+            backend_design,
+            retrieved_sources,
+            generated_files,
+        )
+    )
+    return issues
+
+
+def _run_cross_artifact_checks(
     prd: PrdArtifact,
     architecture_design: ArchitectureDesignArtifact,
     backend_design: BackendDesignArtifact,
     frontend_skeleton: FrontendSkeletonArtifact,
 ) -> list[ReviewIssue]:
-    issues = run_rule_checks(prd, backend_design)
+    issues: list[ReviewIssue] = []
     prd_text = _prd_text(prd)
 
     if _mentions_any(prd_text, ["prd edit", "prd editing", "human edit", "approve prd", "approval"]):
@@ -81,8 +109,8 @@ def run_v2_rule_checks(
         issues.extend(
             _require_backend_api(
                 backend_design,
-                "/api/projects/{projectId}/events",
-                "Real-time progress requires a backend event stream API.",
+                "/api/workflow-runs/{runId}/nodes",
+                "Real-time progress requires the current workflow node status API.",
             )
         )
         issues.extend(
@@ -97,15 +125,15 @@ def run_v2_rule_checks(
         issues.extend(
             _require_backend_api(
                 backend_design,
-                "/api/projects/{projectId}/tasks/{taskId}/retry",
-                "Retry/regeneration requires a backend failed-node retry API.",
+                "/api/workflow-runs/{runId}/replay",
+                "Regeneration requires the current immutable workflow replay API.",
             )
         )
 
     return issues
 
 
-def run_v3_rule_checks(
+def _run_delivery_checks(
     prd: PrdArtifact,
     backend_design: BackendDesignArtifact,
     retrieved_sources: list[dict[str, Any]] | None,
@@ -116,13 +144,13 @@ def run_v3_rule_checks(
 
     if _mentions_any(
         prd_text,
-        ["login", "permission", "private project", "private projects", "auth", "鏉冮檺", "鐧诲綍"],
+        ["login", "permission", "private project", "private projects", "auth", "权限", "登录"],
     ):
         issues.extend(_require_authenticated_project_apis(backend_design))
 
     if _mentions_any(
         prd_text,
-        ["history", "rag", "historical", "reuse", "鍘嗗彶", "鐭ヨ瘑澶嶇敤"],
+        ["history", "rag", "historical", "reuse", "历史", "知识复用"],
     ) and not _has_valid_retrieved_source(retrieved_sources or []):
         issues.append(
             _issue(

@@ -1,12 +1,12 @@
 openapi: 3.0.3
 info:
   title: AutoSpec Backend API
-  version: v1
-  description: Spring Boot API contract for AutoSpec project orchestration, artifacts, exports, and observability.
+  version: 5.0.0
+  description: Current AutoSpec API for dynamic workflow orchestration, artifacts, approvals, delivery, and observability.
 servers:
-  - url: /
+- url: /
 security:
-  - SessionToken: []
+- SessionToken: []
 paths:
   /api/contracts/openapi:
     get:
@@ -46,7 +46,7 @@ paths:
     post:
       summary: Revoke the current persistent session token.
       parameters:
-        - $ref: '#/components/parameters/SessionToken'
+      - $ref: '#/components/parameters/SessionToken'
       responses:
         '204':
           description: Session revoked.
@@ -69,9 +69,9 @@ paths:
     get:
       summary: List projects visible to the session user.
       parameters:
-        - $ref: '#/components/parameters/SessionToken'
-        - $ref: '#/components/parameters/PaginationLimit'
-        - $ref: '#/components/parameters/PaginationOffset'
+      - $ref: '#/components/parameters/SessionToken'
+      - $ref: '#/components/parameters/PaginationLimit'
+      - $ref: '#/components/parameters/PaginationOffset'
       responses:
         '200':
           description: Project history visible to the session user.
@@ -88,7 +88,7 @@ paths:
     post:
       summary: Create a project from a natural-language requirement.
       parameters:
-        - $ref: '#/components/parameters/SessionToken'
+      - $ref: '#/components/parameters/SessionToken'
       requestBody:
         required: true
         content:
@@ -110,9 +110,9 @@ paths:
     get:
       summary: List project dashboard summaries visible to the session user.
       parameters:
-        - $ref: '#/components/parameters/SessionToken'
-        - $ref: '#/components/parameters/PaginationLimit'
-        - $ref: '#/components/parameters/PaginationOffset'
+      - $ref: '#/components/parameters/SessionToken'
+      - $ref: '#/components/parameters/PaginationLimit'
+      - $ref: '#/components/parameters/PaginationOffset'
       responses:
         '200':
           description: Project dashboard summaries.
@@ -130,8 +130,8 @@ paths:
     get:
       summary: Fetch a project visible to the session user.
       parameters:
-        - $ref: '#/components/parameters/ProjectId'
-        - $ref: '#/components/parameters/SessionToken'
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/SessionToken'
       responses:
         '200':
           description: Project detail.
@@ -145,104 +145,12 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
-  /api/projects/{projectId}/generate:
-    post:
-      summary: Run the baseline multi-agent project generation workflow.
-      parameters:
-        - $ref: '#/components/parameters/ProjectId'
-        - $ref: '#/components/parameters/SessionToken'
-      responses:
-        '200':
-          description: Generation progress snapshot.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GenerateProjectResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-  /api/projects/{projectId}/generate-prd:
-    post:
-      summary: Generate the PRD stage for a project.
-      parameters:
-        - $ref: '#/components/parameters/ProjectId'
-        - $ref: '#/components/parameters/SessionToken'
-      responses:
-        '200':
-          description: PRD generation progress snapshot.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GenerateProjectResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-  /api/projects/{projectId}/generate-v4:
-    post:
-      summary: Run the V4 multi-agent workflow with idempotency.
-      parameters:
-        - $ref: '#/components/parameters/ProjectId'
-        - $ref: '#/components/parameters/SessionToken'
-        - $ref: '#/components/parameters/IdempotencyKey'
-      responses:
-        '200':
-          description: Generation progress snapshot.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GenerateProjectResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '409':
-          $ref: '#/components/responses/Conflict'
-        '502':
-          $ref: '#/components/responses/BadGateway'
-  /api/projects/{projectId}/continue:
-    post:
-      summary: Continue generation after PRD approval.
-      parameters:
-        - $ref: '#/components/parameters/ProjectId'
-        - $ref: '#/components/parameters/SessionToken'
-      responses:
-        '200':
-          description: Continued generation progress snapshot.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/GenerateProjectResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '409':
-          $ref: '#/components/responses/Conflict'
-  /api/projects/{projectId}/progress:
-    get:
-      summary: Fetch current project generation progress.
-      parameters:
-        - $ref: '#/components/parameters/ProjectId'
-        - $ref: '#/components/parameters/SessionToken'
-      responses:
-        '200':
-          description: Current project generation progress.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ProjectProgressResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
   /api/projects/{projectId}/code-skeleton:
     post:
       summary: Generate and persist a code skeleton export for a project.
       parameters:
-        - $ref: '#/components/parameters/ProjectId'
-        - $ref: '#/components/parameters/SessionToken'
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/SessionToken'
       responses:
         '200':
           description: Generated code skeleton export payload.
@@ -264,8 +172,8 @@ paths:
     get:
       summary: Evaluate trusted specification and post-generation build delivery gates.
       parameters:
-        - $ref: '#/components/parameters/ProjectId'
-        - $ref: '#/components/parameters/SessionToken'
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/SessionToken'
       responses:
         '200':
           description: Current delivery gate state and blockers.
@@ -281,14 +189,14 @@ paths:
     get:
       summary: Fetch stable artifact components and explicit trace edges for one workflow run.
       parameters:
-        - $ref: '#/components/parameters/ProjectId'
-        - $ref: '#/components/parameters/SessionToken'
-        - name: workflowRunId
-          in: query
-          required: false
-          schema:
-            type: integer
-            format: int64
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/SessionToken'
+      - name: workflowRunId
+        in: query
+        required: false
+        schema:
+          type: integer
+          format: int64
       responses:
         '200':
           description: Artifact trace graph.
@@ -304,10 +212,10 @@ paths:
     get:
       summary: List durable code generation jobs.
       parameters:
-        - $ref: '#/components/parameters/ProjectId'
-        - $ref: '#/components/parameters/SessionToken'
-        - $ref: '#/components/parameters/PaginationLimit'
-        - $ref: '#/components/parameters/PaginationOffset'
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/SessionToken'
+      - $ref: '#/components/parameters/PaginationLimit'
+      - $ref: '#/components/parameters/PaginationOffset'
       responses:
         '200':
           description: Code generation job metadata list.
@@ -327,9 +235,9 @@ paths:
     post:
       summary: Cancel a running code generation job.
       parameters:
-        - $ref: '#/components/parameters/ProjectId'
-        - $ref: '#/components/parameters/JobId'
-        - $ref: '#/components/parameters/SessionToken'
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/JobId'
+      - $ref: '#/components/parameters/SessionToken'
       responses:
         '200':
           description: Cancelled code generation job.
@@ -349,9 +257,9 @@ paths:
     post:
       summary: Retry a failed code generation job.
       parameters:
-        - $ref: '#/components/parameters/ProjectId'
-        - $ref: '#/components/parameters/JobId'
-        - $ref: '#/components/parameters/SessionToken'
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/JobId'
+      - $ref: '#/components/parameters/SessionToken'
       responses:
         '200':
           description: Retried code skeleton export payload.
@@ -371,8 +279,8 @@ paths:
     get:
       summary: Summarize project workflow, Agent task, audit, external call, and model telemetry.
       parameters:
-        - $ref: '#/components/parameters/ProjectId'
-        - $ref: '#/components/parameters/SessionToken'
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/SessionToken'
       responses:
         '200':
           description: Project diagnostics summary.
@@ -384,29 +292,12 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
-  /api/projects/{projectId}/workflow:
-    get:
-      summary: Fetch the latest workflow snapshot for a project.
-      parameters:
-        - $ref: '#/components/parameters/ProjectId'
-        - $ref: '#/components/parameters/SessionToken'
-      responses:
-        '200':
-          description: Latest workflow graph snapshot.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/WorkflowSnapshotResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
   /api/projects/{projectId}/workflow-approvals:
     get:
       summary: List workflow approvals for a project.
       parameters:
-        - $ref: '#/components/parameters/ProjectId'
-        - $ref: '#/components/parameters/SessionToken'
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/SessionToken'
       responses:
         '200':
           description: Workflow approval list.
@@ -424,8 +315,8 @@ paths:
     post:
       summary: Decide a pending workflow approval using optimistic concurrency control.
       parameters:
-        - $ref: '#/components/parameters/ApprovalId'
-        - $ref: '#/components/parameters/SessionToken'
+      - $ref: '#/components/parameters/ApprovalId'
+      - $ref: '#/components/parameters/SessionToken'
       requestBody:
         required: true
         content:
@@ -453,12 +344,12 @@ paths:
     get:
       summary: List immutable workflow definition versions.
       parameters:
-        - name: workflowKey
-          in: path
-          required: true
-          schema:
-            type: string
-        - $ref: '#/components/parameters/SessionToken'
+      - name: workflowKey
+        in: path
+        required: true
+        schema:
+          type: string
+      - $ref: '#/components/parameters/SessionToken'
       responses:
         '200':
           description: Workflow version list.
@@ -476,7 +367,7 @@ paths:
     post:
       summary: Start a versioned workflow with a frozen execution policy and server-trusted retrieval context.
       parameters:
-        - $ref: '#/components/parameters/SessionToken'
+      - $ref: '#/components/parameters/SessionToken'
       requestBody:
         required: true
         content:
@@ -502,8 +393,8 @@ paths:
     get:
       summary: Fetch a versioned workflow run and its budget consumption.
       parameters:
-        - $ref: '#/components/parameters/RunId'
-        - $ref: '#/components/parameters/SessionToken'
+      - $ref: '#/components/parameters/RunId'
+      - $ref: '#/components/parameters/SessionToken'
       responses:
         '200':
           description: Workflow run.
@@ -521,8 +412,8 @@ paths:
     get:
       summary: List all node attempts for a workflow run.
       parameters:
-        - $ref: '#/components/parameters/RunId'
-        - $ref: '#/components/parameters/SessionToken'
+      - $ref: '#/components/parameters/RunId'
+      - $ref: '#/components/parameters/SessionToken'
       responses:
         '200':
           description: Workflow node attempts.
@@ -542,8 +433,8 @@ paths:
     get:
       summary: Fetch runtime, model usage, cost, and remaining workflow budgets.
       parameters:
-        - $ref: '#/components/parameters/RunId'
-        - $ref: '#/components/parameters/SessionToken'
+      - $ref: '#/components/parameters/RunId'
+      - $ref: '#/components/parameters/SessionToken'
       responses:
         '200':
           description: Workflow runtime metrics.
@@ -561,8 +452,8 @@ paths:
     post:
       summary: Create an immutable replay from the original or a selected workflow version.
       parameters:
-        - $ref: '#/components/parameters/RunId'
-        - $ref: '#/components/parameters/SessionToken'
+      - $ref: '#/components/parameters/RunId'
+      - $ref: '#/components/parameters/SessionToken'
       requestBody:
         required: true
         content:
@@ -590,10 +481,10 @@ paths:
     get:
       summary: List workflow run history for a project.
       parameters:
-        - $ref: '#/components/parameters/ProjectId'
-        - $ref: '#/components/parameters/SessionToken'
-        - $ref: '#/components/parameters/PaginationLimit'
-        - $ref: '#/components/parameters/PaginationOffset'
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/SessionToken'
+      - $ref: '#/components/parameters/PaginationLimit'
+      - $ref: '#/components/parameters/PaginationOffset'
       responses:
         '200':
           description: Workflow run history.
@@ -613,10 +504,10 @@ paths:
     get:
       summary: List workflow run history using a stable ascending id cursor.
       parameters:
-        - $ref: '#/components/parameters/ProjectId'
-        - $ref: '#/components/parameters/SessionToken'
-        - $ref: '#/components/parameters/PaginationLimit'
-        - $ref: '#/components/parameters/PaginationCursor'
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/SessionToken'
+      - $ref: '#/components/parameters/PaginationLimit'
+      - $ref: '#/components/parameters/PaginationCursor'
       responses:
         '200':
           description: Cursor page of workflow runs.
@@ -634,9 +525,9 @@ paths:
     post:
       summary: Cancel a running workflow run.
       parameters:
-        - $ref: '#/components/parameters/ProjectId'
-        - $ref: '#/components/parameters/RunId'
-        - $ref: '#/components/parameters/SessionToken'
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/RunId'
+      - $ref: '#/components/parameters/SessionToken'
       responses:
         '200':
           description: Cancelled workflow run.
@@ -657,10 +548,10 @@ paths:
       summary: List workflow node runs by stable ascending ID cursor.
       description: New rows are returned only after the last ID from the previous page, avoiding offset drift.
       parameters:
-        - $ref: '#/components/parameters/RunId'
-        - $ref: '#/components/parameters/SessionToken'
-        - $ref: '#/components/parameters/PaginationLimit'
-        - $ref: '#/components/parameters/PaginationCursor'
+      - $ref: '#/components/parameters/RunId'
+      - $ref: '#/components/parameters/SessionToken'
+      - $ref: '#/components/parameters/PaginationLimit'
+      - $ref: '#/components/parameters/PaginationCursor'
       responses:
         '200':
           description: Cursor page of workflow node runs.
@@ -680,10 +571,10 @@ paths:
     get:
       summary: List project audit events.
       parameters:
-        - $ref: '#/components/parameters/ProjectId'
-        - $ref: '#/components/parameters/SessionToken'
-        - $ref: '#/components/parameters/PaginationLimit'
-        - $ref: '#/components/parameters/PaginationOffset'
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/SessionToken'
+      - $ref: '#/components/parameters/PaginationLimit'
+      - $ref: '#/components/parameters/PaginationOffset'
       responses:
         '200':
           description: Audit event history.
@@ -699,37 +590,14 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
-  /api/projects/{projectId}/external-calls:
-    get:
-      summary: List external Agent Engine call telemetry.
-      parameters:
-        - $ref: '#/components/parameters/ProjectId'
-        - $ref: '#/components/parameters/SessionToken'
-        - $ref: '#/components/parameters/PaginationLimit'
-        - $ref: '#/components/parameters/PaginationOffset'
-      responses:
-        '200':
-          description: External call telemetry history.
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/ExternalCallLogResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
   /api/projects/{projectId}/model-invocations:
     get:
       summary: List model invocation telemetry.
       parameters:
-        - $ref: '#/components/parameters/ProjectId'
-        - $ref: '#/components/parameters/SessionToken'
-        - $ref: '#/components/parameters/PaginationLimit'
-        - $ref: '#/components/parameters/PaginationOffset'
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/SessionToken'
+      - $ref: '#/components/parameters/PaginationLimit'
+      - $ref: '#/components/parameters/PaginationOffset'
       responses:
         '200':
           description: Model invocation telemetry history.
@@ -750,10 +618,10 @@ paths:
       summary: List model invocations by stable ascending ID cursor.
       description: The cursor resumes after the previous page's last invocation ID and is unaffected by later inserts.
       parameters:
-        - $ref: '#/components/parameters/ProjectId'
-        - $ref: '#/components/parameters/SessionToken'
-        - $ref: '#/components/parameters/PaginationLimit'
-        - $ref: '#/components/parameters/PaginationCursor'
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/SessionToken'
+      - $ref: '#/components/parameters/PaginationLimit'
+      - $ref: '#/components/parameters/PaginationCursor'
       responses:
         '200':
           description: Cursor page of model invocation telemetry.
@@ -767,74 +635,12 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
-  /api/projects/{projectId}/events:
-    get:
-      summary: Stream live Agent events for a project.
-      parameters:
-        - $ref: '#/components/parameters/ProjectId'
-        - $ref: '#/components/parameters/SessionToken'
-      responses:
-        '200':
-          description: Server-sent Agent event stream.
-          content:
-            text/event-stream:
-              schema:
-                type: string
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-  /api/projects/{projectId}/events/history:
-    get:
-      summary: List persisted Agent node events.
-      parameters:
-        - $ref: '#/components/parameters/ProjectId'
-        - $ref: '#/components/parameters/SessionToken'
-        - $ref: '#/components/parameters/PaginationLimit'
-        - $ref: '#/components/parameters/PaginationOffset'
-      responses:
-        '200':
-          description: Agent event history.
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/AgentEventResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-  /api/projects/{projectId}/events/history/page:
-    get:
-      summary: List persisted Agent events by stable ascending ID cursor.
-      description: The cursor resumes after the previous page's last event ID and is unaffected by later inserts.
-      parameters:
-        - $ref: '#/components/parameters/ProjectId'
-        - $ref: '#/components/parameters/SessionToken'
-        - $ref: '#/components/parameters/PaginationLimit'
-        - $ref: '#/components/parameters/PaginationCursor'
-      responses:
-        '200':
-          description: Cursor page of Agent events.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/AgentEventCursorPage'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
   /api/projects/{projectId}/knowledge/sources:
     get:
       summary: List project knowledge sources indexed from artifacts.
       parameters:
-        - $ref: '#/components/parameters/ProjectId'
-        - $ref: '#/components/parameters/SessionToken'
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/SessionToken'
       responses:
         '200':
           description: Knowledge source list.
@@ -852,10 +658,10 @@ paths:
     get:
       summary: Fetch the review score and paged review issues.
       parameters:
-        - $ref: '#/components/parameters/ProjectId'
-        - $ref: '#/components/parameters/SessionToken'
-        - $ref: '#/components/parameters/PaginationLimit'
-        - $ref: '#/components/parameters/PaginationOffset'
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/SessionToken'
+      - $ref: '#/components/parameters/PaginationLimit'
+      - $ref: '#/components/parameters/PaginationOffset'
       responses:
         '200':
           description: Review score and issues.
@@ -869,36 +675,14 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
-  /api/projects/{projectId}/tasks/{taskId}/retry:
-    post:
-      summary: Retry a failed Agent task.
-      parameters:
-        - $ref: '#/components/parameters/ProjectId'
-        - $ref: '#/components/parameters/TaskId'
-        - $ref: '#/components/parameters/SessionToken'
-      responses:
-        '200':
-          description: Retried Agent task.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/RetryTaskResponse'
-        '401':
-          $ref: '#/components/responses/Unauthorized'
-        '403':
-          $ref: '#/components/responses/Forbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
   /api/projects/{projectId}/artifacts:
     get:
       summary: List project artifacts.
       parameters:
-        - $ref: '#/components/parameters/ProjectId'
-        - $ref: '#/components/parameters/SessionToken'
-        - $ref: '#/components/parameters/PaginationLimit'
-        - $ref: '#/components/parameters/PaginationOffset'
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/SessionToken'
+      - $ref: '#/components/parameters/PaginationLimit'
+      - $ref: '#/components/parameters/PaginationOffset'
       responses:
         '200':
           description: Artifact list.
@@ -918,14 +702,14 @@ paths:
     put:
       summary: Start, resolve, reopen, or explicitly ignore a first-class review issue.
       parameters:
-        - $ref: '#/components/parameters/ProjectId'
-        - name: issueId
-          in: path
-          required: true
-          schema:
-            type: integer
-            format: int64
-        - $ref: '#/components/parameters/SessionToken'
+      - $ref: '#/components/parameters/ProjectId'
+      - name: issueId
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - $ref: '#/components/parameters/SessionToken'
       requestBody:
         required: true
         content:
@@ -952,10 +736,10 @@ paths:
       summary: List project artifacts by stable ascending ID cursor.
       description: New rows are returned only after the previous page's last ID, so inserts do not shift existing pages.
       parameters:
-        - $ref: '#/components/parameters/ProjectId'
-        - $ref: '#/components/parameters/SessionToken'
-        - $ref: '#/components/parameters/PaginationLimit'
-        - $ref: '#/components/parameters/PaginationCursor'
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/SessionToken'
+      - $ref: '#/components/parameters/PaginationLimit'
+      - $ref: '#/components/parameters/PaginationCursor'
       responses:
         '200':
           description: Cursor page of project artifacts.
@@ -973,9 +757,9 @@ paths:
     put:
       summary: Update an artifact by creating a new draft version.
       parameters:
-        - $ref: '#/components/parameters/ProjectId'
-        - $ref: '#/components/parameters/ArtifactId'
-        - $ref: '#/components/parameters/SessionToken'
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/ArtifactId'
+      - $ref: '#/components/parameters/SessionToken'
       requestBody:
         required: true
         content:
@@ -1003,11 +787,11 @@ paths:
     get:
       summary: List artifact version history.
       parameters:
-        - $ref: '#/components/parameters/ProjectId'
-        - $ref: '#/components/parameters/ArtifactId'
-        - $ref: '#/components/parameters/SessionToken'
-        - $ref: '#/components/parameters/PaginationLimit'
-        - $ref: '#/components/parameters/PaginationOffset'
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/ArtifactId'
+      - $ref: '#/components/parameters/SessionToken'
+      - $ref: '#/components/parameters/PaginationLimit'
+      - $ref: '#/components/parameters/PaginationOffset'
       responses:
         '200':
           description: Artifact version history.
@@ -1027,9 +811,9 @@ paths:
     post:
       summary: Approve an artifact draft.
       parameters:
-        - $ref: '#/components/parameters/ProjectId'
-        - $ref: '#/components/parameters/ArtifactId'
-        - $ref: '#/components/parameters/SessionToken'
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/ArtifactId'
+      - $ref: '#/components/parameters/SessionToken'
       responses:
         '200':
           description: Approved artifact status.
@@ -1049,15 +833,15 @@ paths:
     get:
       summary: Compare two versions of the same artifact and return changed JSON paths.
       parameters:
-        - $ref: '#/components/parameters/ProjectId'
-        - $ref: '#/components/parameters/ArtifactId'
-        - name: againstArtifactId
-          in: query
-          required: true
-          schema:
-            type: integer
-            format: int64
-        - $ref: '#/components/parameters/SessionToken'
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/ArtifactId'
+      - name: againstArtifactId
+        in: query
+        required: true
+        schema:
+          type: integer
+          format: int64
+      - $ref: '#/components/parameters/SessionToken'
       responses:
         '200':
           description: Artifact field diff.
@@ -1077,9 +861,9 @@ paths:
     post:
       summary: Restore an earlier artifact as a new candidate version without rewriting history.
       parameters:
-        - $ref: '#/components/parameters/ProjectId'
-        - $ref: '#/components/parameters/ArtifactId'
-        - $ref: '#/components/parameters/SessionToken'
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/ArtifactId'
+      - $ref: '#/components/parameters/SessionToken'
       requestBody:
         required: true
         content:
@@ -1107,10 +891,10 @@ paths:
     get:
       summary: List durable export files without large content payloads.
       parameters:
-        - $ref: '#/components/parameters/ProjectId'
-        - $ref: '#/components/parameters/SessionToken'
-        - $ref: '#/components/parameters/PaginationLimit'
-        - $ref: '#/components/parameters/PaginationOffset'
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/SessionToken'
+      - $ref: '#/components/parameters/PaginationLimit'
+      - $ref: '#/components/parameters/PaginationOffset'
       responses:
         '200':
           description: Export metadata list.
@@ -1130,9 +914,9 @@ paths:
     get:
       summary: Fetch a stored export file with content.
       parameters:
-        - $ref: '#/components/parameters/ProjectId'
-        - $ref: '#/components/parameters/ExportFileId'
-        - $ref: '#/components/parameters/SessionToken'
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/ExportFileId'
+      - $ref: '#/components/parameters/SessionToken'
       responses:
         '200':
           description: Export file detail.
@@ -1150,15 +934,17 @@ paths:
     post:
       summary: Render and persist a Markdown or PDF export.
       parameters:
-        - $ref: '#/components/parameters/ProjectId'
-        - $ref: '#/components/parameters/SessionToken'
-        - name: format
-          in: query
-          required: false
-          schema:
-            type: string
-            enum: [MARKDOWN, PDF]
-            default: MARKDOWN
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/SessionToken'
+      - name: format
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - MARKDOWN
+          - PDF
+          default: MARKDOWN
       responses:
         '200':
           description: Generated export payload.
@@ -1172,6 +958,148 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+  /api/health:
+    get:
+      summary: Check backend application health.
+      security: []
+      responses:
+        '200':
+          description: Backend is available.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - status
+                properties:
+                  status:
+                    type: string
+  /api/workflows:
+    post:
+      summary: Create a draft dynamic workflow version.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkflowDraftRequest'
+      responses:
+        '200':
+          description: Draft workflow version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowVersionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/workflows/{versionId}/validate:
+    post:
+      summary: Validate a draft workflow DAG and executable contract.
+      parameters:
+      - $ref: '#/components/parameters/VersionId'
+      responses:
+        '200':
+          description: Validation result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowValidationResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/workflows/{versionId}/publish:
+    post:
+      summary: Publish a validated workflow version.
+      parameters:
+      - $ref: '#/components/parameters/VersionId'
+      responses:
+        '200':
+          description: Published workflow version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowVersionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/workflow-runs/{runId}/dead-letters:
+    get:
+      summary: List workflow command dead letters.
+      parameters:
+      - $ref: '#/components/parameters/RunId'
+      - name: status
+        in: query
+        required: false
+        schema:
+          type: string
+          default: DEAD_LETTER
+      - $ref: '#/components/parameters/PaginationLimit'
+      - $ref: '#/components/parameters/PaginationOffset'
+      responses:
+        '200':
+          description: Dead-letter commands.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/WorkflowDeadLetterResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /api/workflow-runs/{runId}/dead-letters/{outboxId}/replay:
+    post:
+      summary: Replay a workflow command dead letter.
+      parameters:
+      - $ref: '#/components/parameters/RunId'
+      - $ref: '#/components/parameters/OutboxId'
+      responses:
+        '200':
+          description: Updated dead letter.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowDeadLetterResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /api/workflow-runs/{runId}/dead-letters/{outboxId}/close:
+    post:
+      summary: Close a workflow command dead letter without replay.
+      parameters:
+      - $ref: '#/components/parameters/RunId'
+      - $ref: '#/components/parameters/OutboxId'
+      responses:
+        '200':
+          description: Updated dead letter.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowDeadLetterResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
 components:
   securitySchemes:
     SessionToken:
@@ -1233,13 +1161,6 @@ components:
       schema:
         type: integer
         format: int64
-    TaskId:
-      name: taskId
-      in: path
-      required: true
-      schema:
-        type: integer
-        format: int64
     PaginationLimit:
       name: limit
       in: query
@@ -1264,6 +1185,20 @@ components:
       description: Opaque cursor returned by the previous page; ordering is ascending by id.
       schema:
         type: string
+    VersionId:
+      name: versionId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    OutboxId:
+      name: outboxId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
   responses:
     BadRequest:
       description: Invalid request.
@@ -1335,7 +1270,9 @@ components:
   schemas:
     LoginRequest:
       type: object
-      required: [username, password]
+      required:
+      - username
+      - password
       properties:
         username:
           type: string
@@ -1343,7 +1280,10 @@ components:
           type: string
     LoginResponse:
       type: object
-      required: [userId, username, displayName]
+      required:
+      - userId
+      - username
+      - displayName
       properties:
         userId:
           type: integer
@@ -1354,7 +1294,9 @@ components:
           type: string
     CreateProjectRequest:
       type: object
-      required: [name, requirement]
+      required:
+      - name
+      - requirement
       properties:
         name:
           type: string
@@ -1364,7 +1306,9 @@ components:
           minLength: 1
     CreateProjectResponse:
       type: object
-      required: [projectId, status]
+      required:
+      - projectId
+      - status
       properties:
         projectId:
           type: integer
@@ -1373,7 +1317,13 @@ components:
           type: string
     ProjectResponse:
       type: object
-      required: [projectId, name, originalRequirement, status, createdAt, updatedAt]
+      required:
+      - projectId
+      - name
+      - originalRequirement
+      - status
+      - createdAt
+      - updatedAt
       properties:
         projectId:
           type: integer
@@ -1390,82 +1340,16 @@ components:
         updatedAt:
           type: string
           format: date-time
-    GenerateProjectResponse:
-      type: object
-      required: [projectId, status, percent]
-      properties:
-        projectId:
-          type: integer
-          format: int64
-        status:
-          type: string
-        percent:
-          type: integer
-    ProjectProgressResponse:
-      type: object
-      required: [projectId, status, currentAgent, percent, steps]
-      properties:
-        projectId:
-          type: integer
-          format: int64
-        status:
-          type: string
-          nullable: true
-        currentAgent:
-          type: string
-          nullable: true
-        percent:
-          type: integer
-        steps:
-          type: array
-          items:
-            $ref: '#/components/schemas/AgentStepStatus'
-    AgentStepStatus:
-      type: object
-      required: [agentName, status]
-      properties:
-        taskId:
-          type: integer
-          format: int64
-          nullable: true
-        agentName:
-          type: string
-        nodeName:
-          type: string
-          nullable: true
-        status:
-          type: string
-        durationMs:
-          type: integer
-          nullable: true
-        retryOfTaskId:
-          type: integer
-          format: int64
-          nullable: true
-        errorMessage:
-          type: string
-          nullable: true
-    WorkflowSnapshotResponse:
-      type: object
-      required: [workflowKey, version, nodes, edges]
-      properties:
-        workflowKey:
-          type: string
-        version:
-          type: string
-        nodes:
-          type: array
-          items:
-            type: object
-            additionalProperties: true
-        edges:
-          type: array
-          items:
-            type: object
-            additionalProperties: true
     WorkflowApprovalResponse:
       type: object
-      required: [id, workflowRunId, nodeRunId, mode, allowedActions, status, lockVersion]
+      required:
+      - id
+      - workflowRunId
+      - nodeRunId
+      - mode
+      - allowedActions
+      - status
+      - lockVersion
       properties:
         id:
           type: integer
@@ -1481,12 +1365,19 @@ components:
           nullable: true
         mode:
           type: string
-          enum: [BEFORE_NODE, AFTER_NODE]
+          enum:
+          - BEFORE_NODE
+          - AFTER_NODE
         allowedActions:
           type: array
           items:
             type: string
-            enum: [APPROVE, REJECT, EDIT_AND_APPROVE, ROLLBACK_TO_NODE, CANCEL_WORKFLOW]
+            enum:
+            - APPROVE
+            - REJECT
+            - EDIT_AND_APPROVE
+            - ROLLBACK_TO_NODE
+            - CANCEL_WORKFLOW
         status:
           type: string
         decision:
@@ -1516,11 +1407,19 @@ components:
           nullable: true
     ApprovalDecisionRequest:
       type: object
-      required: [decision, idempotencyKey, expectedLockVersion]
+      required:
+      - decision
+      - idempotencyKey
+      - expectedLockVersion
       properties:
         decision:
           type: string
-          enum: [APPROVE, REJECT, EDIT_AND_APPROVE, ROLLBACK_TO_NODE, CANCEL_WORKFLOW]
+          enum:
+          - APPROVE
+          - REJECT
+          - EDIT_AND_APPROVE
+          - ROLLBACK_TO_NODE
+          - CANCEL_WORKFLOW
         reason:
           type: string
           nullable: true
@@ -1538,7 +1437,12 @@ components:
           minimum: 0
     KnowledgeSourceResponse:
       type: object
-      required: [artifactId, artifactType, title, artifactVersion, content]
+      required:
+      - artifactId
+      - artifactType
+      - title
+      - artifactVersion
+      - content
       properties:
         artifactId:
           type: integer
@@ -1569,7 +1473,13 @@ components:
           nullable: true
     PromptVersionResponse:
       type: object
-      required: [id, promptKey, version, checksum, active, createdAt]
+      required:
+      - id
+      - promptKey
+      - version
+      - checksum
+      - active
+      - createdAt
       properties:
         id:
           type: integer
@@ -1587,7 +1497,12 @@ components:
           format: date-time
     CodeGenerationResponse:
       type: object
-      required: [format, content, fileName, mediaType, encoding]
+      required:
+      - format
+      - content
+      - fileName
+      - mediaType
+      - encoding
       properties:
         format:
           type: string
@@ -1601,7 +1516,11 @@ components:
           type: string
     CodeGenerationJobResponse:
       type: object
-      required: [id, status, manifest, createdAt]
+      required:
+      - id
+      - status
+      - manifest
+      - createdAt
       properties:
         id:
           type: integer
@@ -1617,7 +1536,9 @@ components:
         gateStatus:
           type: string
           nullable: true
-          enum: [PASSED, BLOCKED]
+          enum:
+          - PASSED
+          - BLOCKED
         manifestHash:
           type: string
           nullable: true
@@ -1644,7 +1565,11 @@ components:
           nullable: true
     DeliveryReadinessResponse:
       type: object
-      required: [specReady, buildReady, status, blockers]
+      required:
+      - specReady
+      - buildReady
+      - status
+      - blockers
       properties:
         specReady:
           type: boolean
@@ -1652,7 +1577,11 @@ components:
           type: boolean
         status:
           type: string
-          enum: [NOT_STARTED, SPEC_BLOCKED, BUILD_REQUIRED, READY]
+          enum:
+          - NOT_STARTED
+          - SPEC_BLOCKED
+          - BUILD_REQUIRED
+          - READY
         workflowRunId:
           type: integer
           format: int64
@@ -1667,7 +1596,9 @@ components:
             type: string
     ArtifactTraceGraphResponse:
       type: object
-      required: [components, edges]
+      required:
+      - components
+      - edges
       properties:
         workflowRunId:
           type: integer
@@ -1683,7 +1614,14 @@ components:
             $ref: '#/components/schemas/ArtifactTraceEdge'
     ArtifactTraceComponent:
       type: object
-      required: [artifactId, artifactType, componentKey, componentType, displayName, jsonPath, contentHash]
+      required:
+      - artifactId
+      - artifactType
+      - componentKey
+      - componentType
+      - displayName
+      - jsonPath
+      - contentHash
       properties:
         artifactId:
           type: integer
@@ -1702,7 +1640,11 @@ components:
           type: string
     ArtifactTraceEdge:
       type: object
-      required: [sourceArtifactId, fromComponentKey, toComponentKey, relationType]
+      required:
+      - sourceArtifactId
+      - fromComponentKey
+      - toComponentKey
+      - relationType
       properties:
         sourceArtifactId:
           type: integer
@@ -1715,7 +1657,15 @@ components:
           type: string
     WorkflowVersionResponse:
       type: object
-      required: [id, definitionId, workflowKey, version, specJson, contentHash, status, createdAt]
+      required:
+      - id
+      - definitionId
+      - workflowKey
+      - version
+      - specJson
+      - contentHash
+      - status
+      - createdAt
       properties:
         id:
           type: integer
@@ -1745,7 +1695,10 @@ components:
       properties:
         qualityProfile:
           type: string
-          enum: [FAST, BALANCED, DEEP]
+          enum:
+          - FAST
+          - BALANCED
+          - DEEP
         maxTokens:
           type: integer
           format: int64
@@ -1763,7 +1716,10 @@ components:
           minimum: 1000
     WorkflowRunStartRequest:
       type: object
-      required: [projectId, workflowVersionId, input]
+      required:
+      - projectId
+      - workflowVersionId
+      - input
       properties:
         projectId:
           type: integer
@@ -1773,7 +1729,8 @@ components:
           format: int64
         input:
           type: object
-          description: Client requirement input. Retrieved sources are ignored and injected by the server from actor-accessible approved artifacts.
+          description: Client requirement input. Retrieved sources are ignored and injected by the server from actor-accessible
+            approved artifacts.
           additionalProperties: true
         idempotencyKey:
           type: string
@@ -1783,11 +1740,14 @@ components:
           $ref: '#/components/schemas/WorkflowExecutionPolicyRequest'
     WorkflowReplayRequest:
       type: object
-      required: [mode]
+      required:
+      - mode
       properties:
         mode:
           type: string
-          enum: [ORIGINAL_SNAPSHOT, SELECTED_VERSION]
+          enum:
+          - ORIGINAL_SNAPSHOT
+          - SELECTED_VERSION
         selectedWorkflowVersionId:
           type: integer
           format: int64
@@ -1798,7 +1758,16 @@ components:
           nullable: true
     WorkflowRunResponse:
       type: object
-      required: [id, projectId, operation, qualityProfile, consumedTokens, consumedCost, modelCallCount, status, startedAt]
+      required:
+      - id
+      - projectId
+      - operation
+      - qualityProfile
+      - consumedTokens
+      - consumedCost
+      - modelCallCount
+      - status
+      - startedAt
       properties:
         id:
           type: integer
@@ -1830,7 +1799,10 @@ components:
           nullable: true
         qualityProfile:
           type: string
-          enum: [FAST, BALANCED, DEEP]
+          enum:
+          - FAST
+          - BALANCED
+          - DEEP
         maxTokens:
           type: integer
           format: int64
@@ -1872,7 +1844,15 @@ components:
           nullable: true
     ModelUsageResponse:
       type: object
-      required: [providerKey, modelName, invocationCount, modelCallCount, inputTokens, outputTokens, cacheTokens, estimatedCost]
+      required:
+      - providerKey
+      - modelName
+      - invocationCount
+      - modelCallCount
+      - inputTokens
+      - outputTokens
+      - cacheTokens
+      - estimatedCost
       properties:
         providerKey:
           type: string
@@ -1895,7 +1875,19 @@ components:
           type: number
     WorkflowRuntimeMetricsResponse:
       type: object
-      required: [workflowRunId, nodeAttemptCount, queueTimeMs, executionDurationMs, retryCount, recoveryCount, tokenCount, cacheTokenCount, estimatedCost, modelCallCount, acceptedDuplicateEventCount, modelUsage]
+      required:
+      - workflowRunId
+      - nodeAttemptCount
+      - queueTimeMs
+      - executionDurationMs
+      - retryCount
+      - recoveryCount
+      - tokenCount
+      - cacheTokenCount
+      - estimatedCost
+      - modelCallCount
+      - acceptedDuplicateEventCount
+      - modelUsage
       properties:
         workflowRunId:
           type: integer
@@ -1957,7 +1949,9 @@ components:
             $ref: '#/components/schemas/ModelUsageResponse'
     WorkflowRunCursorPage:
       type: object
-      required: [items, hasMore]
+      required:
+      - items
+      - hasMore
       properties:
         items:
           type: array
@@ -1970,7 +1964,9 @@ components:
           type: boolean
     WorkflowNodeRunCursorPage:
       type: object
-      required: [items, hasMore]
+      required:
+      - items
+      - hasMore
       properties:
         items:
           type: array
@@ -1983,7 +1979,16 @@ components:
           type: boolean
     WorkflowNodeRunResponse:
       type: object
-      required: [id, workflowRunId, nodeId, revision, attempt, executionId, status, handlerKey, handlerVersion]
+      required:
+      - id
+      - workflowRunId
+      - nodeId
+      - revision
+      - attempt
+      - executionId
+      - status
+      - handlerKey
+      - handlerVersion
       properties:
         id:
           type: integer
@@ -2044,7 +2049,13 @@ components:
           nullable: true
     AuditEventResponse:
       type: object
-      required: [id, projectId, eventType, entityType, message, createdAt]
+      required:
+      - id
+      - projectId
+      - eventType
+      - entityType
+      - message
+      - createdAt
       properties:
         id:
           type: integer
@@ -2075,40 +2086,14 @@ components:
         createdAt:
           type: string
           format: date-time
-    ExternalCallLogResponse:
-      type: object
-      required: [id, targetService, operation, status, durationMs, startedAt]
-      properties:
-        id:
-          type: integer
-          format: int64
-        targetService:
-          type: string
-        correlationId:
-          type: string
-          nullable: true
-        operation:
-          type: string
-        status:
-          type: string
-        durationMs:
-          type: integer
-        requestContext:
-          type: string
-          nullable: true
-        errorMessage:
-          type: string
-          nullable: true
-        startedAt:
-          type: string
-          format: date-time
-        completedAt:
-          type: string
-          format: date-time
-          nullable: true
     ModelInvocationResponse:
       type: object
-      required: [id, providerKey, modelName, agentNode, status]
+      required:
+      - id
+      - providerKey
+      - modelName
+      - agentNode
+      - status
       properties:
         id:
           type: integer
@@ -2169,7 +2154,9 @@ components:
           nullable: true
     ModelInvocationCursorPage:
       type: object
-      required: [items, hasMore]
+      required:
+      - items
+      - hasMore
       properties:
         items:
           type: array
@@ -2180,48 +2167,11 @@ components:
           nullable: true
         hasMore:
           type: boolean
-    AgentEventResponse:
-      type: object
-      required: [id, projectId, eventType, nodeName, message, createdAt]
-      properties:
-        id:
-          type: integer
-          format: int64
-        projectId:
-          type: integer
-          format: int64
-        taskId:
-          type: integer
-          format: int64
-          nullable: true
-        eventType:
-          type: string
-        nodeName:
-          type: string
-        message:
-          type: string
-        payload:
-          type: string
-          nullable: true
-        createdAt:
-          type: string
-          format: date-time
-    AgentEventCursorPage:
-      type: object
-      required: [items, hasMore]
-      properties:
-        items:
-          type: array
-          items:
-            $ref: '#/components/schemas/AgentEventResponse'
-        nextCursor:
-          type: string
-          nullable: true
-        hasMore:
-          type: boolean
     ReviewResponse:
       type: object
-      required: [score, issues]
+      required:
+      - score
+      - issues
       properties:
         score:
           type: integer
@@ -2231,7 +2181,14 @@ components:
             $ref: '#/components/schemas/ReviewIssueResponse'
     ReviewIssueResponse:
       type: object
-      required: [id, issueKey, severity, issueType, description, suggestion, status]
+      required:
+      - id
+      - issueKey
+      - severity
+      - issueType
+      - description
+      - suggestion
+      - status
       properties:
         id:
           type: integer
@@ -2260,7 +2217,11 @@ components:
           nullable: true
         status:
           type: string
-          enum: [OPEN, IN_PROGRESS, RESOLVED, IGNORED]
+          enum:
+          - OPEN
+          - IN_PROGRESS
+          - RESOLVED
+          - IGNORED
         ownerUserId:
           type: integer
           format: int64
@@ -2274,11 +2235,16 @@ components:
           nullable: true
     ReviewIssueUpdateRequest:
       type: object
-      required: [status]
+      required:
+      - status
       properties:
         status:
           type: string
-          enum: [OPEN, IN_PROGRESS, RESOLVED, IGNORED]
+          enum:
+          - OPEN
+          - IN_PROGRESS
+          - RESOLVED
+          - IGNORED
         resolution:
           type: string
           maxLength: 2000
@@ -2287,70 +2253,46 @@ components:
           type: integer
           format: int64
           nullable: true
-    RetryTaskResponse:
-      type: object
-      required: [taskId, agentName, nodeName, status, retryOfTaskId]
-      properties:
-        taskId:
-          type: integer
-          format: int64
-        agentName:
-          type: string
-        nodeName:
-          type: string
-        status:
-          type: string
-        retryOfTaskId:
-          type: integer
-          format: int64
     ProjectDiagnosticsResponse:
       type: object
       required:
-        - projectId
-        - latestWorkflowRunId
-        - latestCorrelationId
-        - workflowRunCount
-        - runningWorkflowRunCount
-        - failedWorkflowRunCount
-        - cancelledWorkflowRunCount
-        - latestFailedWorkflowRunErrorMessage
-        - agentTaskCount
-        - failedAgentTaskCount
-        - latestFailedAgentTaskNodeName
-        - latestFailedAgentTaskErrorMessage
-        - auditEventCount
-        - externalCallCount
-        - failedExternalCallCount
-        - latestFailedExternalCallErrorMessage
-        - latestFailedExternalCallDurationMs
-        - modelInvocationCount
-        - failedModelInvocationCount
-        - latestFailedModelInvocationAgentNode
-        - latestFailedModelInvocationModelName
-        - latestFailedModelInvocationDurationMs
-        - latestFailedModelInvocationErrorMessage
-        - codeGenerationJobCount
-        - runningCodeGenerationJobCount
-        - failedCodeGenerationJobCount
-        - cancelledCodeGenerationJobCount
-        - latestFailedCodeGenerationJobErrorMessage
-        - latestEvaluationOverallScore
-        - latestEvaluationGrade
-        - latestEvaluationIssueCount
-        - reviewIssueCount
-        - openReviewIssueCount
-        - blockingReviewIssueCount
-        - latestOpenReviewIssueSeverity
-        - latestOpenReviewIssueType
-        - latestOpenReviewIssueDescription
+      - projectId
+      - latestWorkflowRunId
+      - latestCorrelationId
+      - workflowRunCount
+      - runningWorkflowRunCount
+      - failedWorkflowRunCount
+      - cancelledWorkflowRunCount
+      - latestFailedWorkflowRunErrorMessage
+      - auditEventCount
+      - modelInvocationCount
+      - failedModelInvocationCount
+      - latestFailedModelInvocationAgentNode
+      - latestFailedModelInvocationModelName
+      - latestFailedModelInvocationDurationMs
+      - latestFailedModelInvocationErrorMessage
+      - codeGenerationJobCount
+      - runningCodeGenerationJobCount
+      - failedCodeGenerationJobCount
+      - cancelledCodeGenerationJobCount
+      - latestFailedCodeGenerationJobErrorMessage
+      - latestEvaluationOverallScore
+      - latestEvaluationGrade
+      - latestEvaluationIssueCount
+      - reviewIssueCount
+      - openReviewIssueCount
+      - blockingReviewIssueCount
+      - latestOpenReviewIssueSeverity
+      - latestOpenReviewIssueType
+      - latestOpenReviewIssueDescription
       properties:
         projectId:
           type: integer
           format: int64
         latestWorkflowRunId:
           type: integer
-          format: int64
           nullable: true
+          format: int64
         latestCorrelationId:
           type: string
           nullable: true
@@ -2369,33 +2311,9 @@ components:
         latestFailedWorkflowRunErrorMessage:
           type: string
           nullable: true
-        agentTaskCount:
-          type: integer
-          format: int64
-        failedAgentTaskCount:
-          type: integer
-          format: int64
-        latestFailedAgentTaskNodeName:
-          type: string
-          nullable: true
-        latestFailedAgentTaskErrorMessage:
-          type: string
-          nullable: true
         auditEventCount:
           type: integer
           format: int64
-        externalCallCount:
-          type: integer
-          format: int64
-        failedExternalCallCount:
-          type: integer
-          format: int64
-        latestFailedExternalCallErrorMessage:
-          type: string
-          nullable: true
-        latestFailedExternalCallDurationMs:
-          type: integer
-          nullable: true
         modelInvocationCount:
           type: integer
           format: int64
@@ -2411,6 +2329,7 @@ components:
         latestFailedModelInvocationDurationMs:
           type: integer
           nullable: true
+          format: int32
         latestFailedModelInvocationErrorMessage:
           type: string
           nullable: true
@@ -2432,6 +2351,7 @@ components:
         latestEvaluationOverallScore:
           type: integer
           nullable: true
+          format: int32
         latestEvaluationGrade:
           type: string
           nullable: true
@@ -2517,7 +2437,6 @@ components:
         contextManifestJson:
           type: string
           nullable: true
-          nullable: true
         sourceCitationsJson:
           type: string
           nullable: true
@@ -2538,15 +2457,15 @@ components:
     ProjectDashboardItemResponse:
       type: object
       required:
-        - projectId
-        - name
-        - requirementSummary
-        - projectStatus
-        - pendingApprovalCount
-        - openReviewIssueCount
-        - blockingReviewIssueCount
-        - estimatedCost
-        - updatedAt
+      - projectId
+      - name
+      - requirementSummary
+      - projectStatus
+      - pendingApprovalCount
+      - openReviewIssueCount
+      - blockingReviewIssueCount
+      - estimatedCost
+      - updatedAt
       properties:
         projectId:
           type: integer
@@ -2584,7 +2503,9 @@ components:
           nullable: true
     ArtifactCursorPage:
       type: object
-      required: [items, hasMore]
+      required:
+      - items
+      - hasMore
       properties:
         items:
           type: array
@@ -2597,7 +2518,9 @@ components:
           type: boolean
     UpdateArtifactRequest:
       type: object
-      required: [content, expectedLockVersion]
+      required:
+      - content
+      - expectedLockVersion
       properties:
         content:
           type: string
@@ -2607,14 +2530,19 @@ components:
           minimum: 0
     ArtifactRestoreRequest:
       type: object
-      required: [expectedLatestLockVersion]
+      required:
+      - expectedLatestLockVersion
       properties:
         expectedLatestLockVersion:
           type: integer
           minimum: 0
     ArtifactDiffResponse:
       type: object
-      required: [baseArtifactId, targetArtifactId, changed, changedPaths]
+      required:
+      - baseArtifactId
+      - targetArtifactId
+      - changed
+      - changedPaths
       properties:
         baseArtifactId:
           type: integer
@@ -2630,7 +2558,10 @@ components:
             type: string
     ApproveArtifactResponse:
       type: object
-      required: [id, status, version]
+      required:
+      - id
+      - status
+      - version
       properties:
         id:
           type: integer
@@ -2641,7 +2572,12 @@ components:
           type: integer
     ExportResponse:
       type: object
-      required: [format, content, fileName, mediaType, encoding]
+      required:
+      - format
+      - content
+      - fileName
+      - mediaType
+      - encoding
       properties:
         format:
           type: string
@@ -2655,7 +2591,13 @@ components:
           type: string
     ExportFileResponse:
       type: object
-      required: [id, projectId, fileName, mediaType, encoding, createdAt]
+      required:
+      - id
+      - projectId
+      - fileName
+      - mediaType
+      - encoding
+      - createdAt
       properties:
         id:
           type: integer
@@ -2674,15 +2616,23 @@ components:
           format: date-time
     ExportFileDetailResponse:
       allOf:
-        - $ref: '#/components/schemas/ExportFileResponse'
-        - type: object
-          required: [content]
-          properties:
-            content:
-              type: string
+      - $ref: '#/components/schemas/ExportFileResponse'
+      - type: object
+        required:
+        - content
+        properties:
+          content:
+            type: string
     ApiErrorResponse:
       type: object
-      required: [code, status, message, path, timestamp, fieldErrors, details]
+      required:
+      - code
+      - status
+      - message
+      - path
+      - timestamp
+      - fieldErrors
+      - details
       properties:
         code:
           type: string
@@ -2703,3 +2653,106 @@ components:
           type: object
           additionalProperties:
             type: string
+    WorkflowDraftRequest:
+      type: object
+      required:
+      - workflowKey
+      - name
+      - version
+      - specJson
+      properties:
+        workflowKey:
+          type: string
+          minLength: 1
+        name:
+          type: string
+          minLength: 1
+        description:
+          type: string
+        version:
+          type: string
+          minLength: 1
+        specJson:
+          type: string
+          minLength: 1
+    WorkflowValidationResponse:
+      type: object
+      required:
+      - workflowVersionId
+      - valid
+      - errors
+      - topologicalLayers
+      properties:
+        workflowVersionId:
+          type: integer
+          format: int64
+        valid:
+          type: boolean
+        errors:
+          type: array
+          items:
+            type: string
+        topologicalLayers:
+          type: array
+          items:
+            type: array
+            items:
+              type: string
+    WorkflowDeadLetterResponse:
+      type: object
+      required:
+      - id
+      - workflowRunId
+      - eventId
+      - eventType
+      - status
+      - retryCount
+      properties:
+        id:
+          type: integer
+          format: int64
+        workflowRunId:
+          type: integer
+          format: int64
+        workflowNodeRunId:
+          type: integer
+          nullable: true
+          format: int64
+        nodeId:
+          type: string
+          nullable: true
+        executionId:
+          type: string
+          nullable: true
+        eventId:
+          type: string
+        eventType:
+          type: string
+        status:
+          type: string
+        retryCount:
+          type: integer
+          format: int32
+        lastErrorType:
+          type: string
+          nullable: true
+        lastErrorAt:
+          type: string
+          nullable: true
+          format: date-time
+        deadLetteredAt:
+          type: string
+          nullable: true
+          format: date-time
+        closedAt:
+          type: string
+          nullable: true
+          format: date-time
+        createdAt:
+          type: string
+          nullable: true
+          format: date-time
+        updatedAt:
+          type: string
+          nullable: true
+          format: date-time

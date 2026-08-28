@@ -8,7 +8,7 @@ import type {
   WorkflowRunStartPayload,
   WorkflowRuntimeMetricsResponse,
   WorkflowVersionResponse
-} from '../api/v3';
+} from '../api/workflow';
 
 interface WorkflowReplayPanelProps {
   projectId: number;

@@ -11,7 +11,7 @@ import java.util.stream.Collectors;
 public class WorkflowHandlerCatalog {
     private final Set<String> availableHandlers;
 
-    public WorkflowHandlerCatalog(@Value("${autospec.workflow.available-handlers:FixtureAgent:v1,ProductManagerAgent:v1,ArchitectAgent:v1,BackendEngineerAgent:v2,FrontendEngineerAgent:v1,ReviewerAgent:v1,EvaluatorAgent:v1,author_agent:v1,reviewer_agent:v1}") String configuredHandlers) {
+    public WorkflowHandlerCatalog(@Value("${autospec.workflow.available-handlers:ProductManagerAgent:v1,ArchitectAgent:v1,BackendEngineerAgent:v1,FrontendEngineerAgent:v1,ReviewerAgent:v1,EvaluatorAgent:v1}") String configuredHandlers) {
         availableHandlers = Arrays.stream(configuredHandlers.split(","))
                 .map(String::trim)
                 .filter(value -> !value.isBlank())

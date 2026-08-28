@@ -10,7 +10,7 @@ class ProductionSecurityConfigurationValidatorTest {
     @Test
     void developmentConfigurationDoesNotRequireProductionSecrets() {
         ProductionSecurityConfigurationValidator validator = validator(
-                "development", true, false, "None", true, "", "jdbc:mysql://localhost/autospec?useSSL=false", "root", "", "", false
+                "development", true, false, "None", true, "jdbc:mysql://localhost/autospec?useSSL=false", "root", "", "", false
         );
 
         assertThatCode(validator::afterPropertiesSet).doesNotThrowAnyException();
@@ -19,7 +19,7 @@ class ProductionSecurityConfigurationValidatorTest {
     @Test
     void productionFailsClosedWhenAnySecurityBoundaryIsUnsafe() {
         ProductionSecurityConfigurationValidator validator = validator(
-                "production", true, false, "None", true, "", "jdbc:mysql://db/autospec?useSSL=false", "root", "", "", false
+                "production", true, false, "None", true, "jdbc:mysql://db/autospec?useSSL=false", "root", "", "", false
         );
 
         assertThatThrownBy(validator::afterPropertiesSet)
@@ -28,7 +28,6 @@ class ProductionSecurityConfigurationValidatorTest {
                 .hasMessageContaining("session cookies must be Secure")
                 .hasMessageContaining("session cookies must use SameSite=Strict")
                 .hasMessageContaining("session tokens must not be exposed")
-                .hasMessageContaining("Agent Engine service token is required")
                 .hasMessageContaining("database application user must be non-root")
                 .hasMessageContaining("database password is required")
                 .hasMessageContaining("Redis password is required")
@@ -44,7 +43,6 @@ class ProductionSecurityConfigurationValidatorTest {
                 true,
                 "Strict",
                 false,
-                "service-token",
                 "jdbc:mysql://db/autospec?sslMode=VERIFY_IDENTITY",
                 "autospec",
                 "database-password",
@@ -61,7 +59,6 @@ class ProductionSecurityConfigurationValidatorTest {
             boolean secureCookie,
             String sameSite,
             boolean exposeSessionToken,
-            String serviceToken,
             String datasourceUrl,
             String datasourceUsername,
             String datasourcePassword,
@@ -74,7 +71,6 @@ class ProductionSecurityConfigurationValidatorTest {
                 secureCookie,
                 sameSite,
                 exposeSessionToken,
-                serviceToken,
                 datasourceUrl,
                 datasourceUsername,
                 datasourcePassword,

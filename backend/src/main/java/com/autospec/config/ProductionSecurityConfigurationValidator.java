@@ -16,7 +16,6 @@ public class ProductionSecurityConfigurationValidator implements InitializingBea
     private final boolean secureCookie;
     private final String sameSite;
     private final boolean exposeSessionToken;
-    private final String agentEngineServiceToken;
     private final String datasourceUrl;
     private final String datasourceUsername;
     private final String datasourcePassword;
@@ -29,7 +28,6 @@ public class ProductionSecurityConfigurationValidator implements InitializingBea
             @Value("${autospec.auth.session.cookie-secure:false}") boolean secureCookie,
             @Value("${autospec.auth.session.same-site:Strict}") String sameSite,
             @Value("${autospec.auth.session.expose-token-in-response:false}") boolean exposeSessionToken,
-            @Value("${autospec.agent-engine.service-token:}") String agentEngineServiceToken,
             @Value("${spring.datasource.url:}") String datasourceUrl,
             @Value("${spring.datasource.username:}") String datasourceUsername,
             @Value("${spring.datasource.password:}") String datasourcePassword,
@@ -41,7 +39,6 @@ public class ProductionSecurityConfigurationValidator implements InitializingBea
         this.secureCookie = secureCookie;
         this.sameSite = sameSite;
         this.exposeSessionToken = exposeSessionToken;
-        this.agentEngineServiceToken = agentEngineServiceToken;
         this.datasourceUrl = datasourceUrl;
         this.datasourceUsername = datasourceUsername;
         this.datasourcePassword = datasourcePassword;
@@ -61,9 +58,6 @@ public class ProductionSecurityConfigurationValidator implements InitializingBea
             violations.add("session cookies must use SameSite=Strict");
         }
         if (exposeSessionToken) violations.add("session tokens must not be exposed in login responses");
-        if (agentEngineServiceToken == null || agentEngineServiceToken.isBlank()) {
-            violations.add("Agent Engine service token is required");
-        }
         if (datasourceUsername == null || datasourceUsername.isBlank()
                 || "root".equals(datasourceUsername.trim().toLowerCase(Locale.ROOT))) {
             violations.add("database application user must be non-root");

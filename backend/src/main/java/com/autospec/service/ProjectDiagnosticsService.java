@@ -2,10 +2,8 @@ package com.autospec.service;
 
 import com.autospec.entity.Artifact;
 import com.autospec.dto.ProjectDiagnosticsResponse;
-import com.autospec.entity.AgentTask;
 import com.autospec.entity.AuditEvent;
 import com.autospec.entity.CodeGenerationJob;
-import com.autospec.entity.ExternalCallLog;
 import com.autospec.entity.ModelInvocation;
 import com.autospec.entity.ReviewIssue;
 import com.autospec.entity.WorkflowRun;
@@ -18,9 +16,7 @@ import org.springframework.stereotype.Service;
 public class ProjectDiagnosticsService {
 
     private final WorkflowRunService workflowRunService;
-    private final AgentTaskService agentTaskService;
     private final AuditEventService auditEventService;
-    private final ExternalCallLogService externalCallLogService;
     private final ModelInvocationService modelInvocationService;
     private final CodeGenerationJobService codeGenerationJobService;
     private final ReviewIssueService reviewIssueService;
@@ -29,9 +25,7 @@ public class ProjectDiagnosticsService {
 
     public ProjectDiagnosticsService(
             WorkflowRunService workflowRunService,
-            AgentTaskService agentTaskService,
             AuditEventService auditEventService,
-            ExternalCallLogService externalCallLogService,
             ModelInvocationService modelInvocationService,
             CodeGenerationJobService codeGenerationJobService,
             ReviewIssueService reviewIssueService,
@@ -39,9 +33,7 @@ public class ProjectDiagnosticsService {
             ObjectMapper objectMapper
     ) {
         this.workflowRunService = workflowRunService;
-        this.agentTaskService = agentTaskService;
         this.auditEventService = auditEventService;
-        this.externalCallLogService = externalCallLogService;
         this.modelInvocationService = modelInvocationService;
         this.codeGenerationJobService = codeGenerationJobService;
         this.reviewIssueService = reviewIssueService;
@@ -60,20 +52,6 @@ public class ProjectDiagnosticsService {
                 .eq(WorkflowRun::getProjectId, projectId)
                 .eq(WorkflowRun::getStatus, "FAILED")
                 .orderByDesc(WorkflowRun::getId)
-                .last("limit 1")
-                .oneOpt()
-                .orElse(null);
-        AgentTask latestFailedTask = agentTaskService.lambdaQuery()
-                .eq(AgentTask::getProjectId, projectId)
-                .eq(AgentTask::getStatus, "FAILED")
-                .orderByDesc(AgentTask::getId)
-                .last("limit 1")
-                .oneOpt()
-                .orElse(null);
-        ExternalCallLog latestFailedExternalCall = externalCallLogService.lambdaQuery()
-                .eq(ExternalCallLog::getProjectId, projectId)
-                .eq(ExternalCallLog::getStatus, "FAILED")
-                .orderByDesc(ExternalCallLog::getId)
                 .last("limit 1")
                 .oneOpt()
                 .orElse(null);
@@ -119,27 +97,9 @@ public class ProjectDiagnosticsService {
                         .eq(WorkflowRun::getStatus, "CANCELLED")
                         .count(),
                 latestFailedRun == null ? null : latestFailedRun.getErrorMessage(),
-                agentTaskService.lambdaQuery()
-                        .eq(AgentTask::getProjectId, projectId)
-                        .count(),
-                agentTaskService.lambdaQuery()
-                        .eq(AgentTask::getProjectId, projectId)
-                        .eq(AgentTask::getStatus, "FAILED")
-                        .count(),
-                latestFailedTask == null ? null : latestFailedTask.getNodeName(),
-                latestFailedTask == null ? null : latestFailedTask.getErrorMessage(),
                 auditEventService.lambdaQuery()
                         .eq(AuditEvent::getProjectId, projectId)
                         .count(),
-                externalCallLogService.lambdaQuery()
-                        .eq(ExternalCallLog::getProjectId, projectId)
-                        .count(),
-                externalCallLogService.lambdaQuery()
-                        .eq(ExternalCallLog::getProjectId, projectId)
-                        .eq(ExternalCallLog::getStatus, "FAILED")
-                        .count(),
-                latestFailedExternalCall == null ? null : latestFailedExternalCall.getErrorMessage(),
-                latestFailedExternalCall == null ? null : latestFailedExternalCall.getDurationMs(),
                 modelInvocationService.lambdaQuery()
                         .eq(ModelInvocation::getProjectId, projectId)
                         .count(),
@@ -204,8 +164,8 @@ public class ProjectDiagnosticsService {
             Integer overallScore = root.path("overall_score").isNumber()
                     ? root.path("overall_score").asInt()
                     : null;
-            String grade = root.path("grade").isTextual()
-                    ? root.path("grade").asText()
+            String grade = root.path("final_grade").isTextual()
+                    ? root.path("final_grade").asText()
                     : null;
             long issueCount = root.path("issues").isArray()
                     ? root.path("issues").size()

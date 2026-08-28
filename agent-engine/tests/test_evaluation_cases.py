@@ -3,7 +3,7 @@ import pytest
 from evaluation.case_catalog import get_evaluation_case, list_evaluation_cases
 
 
-def test_v4_evaluation_case_catalog_contains_cross_domain_benchmark_cases():
+def test_current_evaluation_case_catalog_contains_cross_domain_benchmark_cases():
     cases = list_evaluation_cases()
 
     assert len(cases) >= 20

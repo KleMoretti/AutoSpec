@@ -108,7 +108,7 @@ class WorkflowRunServiceTest {
     private WorkflowRun workflowRun(Long projectId, String idempotencyKey, String status, LocalDateTime createdAt) {
         WorkflowRun run = new WorkflowRun();
         run.setProjectId(projectId);
-        run.setOperation("GENERATE_V4");
+        run.setOperation("GENERATE_V5");
         run.setIdempotencyKey(idempotencyKey);
         run.setStatus(status);
         run.setCreatedAt(createdAt);

@@ -9,6 +9,8 @@ public interface ReviewIssueService extends IService<ReviewIssue> {
 
     List<ReviewIssue> listByProjectId(Long projectId, int limit, int offset);
 
+    int latestReviewScore(Long projectId);
+
     ReviewIssue updateDisposition(
             Long projectId,
             Long issueId,

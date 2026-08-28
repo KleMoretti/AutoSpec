@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cancelWorkflowRun, getDeliveryReadiness } from './v3';
+import { cancelWorkflowRun, getDeliveryReadiness } from './workflow';
 
 afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('v3 delivery and recovery APIs', () => {
+describe('workflow delivery and recovery APIs', () => {
   it('loads the server-authoritative delivery gate', async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse({
       specReady: true,

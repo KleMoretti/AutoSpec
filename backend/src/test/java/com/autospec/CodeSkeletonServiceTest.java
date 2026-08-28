@@ -64,14 +64,19 @@ class CodeSkeletonServiceTest {
         project.setStatus("COMPLETED");
         projectService.save(project);
 
-        saveArtifact(project.getId(), "PRD", "{\"project_name\":\"Clinic Scheduler\"}");
+        saveArtifact(project.getId(), "PRD", """
+                {"project_name":"Clinic Scheduler",
+                 "core_features":[{"requirement_id":"REQ-APPOINTMENTS","name":"Appointments","description":"Manage appointments","priority":"MUST"}],
+                 "user_stories":[{"story_id":"STORY-APPOINTMENTS","role":"staff","goal":"manage appointments","benefit":"coordinate care","requirement_refs":["REQ-APPOINTMENTS"],
+                   "acceptance_criteria":[{"acceptance_id":"AC-APPOINTMENTS-LIST","criterion":"Appointments can be listed","requirement_refs":["REQ-APPOINTMENTS"]}]}]}
+                """);
         saveArtifact(project.getId(), "BACKEND_DESIGN", """
                 {"tables":[{"name":"appointment","description":"Appointments","fields":[{"name":"id","type":"BIGINT","nullable":false,"description":"ID"}]}],
-                 "apis":[{"method":"GET","path":"/api/appointments","description":"List appointments"}]}
+                 "apis":[{"api_id":"API-APPOINTMENTS-LIST","method":"GET","path":"/api/appointments","description":"List appointments","requirement_refs":["REQ-APPOINTMENTS"]}]}
                 """);
         saveArtifact(project.getId(), "FRONTEND_SKELETON", """
-                {"routes":[{"path":"/appointments","page":"AppointmentPage"}],
-                 "pages":[{"name":"AppointmentPage","purpose":"Manage appointments","components":["AppointmentList"]}]}
+                {"routes":[{"route_id":"ROUTE-APPOINTMENTS","path":"/appointments","page":"AppointmentPage","requirement_refs":["REQ-APPOINTMENTS"]}],
+                 "pages":[{"page_id":"PAGE-APPOINTMENTS","name":"AppointmentPage","purpose":"Manage appointments","components":["AppointmentList"],"requirement_refs":["REQ-APPOINTMENTS"]}]}
                 """);
 
         CodeGenerationResponse response = codeSkeletonService.generate(project.getId());
@@ -133,7 +138,11 @@ class CodeSkeletonServiceTest {
         project.setStatus("COMPLETED");
         projectService.save(project);
 
-        saveArtifact(project.getId(), "PRD", "{\"project_name\":\"Failed Code Export\"}");
+        saveArtifact(project.getId(), "PRD", """
+                {"project_name":"Failed Code Export",
+                 "core_features":[{"requirement_id":"REQ-EXPORT","name":"Export","description":"Export a verified code bundle","priority":"MUST"}],
+                 "user_stories":[{"role":"developer","goal":"export code","benefit":"validate delivery","requirement_refs":["REQ-EXPORT"],"acceptance_criteria":[]}]}
+                """);
 
         doThrow(new JsonProcessingException("manifest serialization failed") {
         }).when(objectMapper).writeValueAsString(any());

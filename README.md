@@ -17,10 +17,10 @@ The local `fixture` model mode is deterministic and intended only for developmen
 ## Trust and delivery boundaries
 
 - Demo login is opt-in; the backend no longer creates `owner / owner-pass` during login.
-- Browser sessions use an `HttpOnly`, `SameSite` cookie. SSE no longer sends a reusable session token in its URL.
-- Backend-to-Agent calls require a service token and have explicit connect/read deadlines.
+- Browser sessions use an `HttpOnly`, `SameSite` cookie; reusable session credentials are never placed in URLs.
+- Agent API diagnostics require a service token, and Worker traffic uses authenticated Redis connections plus bounded node deadlines.
 - Compose binds published ports to `127.0.0.1` by default and protects Redis with a password.
-- Production startup fails closed when demo login is enabled, cookies are not Secure/Strict, the database user is root, service/data-store secrets are blank, or database/Redis TLS is not explicitly enabled.
+- Production components fail closed when demo login is enabled, cookies are not Secure/Strict, the database user is root, required secrets are blank, fixture model mode is selected, or database/Redis TLS is not explicitly enabled.
 - Retrieval is restricted to the current project, so an editor cannot pull knowledge from the owner's other projects.
 - Reruns preserve artifact history. Cancelling a run closes pending commands and prevents late Worker events from projecting artifacts.
 - Evaluator builds a `REQ-* -> story/acceptance -> API -> data -> UI` trace matrix. Missing MUST coverage or any HIGH/CRITICAL issue blocks completion and delivery.
@@ -42,7 +42,7 @@ The local `fixture` model mode is deterministic and intended only for developmen
 React frontend
   -> Spring Boot control plane + MySQL source of truth
     -> Redis command/event Streams
-      -> Python Product Manager / Architect / Engineer / Reviewer / Evaluator Workers
+      -> Python Product Manager / Architect / Backend / Frontend / Reviewer / Evaluator Workers
     -> approval / rework / recovery / replay / delivery gate
 ```
 
@@ -106,4 +106,4 @@ docker compose config --quiet
 docker compose --profile monitoring config --quiet
 ```
 
-CI additionally runs Testcontainers integration tests and builds the backend, Agent, and frontend images. The legacy V4 HTTP APIs remain temporarily available for compatibility, but they are no longer exposed as a competing product path in the UI.
+CI additionally runs Testcontainers integration tests and builds the backend, Agent, and frontend images. Fixed legacy generation APIs are removed; the published V5 workflow is the only product generation path.

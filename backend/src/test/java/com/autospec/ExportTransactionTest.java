@@ -2,7 +2,6 @@ package com.autospec;
 
 import com.autospec.entity.Artifact;
 import com.autospec.entity.ExportFile;
-import com.autospec.service.AgentEngineClient;
 import com.autospec.service.ArtifactService;
 import com.autospec.service.AuditEventService;
 import com.autospec.service.ExportFileService;
@@ -11,7 +10,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.boot.test.mock.mockito.SpyBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
@@ -37,9 +35,6 @@ class ExportTransactionTest {
 
     @Autowired
     private ObjectMapper objectMapper;
-
-    @MockBean
-    private AgentEngineClient agentEngineClient;
 
     @Autowired
     private ArtifactService artifactService;

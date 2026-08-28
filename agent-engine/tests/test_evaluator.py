@@ -1,4 +1,4 @@
-from graph.workflow import AgentExecutionRecord
+from runtime.agent_node_runner import AgentExecutionRecord
 from review.evaluator import evaluate_artifacts
 from schemas.architecture_design import ArchitectureDesignArtifact
 from schemas.backend_design import BackendDesignArtifact

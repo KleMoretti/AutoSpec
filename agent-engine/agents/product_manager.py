@@ -97,8 +97,8 @@ class ProductManagerAgent:
                     },
                 ],
                 "business_boundaries": [
-                    "V1 does not support payment escrow.",
-                    "V1 does not support off-campus logistics.",
+                    "Payment escrow is outside the current delivery scope.",
+                    "Off-campus logistics are outside the current delivery scope.",
                 ],
                 "non_functional_requirements": [
                     "Every agent input, output, status, duration, and error is observable.",

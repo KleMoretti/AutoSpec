@@ -5,8 +5,8 @@ from schemas.evaluation import ExperimentRun
 def test_compare_experiment_runs_ranks_by_score_failures_cost_and_duration():
     baseline = ExperimentRun(
         run_id="baseline",
-        workflow_key="autospec-v3",
-        workflow_version="v3",
+        workflow_key="autospec-v5",
+        workflow_version="v5",
         prompt_versions={"reviewer": "v1"},
         model_config={"reviewer": "deterministic-fixture"},
         overall_score=82,
@@ -19,8 +19,8 @@ def test_compare_experiment_runs_ranks_by_score_failures_cost_and_duration():
     )
     candidate = ExperimentRun(
         run_id="candidate",
-        workflow_key="autospec-v4",
-        workflow_version="v4",
+        workflow_key="autospec-v5",
+        workflow_version="v5",
         prompt_versions={"reviewer": "v1", "evaluator": "v1"},
         model_config={"reviewer": "deterministic-fixture", "evaluator": "deterministic-rules"},
         overall_score=92,
@@ -33,8 +33,8 @@ def test_compare_experiment_runs_ranks_by_score_failures_cost_and_duration():
     )
     failed = ExperimentRun(
         run_id="failed",
-        workflow_key="autospec-v4",
-        workflow_version="v4",
+        workflow_key="autospec-v5",
+        workflow_version="v5",
         prompt_versions={"reviewer": "v1", "evaluator": "v1"},
         model_config={"reviewer": "deterministic-fixture", "evaluator": "deterministic-rules"},
         overall_score=92,
@@ -63,8 +63,8 @@ def test_compare_experiment_runs_ranks_by_score_failures_cost_and_duration():
 def test_compare_experiment_runs_requires_at_least_two_runs():
     baseline = ExperimentRun(
         run_id="baseline",
-        workflow_key="autospec-v4",
-        workflow_version="v4",
+        workflow_key="autospec-v5",
+        workflow_version="v5",
         prompt_versions={},
         model_config={},
         overall_score=90,

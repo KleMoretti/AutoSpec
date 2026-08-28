@@ -1,21 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   approveArtifact,
-  continueGeneration,
   createProject,
-  exportPdf,
   exportMarkdown,
-  generatePrd,
-  generateProject,
-  generateProjectV4,
+  exportPdf,
   getArtifacts,
-  getEventHistory,
-  getProgress,
   getReview,
-  retryTask,
   updateArtifact
 } from './projects';
-import { generateCodeSkeleton, getWorkflow } from './v3';
+import { generateCodeSkeleton } from './workflow';
 
 function jsonResponse(body: unknown) {
   return Promise.resolve({
@@ -24,7 +17,7 @@ function jsonResponse(body: unknown) {
   } as Response);
 }
 
-describe('project api client', () => {
+describe('current project api client', () => {
   const fetchMock = vi.fn();
 
   beforeEach(() => {
@@ -36,32 +29,13 @@ describe('project api client', () => {
     fetchMock.mockReset();
   });
 
-  it('uses same-origin credentials without exposing the session token to JavaScript requests', async () => {
-    const storage = new Map<string, string>();
-    vi.stubGlobal('localStorage', {
-      getItem: (key: string) => storage.get(key) ?? null,
-      setItem: (key: string, value: string) => storage.set(key, value),
-      removeItem: (key: string) => storage.delete(key)
-    });
-    localStorage.setItem(
-      'autospec.session',
-      JSON.stringify({ userId: 3, username: 'owner', displayName: 'Owner', sessionToken: 'session-abc' })
-    );
+  it('creates a project without exposing the session token', async () => {
     fetchMock.mockReturnValueOnce(jsonResponse({ projectId: 7, status: 'CREATED' }));
 
-    await createProject({ name: 'Campus Marketplace', requirement: 'Build it.' });
-
-    expect(fetchMock).toHaveBeenCalledWith('/api/projects', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: 'Campus Marketplace', requirement: 'Build it.' })
+    const result = await createProject({
+      name: 'Campus Marketplace',
+      requirement: 'Build it.'
     });
-  });
-
-  it('creates a project with name and requirement', async () => {
-    fetchMock.mockReturnValueOnce(jsonResponse({ projectId: 7, status: 'CREATED' }));
-
-    const result = await createProject({ name: 'Campus Marketplace', requirement: 'Build it.' });
 
     expect(result.projectId).toBe(7);
     expect(fetchMock).toHaveBeenCalledWith('/api/projects', {
@@ -71,102 +45,70 @@ describe('project api client', () => {
     });
   });
 
-  it('calls project generation and reads progress artifacts review and export', async () => {
+  it('reads current artifacts and review, then exports deliverables', async () => {
     fetchMock
-      .mockReturnValueOnce(jsonResponse({ projectId: 7, status: 'COMPLETED', percent: 100 }))
-      .mockReturnValueOnce(jsonResponse({ projectId: 7, currentAgent: 'COMPLETED', percent: 100, steps: [] }))
-      .mockReturnValueOnce(jsonResponse([{ id: 1, type: 'PRD', title: 'PRD', content: '{}', format: 'JSON', version: 1 }]))
+      .mockReturnValueOnce(jsonResponse([
+        { id: 1, type: 'PRD', title: 'PRD', content: '{}', format: 'JSON', version: 1 }
+      ]))
       .mockReturnValueOnce(jsonResponse({ score: 100, issues: [] }))
-      .mockReturnValueOnce(jsonResponse({ format: 'MARKDOWN', content: '# Campus Marketplace' }));
+      .mockReturnValueOnce(jsonResponse({ format: 'MARKDOWN', content: '# Result' }))
+      .mockReturnValueOnce(jsonResponse({
+        format: 'PDF',
+        content: 'JVBERi0=',
+        fileName: 'autospec-project-7.pdf',
+        mediaType: 'application/pdf',
+        encoding: 'base64'
+      }));
 
-    await expect(generateProject(7)).resolves.toMatchObject({ status: 'COMPLETED' });
-    await expect(getProgress(7)).resolves.toMatchObject({ percent: 100 });
     await expect(getArtifacts(7)).resolves.toHaveLength(1);
     await expect(getReview(7)).resolves.toMatchObject({ score: 100 });
-    await expect(exportMarkdown(7)).resolves.toBe('# Campus Marketplace');
-
-    expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/projects/7/generate', { method: 'POST' });
-    expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/projects/7/progress');
-    expect(fetchMock).toHaveBeenNthCalledWith(3, '/api/projects/7/artifacts');
-    expect(fetchMock).toHaveBeenNthCalledWith(4, '/api/projects/7/review');
-    expect(fetchMock).toHaveBeenNthCalledWith(5, '/api/projects/7/export?format=MARKDOWN', { method: 'POST' });
-  });
-
-  it('calls v4 project generation endpoint', async () => {
-    fetchMock.mockReturnValueOnce(jsonResponse({ projectId: 7, status: 'COMPLETED', percent: 100 }));
-
-    await expect(generateProjectV4(7)).resolves.toMatchObject({ percent: 100 });
-
-    expect(fetchMock).toHaveBeenCalledWith('/api/projects/7/generate-v4', { method: 'POST' });
-  });
-
-  it('supports v2 prd gate approve continue retry events and pdf export', async () => {
-    fetchMock
-      .mockReturnValueOnce(jsonResponse({ projectId: 7, status: 'PRD_REVIEW', percent: 20 }))
-      .mockReturnValueOnce(jsonResponse({ id: 3, status: 'PENDING_REVIEW', version: 2 }))
-      .mockReturnValueOnce(jsonResponse({ id: 3, status: 'APPROVED', version: 2 }))
-      .mockReturnValueOnce(jsonResponse({ projectId: 7, status: 'COMPLETED', percent: 100 }))
-      .mockReturnValueOnce(jsonResponse([{ id: 11, eventType: 'NODE_STARTED', nodeName: 'architect' }]))
-      .mockReturnValueOnce(jsonResponse({ taskId: 9, status: 'SUCCEEDED', retryOfTaskId: 8 }))
-      .mockReturnValueOnce(
-        jsonResponse({
-          format: 'PDF',
-          content: 'JVBERi0=',
-          fileName: 'autospec-project-7.pdf',
-          mediaType: 'application/pdf',
-          encoding: 'base64'
-        })
-      );
-
-    await expect(generatePrd(7)).resolves.toMatchObject({ status: 'PRD_REVIEW' });
-    await expect(updateArtifact(7, 3, '{"title":"PRD"}', 0)).resolves.toMatchObject({ version: 2 });
-    await expect(approveArtifact(7, 3)).resolves.toMatchObject({ status: 'APPROVED' });
-    await expect(continueGeneration(7)).resolves.toMatchObject({ status: 'COMPLETED' });
-    await expect(getEventHistory(7)).resolves.toHaveLength(1);
-    await expect(retryTask(7, 8)).resolves.toMatchObject({ retryOfTaskId: 8 });
+    await expect(exportMarkdown(7)).resolves.toBe('# Result');
     await expect(exportPdf(7)).resolves.toMatchObject({ format: 'PDF' });
 
-    expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/projects/7/generate-prd', { method: 'POST' });
-    expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/projects/7/artifacts/3', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content: '{"title":"PRD"}', expectedLockVersion: 0 })
-    });
-    expect(fetchMock).toHaveBeenNthCalledWith(3, '/api/projects/7/artifacts/3/approve', { method: 'POST' });
-    expect(fetchMock).toHaveBeenNthCalledWith(4, '/api/projects/7/continue', { method: 'POST' });
-    expect(fetchMock).toHaveBeenNthCalledWith(5, '/api/projects/7/events/history');
-    expect(fetchMock).toHaveBeenNthCalledWith(6, '/api/projects/7/tasks/8/retry', { method: 'POST' });
-    expect(fetchMock).toHaveBeenNthCalledWith(7, '/api/projects/7/export?format=PDF', { method: 'POST' });
+    expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/projects/7/artifacts');
+    expect(fetchMock).toHaveBeenNthCalledWith(2, '/api/projects/7/review');
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      '/api/projects/7/export?format=MARKDOWN',
+      { method: 'POST' }
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      '/api/projects/7/export?format=PDF',
+      { method: 'POST' }
+    );
   });
 
-  it('supports v3 code skeleton export', async () => {
-    fetchMock.mockReturnValueOnce(
-      jsonResponse({
+  it('updates and approves an artifact and generates the code bundle', async () => {
+    fetchMock
+      .mockReturnValueOnce(jsonResponse({ id: 3, status: 'PENDING_REVIEW', version: 2 }))
+      .mockReturnValueOnce(jsonResponse({ id: 3, status: 'APPROVED', version: 2 }))
+      .mockReturnValueOnce(jsonResponse({
         format: 'ZIP',
         content: 'UEs=',
         fileName: 'autospec-project-7-skeleton.zip',
         mediaType: 'application/zip',
         encoding: 'base64'
-      })
-    );
+      }));
 
+    await updateArtifact(7, 3, '{"title":"PRD"}', 0);
+    await approveArtifact(7, 3);
     await expect(generateCodeSkeleton(7)).resolves.toMatchObject({ format: 'ZIP' });
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/projects/7/code-skeleton', { method: 'POST' });
-  });
-
-  it('supports v3 workflow graph retrieval', async () => {
-    fetchMock.mockReturnValueOnce(
-      jsonResponse({
-        workflowKey: 'autospec-v3',
-        version: 'v3',
-        nodes: [{ id: 'product_manager', label: 'Product Manager' }],
-        edges: []
-      })
+    expect(fetchMock).toHaveBeenNthCalledWith(1, '/api/projects/7/artifacts/3', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: '{"title":"PRD"}', expectedLockVersion: 0 })
+    });
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      '/api/projects/7/artifacts/3/approve',
+      { method: 'POST' }
     );
-
-    await expect(getWorkflow(7)).resolves.toMatchObject({ workflowKey: 'autospec-v3' });
-
-    expect(fetchMock).toHaveBeenCalledWith('/api/projects/7/workflow');
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      '/api/projects/7/code-skeleton',
+      { method: 'POST' }
+    );
   });
 });

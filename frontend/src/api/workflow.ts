@@ -4,28 +4,6 @@ export async function generateCodeSkeleton(projectId: number): Promise<ExportMet
   return request(`/api/projects/${projectId}/code-skeleton`, { method: 'POST' });
 }
 
-export interface WorkflowNodeResponse {
-  id: string;
-  label?: string;
-  artifactType?: string;
-}
-
-export interface WorkflowEdgeResponse {
-  from: string;
-  to: string;
-}
-
-export interface WorkflowSnapshotResponse {
-  workflowKey: string;
-  version: string;
-  nodes: WorkflowNodeResponse[];
-  edges: WorkflowEdgeResponse[];
-}
-
-export async function getWorkflow(projectId: number): Promise<WorkflowSnapshotResponse> {
-  return request(`/api/projects/${projectId}/workflow`);
-}
-
 export type WorkflowApprovalDecision =
   | 'APPROVE'
   | 'REJECT'

@@ -1,7 +1,7 @@
 import { CodeOutlined, DownloadOutlined } from '@ant-design/icons';
 import { Button, Space, Typography, message } from 'antd';
 import { useState } from 'react';
-import { generateCodeSkeleton } from '../api/v3';
+import { generateCodeSkeleton } from '../api/workflow';
 
 interface CodeExportPanelProps {
   projectId: number;

@@ -15,9 +15,6 @@ spring:
       password: ${REDIS_PASSWORD:}
       ssl:
         enabled: ${REDIS_SSL_ENABLED:false}
-  sql:
-    init:
-      mode: ${SQL_INIT_MODE:never}
   flyway:
     enabled: true
     locations: classpath:db/migration
@@ -89,11 +86,6 @@ autospec:
       cookie-secure: ${AUTH_SESSION_COOKIE_SECURE:false}
       same-site: ${AUTH_SESSION_SAME_SITE:Strict}
       expose-token-in-response: ${AUTH_SESSION_EXPOSE_TOKEN:false}
-  agent-engine:
-    base-url: ${AGENT_ENGINE_BASE_URL:http://localhost:8000}
-    service-token: ${AGENT_ENGINE_SERVICE_TOKEN:}
-    connect-timeout: ${AGENT_ENGINE_CONNECT_TIMEOUT:5s}
-    read-timeout: ${AGENT_ENGINE_READ_TIMEOUT:60s}
   observability:
     workflow-backlog:
       enabled: ${WORKFLOW_BACKLOG_METRICS_ENABLED:false}
@@ -108,7 +100,7 @@ autospec:
       max-oldest-outbox-age: ${WORKFLOW_ADMISSION_MAX_OLDEST_OUTBOX_AGE:5m}
       max-worker-backlog: ${WORKFLOW_ADMISSION_MAX_WORKER_BACKLOG:1000}
       retry-after: ${WORKFLOW_ADMISSION_RETRY_AFTER:5s}
-    available-handlers: ${WORKFLOW_AVAILABLE_HANDLERS:FixtureAgent:v1,ProductManagerAgent:v1,ArchitectAgent:v1,BackendEngineerAgent:v1,BackendEngineerAgent:v2,FrontendEngineerAgent:v1,ReviewerAgent:v1,EvaluatorAgent:v1,author_agent:v1,reviewer_agent:v1}
+    available-handlers: ${WORKFLOW_AVAILABLE_HANDLERS:ProductManagerAgent:v1,ArchitectAgent:v1,BackendEngineerAgent:v1,FrontendEngineerAgent:v1,ReviewerAgent:v1,EvaluatorAgent:v1}
     commands:
       stream-max-length: ${WORKFLOW_COMMAND_STREAM_MAX_LENGTH:1000000}
     outbox:

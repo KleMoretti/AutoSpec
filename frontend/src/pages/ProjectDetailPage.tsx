@@ -20,7 +20,7 @@ import {
   getWorkflowRunNodes,
   replayWorkflowRun,
   startWorkflowRun
-} from '../api/v3';
+} from '../api/workflow';
 import ArtifactTabs from '../components/ArtifactTabs';
 import CodeExportPanel from '../components/CodeExportPanel';
 import ReviewIssueTable from '../components/ReviewIssueTable';

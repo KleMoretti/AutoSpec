@@ -6,7 +6,7 @@ import type {
   ApprovalDecisionPayload,
   WorkflowApprovalDecision,
   WorkflowApprovalResponse
-} from '../api/v3';
+} from '../api/workflow';
 
 interface WorkflowApprovalPanelProps {
   approvals: WorkflowApprovalResponse[];

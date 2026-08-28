@@ -32,29 +32,6 @@ export interface ProjectDashboardItemResponse {
   updatedAt?: string;
 }
 
-export interface GenerateProjectResponse {
-  projectId: number;
-  status: string;
-  percent: number;
-}
-
-export interface AgentStepStatus {
-  taskId?: number;
-  agentName: string;
-  status: string;
-  nodeName?: string;
-  durationMs?: number;
-  errorMessage?: string;
-}
-
-export interface ProjectProgressResponse {
-  projectId: number;
-  status?: string;
-  currentAgent: string;
-  percent: number;
-  steps: AgentStepStatus[];
-}
-
 export type ArtifactStatus = 'GENERATED' | 'PENDING_REVIEW' | 'APPROVED' | 'SUPERSEDED' | string;
 
 export interface ArtifactResponse {
@@ -124,23 +101,6 @@ export interface ApproveArtifactResponse {
   version: number;
 }
 
-export interface RetryTaskResponse {
-  taskId: number;
-  status: string;
-  retryOfTaskId: number;
-}
-
-export interface AgentEventResponse {
-  id: number;
-  projectId?: number;
-  taskId?: number;
-  eventType: string;
-  nodeName: string;
-  message?: string;
-  payload?: string;
-  createdAt?: string;
-}
-
 export interface ExportMetadataResponse {
   format: string;
   content: string;
@@ -169,18 +129,6 @@ export async function getProjectDashboard(): Promise<ProjectDashboardItemRespons
   return request('/api/projects/dashboard');
 }
 
-export async function generateProject(projectId: number): Promise<GenerateProjectResponse> {
-  return request(`/api/projects/${projectId}/generate`, { method: 'POST' });
-}
-
-export async function generateProjectV4(projectId: number): Promise<GenerateProjectResponse> {
-  return request(`/api/projects/${projectId}/generate-v4`, { method: 'POST' });
-}
-
-export async function generatePrd(projectId: number): Promise<GenerateProjectResponse> {
-  return request(`/api/projects/${projectId}/generate-prd`, { method: 'POST' });
-}
-
 export async function updateArtifact(
   projectId: number,
   artifactId: number,
@@ -199,14 +147,6 @@ export async function approveArtifact(
   artifactId: number
 ): Promise<ApproveArtifactResponse> {
   return request(`/api/projects/${projectId}/artifacts/${artifactId}/approve`, { method: 'POST' });
-}
-
-export async function continueGeneration(projectId: number): Promise<GenerateProjectResponse> {
-  return request(`/api/projects/${projectId}/continue`, { method: 'POST' });
-}
-
-export async function getProgress(projectId: number): Promise<ProjectProgressResponse> {
-  return request(`/api/projects/${projectId}/progress`);
 }
 
 export async function getArtifacts(projectId: number): Promise<ArtifactResponse[]> {
@@ -260,27 +200,6 @@ export async function updateReviewIssue(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
   });
-}
-
-export async function getEventHistory(projectId: number): Promise<AgentEventResponse[]> {
-  return request(`/api/projects/${projectId}/events/history`);
-}
-
-export function subscribeProjectEvents(
-  projectId: number,
-  onEvent: (event: AgentEventResponse) => void,
-  onError?: (event: Event) => void
-): EventSource {
-  const source = new EventSource(`/api/projects/${projectId}/events`, { withCredentials: true });
-  source.onmessage = (message) => onEvent(JSON.parse(message.data) as AgentEventResponse);
-  if (onError) {
-    source.onerror = onError;
-  }
-  return source;
-}
-
-export async function retryTask(projectId: number, taskId: number): Promise<RetryTaskResponse> {
-  return request(`/api/projects/${projectId}/tasks/${taskId}/retry`, { method: 'POST' });
 }
 
 export async function exportMarkdown(projectId: number): Promise<string> {

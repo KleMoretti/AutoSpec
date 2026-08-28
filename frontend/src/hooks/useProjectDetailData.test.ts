@@ -5,7 +5,7 @@ import type {
   WorkflowApprovalResponse,
   WorkflowRunResponse,
   WorkflowVersionResponse
-} from '../api/v3';
+} from '../api/workflow';
 import {
   type ProjectDetailLoadResults,
   applyProjectDetailLoad,
