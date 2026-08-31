@@ -23,6 +23,7 @@ import {
   message
 } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   getArtifactDiff,
   getArtifactVersions,
@@ -30,6 +31,7 @@ import {
   type ArtifactDiffResponse,
   type ArtifactResponse
 } from '../api/projects';
+import { translateEnum } from '../i18n/formatters';
 import FrontendSkeletonPreview from './FrontendSkeletonPreview';
 
 interface ArtifactTabsProps {
@@ -38,16 +40,8 @@ interface ArtifactTabsProps {
   onChanged?: () => Promise<void> | void;
 }
 
-const TYPE_LABELS: Record<string, string> = {
-  PRD: 'Product requirements',
-  ARCHITECTURE_DESIGN: 'Architecture',
-  BACKEND_DESIGN: 'API & data',
-  FRONTEND_SKELETON: 'Experience design',
-  REVIEW_REPORT: 'Review',
-  EVALUATION_REPORT: 'Quality evaluation'
-};
-
 function ArtifactTabs({ projectId, artifacts, onChanged }: ArtifactTabsProps) {
+  const { t } = useTranslation();
   const latestByType = useMemo(() => {
     const grouped = new Map<string, ArtifactResponse>();
     for (const artifact of artifacts) {
@@ -60,8 +54,8 @@ function ArtifactTabs({ projectId, artifacts, onChanged }: ArtifactTabsProps) {
   if (latestByType.length === 0) {
     return (
       <section className="panel">
-        <Typography.Title level={2}>Deliverables</Typography.Title>
-        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No deliverables yet" />
+        <Typography.Title level={2}>{t('artifacts.title')}</Typography.Title>
+        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('artifacts.empty')} />
       </section>
     );
   }
@@ -70,9 +64,9 @@ function ArtifactTabs({ projectId, artifacts, onChanged }: ArtifactTabsProps) {
     <section className="panel" aria-labelledby="artifact-title">
       <div className="section-heading">
         <div>
-          <Typography.Title level={2} id="artifact-title">Deliverables</Typography.Title>
+          <Typography.Title level={2} id="artifact-title">{t('artifacts.title')}</Typography.Title>
           <Typography.Text className="muted">
-            Browse semantic versions, compare fields, and inspect source provenance.
+            {t('artifacts.description')}
           </Typography.Text>
         </div>
       </div>
@@ -99,6 +93,7 @@ function VersionedArtifactView({
   latest: ArtifactResponse;
   onChanged?: () => Promise<void> | void;
 }) {
+  const { t } = useTranslation();
   const [versions, setVersions] = useState<ArtifactResponse[]>([latest]);
   const [selectedId, setSelectedId] = useState(latest.id);
   const [compareId, setCompareId] = useState<number | undefined>();
@@ -126,7 +121,7 @@ function VersionedArtifactView({
     try {
       setDiff(await getArtifactDiff(projectId, selected.id, nextId));
     } catch (error) {
-      message.error(error instanceof Error ? error.message : 'Comparison failed');
+      message.error(error instanceof Error ? error.message : t('artifacts.comparisonFailed'));
     }
   }
 
@@ -134,10 +129,10 @@ function VersionedArtifactView({
     setRestoring(true);
     try {
       await restoreArtifact(projectId, selected.id, latestVersion.lockVersion);
-      message.success(`Version ${selected.version} restored as a new review candidate`);
+      message.success(t('artifacts.restoreSuccess', { version: selected.version }));
       await onChanged?.();
     } catch (error) {
-      message.error(error instanceof Error ? error.message : 'Restore failed');
+      message.error(error instanceof Error ? error.message : t('artifacts.restoreFailed'));
     } finally {
       setRestoring(false);
     }
@@ -146,20 +141,20 @@ function VersionedArtifactView({
   return (
     <Card
       className="artifact-card"
-      title={TYPE_LABELS[latest.type] ?? latest.type}
-      extra={<Tag color={statusColor(latest.status)}>{latest.status ?? 'UNKNOWN'}</Tag>}
+      title={translateEnum(t, 'artifactType', latest.type)}
+      extra={<Tag color={statusColor(latest.status)}>{translateEnum(t, 'status', latest.status, t('common.unknown'))}</Tag>}
     >
       <Space direction="vertical" size={16} className="full-width">
-        <div className="artifact-version-summary" aria-label="Artifact version summary">
-          <span><HistoryOutlined /> Latest v{latestVersion.version}</span>
-          <span><CheckCircleOutlined /> Approved {approved ? `v${approved.version}` : 'none'}</span>
-          <span><ClockCircleOutlined /> Candidate {candidate ? `v${candidate.version}` : 'none'}</span>
+        <div className="artifact-version-summary" aria-label={t('artifacts.versionSummaryLabel')}>
+          <span><HistoryOutlined /> {t('artifacts.latestVersion', { version: latestVersion.version })}</span>
+          <span><CheckCircleOutlined /> {t('artifacts.approvedVersion', { version: approved ? `v${approved.version}` : t('common.none') })}</span>
+          <span><ClockCircleOutlined /> {t('artifacts.candidateVersion', { version: candidate ? `v${candidate.version}` : t('common.none') })}</span>
         </div>
         <Space wrap align="end">
           <label>
-            <Typography.Text strong>View version</Typography.Text>
+            <Typography.Text strong>{t('artifacts.viewVersion')}</Typography.Text>
             <Select
-              aria-label={`View ${latest.type} version`}
+              aria-label={t('artifacts.viewVersionLabel', { type: translateEnum(t, 'artifactType', latest.type) })}
               value={selected.id}
               onChange={(value) => {
                 setSelectedId(value);
@@ -168,18 +163,18 @@ function VersionedArtifactView({
               }}
               options={versions.map((version) => ({
                 value: version.id,
-                label: `v${version.version} · ${version.status ?? 'UNKNOWN'}`
+                label: `v${version.version} · ${translateEnum(t, 'status', version.status, t('common.unknown'))}`
               }))}
             />
           </label>
           <label>
-            <Typography.Text strong>Compare with</Typography.Text>
+            <Typography.Text strong>{t('artifacts.compareWith')}</Typography.Text>
             <Select
               allowClear
-              aria-label={`Compare ${latest.type} version`}
+              aria-label={t('artifacts.compareVersionLabel', { type: translateEnum(t, 'artifactType', latest.type) })}
               value={compareId}
               onChange={(value) => void compare(value)}
-              placeholder="Choose version"
+              placeholder={t('artifacts.chooseVersion')}
               options={versions
                 .filter((version) => version.id !== selected.id)
                 .map((version) => ({ value: version.id, label: `v${version.version}` }))}
@@ -187,12 +182,12 @@ function VersionedArtifactView({
           </label>
           {selected.id !== latestVersion.id ? (
             <Popconfirm
-              title="Restore this version?"
-              description="A new candidate version will be created; current history stays intact."
-              okText="Restore"
+              title={t('artifacts.restoreTitle')}
+              description={t('artifacts.restoreDescription')}
+              okText={t('artifacts.restore')}
               onConfirm={() => void restore()}
             >
-              <Button icon={<BranchesOutlined />} loading={restoring}>Restore as candidate</Button>
+              <Button icon={<BranchesOutlined />} loading={restoring}>{t('artifacts.restoreAsCandidate')}</Button>
             </Popconfirm>
           ) : null}
         </Space>
@@ -201,7 +196,9 @@ function VersionedArtifactView({
           <Alert
             type={diff.changed ? 'info' : 'success'}
             showIcon
-            message={diff.changed ? `${diff.changedPaths.length} fields changed` : 'No differences'}
+            message={diff.changed
+              ? t('artifacts.fieldsChanged', { count: diff.changedPaths.length })
+              : t('artifacts.noDifferences')}
             description={diff.changed ? diff.changedPaths.slice(0, 12).join(', ') : undefined}
           />
         ) : null}
@@ -211,7 +208,7 @@ function VersionedArtifactView({
           ghost
           items={[{
             key: 'provenance',
-            label: <Space><SafetyCertificateOutlined /> Provenance & citations</Space>,
+            label: <Space><SafetyCertificateOutlined /> {t('artifacts.provenanceAndCitations')}</Space>,
             children: <Provenance artifact={selected} />
           }]}
         />
@@ -234,14 +231,15 @@ function ArtifactViewer({ artifact }: { artifact: ArtifactResponse }) {
 }
 
 function PrdView({ data }: { data: Record<string, unknown> }) {
+  const { t } = useTranslation();
   return (
     <div className="artifact-semantic-view">
-      <Typography.Title level={3}>{text(data.project_name, 'Product requirements')}</Typography.Title>
+      <Typography.Title level={3}>{text(data.project_name, t('artifacts.productRequirements'))}</Typography.Title>
       <Descriptions size="small" column={{ xs: 1, md: 2 }}>
-        <Descriptions.Item label="Target users">{strings(data.target_users).join(', ') || '--'}</Descriptions.Item>
-        <Descriptions.Item label="Boundaries">{strings(data.business_boundaries).length}</Descriptions.Item>
+        <Descriptions.Item label={t('artifacts.targetUsers')}>{strings(data.target_users).join(', ') || '--'}</Descriptions.Item>
+        <Descriptions.Item label={t('artifacts.boundaries')}>{strings(data.business_boundaries).length}</Descriptions.Item>
       </Descriptions>
-      <Typography.Text strong>Core capabilities</Typography.Text>
+      <Typography.Text strong>{t('artifacts.coreCapabilities')}</Typography.Text>
       <List
         size="small"
         dataSource={objects(data.core_features)}
@@ -251,14 +249,17 @@ function PrdView({ data }: { data: Record<string, unknown> }) {
           </List.Item>
         )}
       />
-      <Typography.Text strong>User stories & acceptance</Typography.Text>
+      <Typography.Text strong>{t('artifacts.userStories')}</Typography.Text>
       <List
         size="small"
         dataSource={objects(data.user_stories)}
         renderItem={(story) => (
           <List.Item>
             <List.Item.Meta
-              title={`${text(story.role, 'User')} wants ${text(story.goal)}`}
+              title={t('artifacts.userWants', {
+                role: text(story.role, t('artifacts.user')),
+                goal: text(story.goal)
+              })}
               description={
                 <div>
                   <Typography.Paragraph>{text(story.benefit)}</Typography.Paragraph>
@@ -276,18 +277,19 @@ function PrdView({ data }: { data: Record<string, unknown> }) {
 }
 
 function ArchitectureView({ data }: { data: Record<string, unknown> }) {
+  const { t } = useTranslation();
   return (
     <div className="artifact-semantic-view">
-      <Alert type="info" showIcon message="System context" description={text(data.system_context)} />
+      <Alert type="info" showIcon message={t('artifacts.systemContext')} description={text(data.system_context)} />
       <Table
         size="small"
         pagination={false}
         rowKey={(row) => text(row.name)}
         dataSource={objects(data.modules)}
         columns={[
-          { title: 'Module', render: (_, row) => text(row.name) },
-          { title: 'Responsibility', render: (_, row) => text(row.responsibility) },
-          { title: 'Depends on', render: (_, row) => strings(row.depends_on).join(', ') || '--' }
+          { title: t('artifacts.module'), render: (_, row) => text(row.name) },
+          { title: t('artifacts.responsibility'), render: (_, row) => text(row.responsibility) },
+          { title: t('artifacts.dependsOn'), render: (_, row) => strings(row.depends_on).join(', ') || '--' }
         ]}
       />
     </div>
@@ -295,9 +297,10 @@ function ArchitectureView({ data }: { data: Record<string, unknown> }) {
 }
 
 function BackendView({ data }: { data: Record<string, unknown> }) {
+  const { t } = useTranslation();
   return (
     <div className="artifact-semantic-view">
-      <Typography.Text strong>API contract</Typography.Text>
+      <Typography.Text strong>{t('artifacts.apiContract')}</Typography.Text>
       <Table
         size="small"
         pagination={false}
@@ -305,13 +308,13 @@ function BackendView({ data }: { data: Record<string, unknown> }) {
         rowKey={(row, index) => `${text(row.method)}-${text(row.path)}-${index}`}
         dataSource={objects(data.apis)}
         columns={[
-          { title: 'Method', width: 90, render: (_, row) => <Tag>{text(row.method)}</Tag> },
-          { title: 'Path', render: (_, row) => <code>{text(row.path)}</code> },
-          { title: 'Purpose', render: (_, row) => text(row.description) },
-          { title: 'Roles', render: (_, row) => strings(row.required_roles).join(', ') || 'Public' }
+          { title: t('artifacts.method'), width: 90, render: (_, row) => <Tag>{text(row.method)}</Tag> },
+          { title: t('artifacts.path'), render: (_, row) => <code>{text(row.path)}</code> },
+          { title: t('artifacts.purpose'), render: (_, row) => text(row.description) },
+          { title: t('artifacts.roles'), render: (_, row) => strings(row.required_roles).join(', ') || t('common.public') }
         ]}
       />
-      <Typography.Text strong>Data model</Typography.Text>
+      <Typography.Text strong>{t('artifacts.dataModel')}</Typography.Text>
       <List
         grid={{ gutter: 12, xs: 1, md: 2 }}
         dataSource={objects(data.tables)}
@@ -331,6 +334,7 @@ function BackendView({ data }: { data: Record<string, unknown> }) {
 }
 
 function QualityView({ data }: { data: Record<string, unknown> }) {
+  const { t } = useTranslation();
   const score = Number(data.overall_score ?? data.score ?? 0);
   const issues = objects(data.issues);
   return (
@@ -341,8 +345,12 @@ function QualityView({ data }: { data: Record<string, unknown> }) {
         status={String(data.gate_status ?? data.decision).includes('BLOCK') ? 'exception' : 'normal'}
       />
       <div className="quality-summary">
-        <Typography.Title level={3}>{text(data.gate_status ?? data.decision, 'Reviewed')}</Typography.Title>
-        <Typography.Text>{issues.length} findings · grade {text(data.final_grade, '--')}</Typography.Text>
+        <Typography.Title level={3}>
+          {translateEnum(t, 'status', text(data.gate_status ?? data.decision), t('artifacts.reviewed'))}
+        </Typography.Title>
+        <Typography.Text>
+          {t('artifacts.findingsGrade', { count: issues.length, grade: text(data.final_grade, '--') })}
+        </Typography.Text>
       </div>
       <List
         size="small"
@@ -350,7 +358,7 @@ function QualityView({ data }: { data: Record<string, unknown> }) {
         renderItem={(issue) => (
           <List.Item>
             <List.Item.Meta
-              title={<Space><Tag color={statusColor(text(issue.severity))}>{text(issue.severity)}</Tag>{text(issue.issue_type)}</Space>}
+              title={<Space><Tag color={statusColor(text(issue.severity))}>{translateEnum(t, 'severity', text(issue.severity))}</Tag>{text(issue.issue_type)}</Space>}
               description={text(issue.description)}
             />
           </List.Item>
@@ -361,21 +369,22 @@ function QualityView({ data }: { data: Record<string, unknown> }) {
 }
 
 function Provenance({ artifact }: { artifact: ArtifactResponse }) {
+  const { t } = useTranslation();
   const citations = parseArray(artifact.sourceCitationsJson);
   const provenance = parseObject(artifact.provenanceJson ?? '');
   return (
     <Space direction="vertical" className="full-width">
       <Descriptions size="small" column={{ xs: 1, md: 2 }}>
-        <Descriptions.Item label="Content hash"><code>{artifact.contentHash?.slice(0, 16) ?? '--'}</code></Descriptions.Item>
-        <Descriptions.Item label="Schema">{artifact.schemaVersion ?? '--'}</Descriptions.Item>
-        <Descriptions.Item label="Prompt">{artifact.promptKey ? `${artifact.promptKey}:${artifact.promptVersion}` : '--'}</Descriptions.Item>
-        <Descriptions.Item label="Model">{artifact.modelProvider ? `${artifact.modelProvider}/${artifact.modelName}` : 'No model call'}</Descriptions.Item>
-        <Descriptions.Item label="Node run">{artifact.workflowNodeRunId ?? '--'}</Descriptions.Item>
-        <Descriptions.Item label="Parent artifact">{artifact.parentArtifactId ?? '--'}</Descriptions.Item>
+        <Descriptions.Item label={t('artifacts.contentHash')}><code>{artifact.contentHash?.slice(0, 16) ?? '--'}</code></Descriptions.Item>
+        <Descriptions.Item label={t('artifacts.schema')}>{artifact.schemaVersion ?? '--'}</Descriptions.Item>
+        <Descriptions.Item label={t('artifacts.prompt')}>{artifact.promptKey ? `${artifact.promptKey}:${artifact.promptVersion}` : '--'}</Descriptions.Item>
+        <Descriptions.Item label={t('artifacts.model')}>{artifact.modelProvider ? `${artifact.modelProvider}/${artifact.modelName}` : t('artifacts.noModelCall')}</Descriptions.Item>
+        <Descriptions.Item label={t('artifacts.nodeRun')}>{artifact.workflowNodeRunId ?? '--'}</Descriptions.Item>
+        <Descriptions.Item label={t('artifacts.parentArtifact')}>{artifact.parentArtifactId ?? '--'}</Descriptions.Item>
       </Descriptions>
-      <Typography.Text strong>Upstream versions</Typography.Text>
+      <Typography.Text strong>{t('artifacts.upstreamVersions')}</Typography.Text>
       <pre>{JSON.stringify(provenance?.upstream_artifacts ?? [], null, 2)}</pre>
-      <Typography.Text strong>Citations ({citations.length})</Typography.Text>
+      <Typography.Text strong>{t('artifacts.citations', { count: citations.length })}</Typography.Text>
       <pre>{JSON.stringify(citations, null, 2)}</pre>
     </Space>
   );

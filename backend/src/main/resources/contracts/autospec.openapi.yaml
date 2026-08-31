@@ -1438,12 +1438,16 @@ components:
     KnowledgeSourceResponse:
       type: object
       required:
+      - projectId
       - artifactId
       - artifactType
       - title
       - artifactVersion
       - content
       properties:
+        projectId:
+          type: integer
+          format: int64
         artifactId:
           type: integer
           format: int64
@@ -1467,6 +1471,20 @@ components:
           type: string
         retrievalStrategy:
           type: string
+          nullable: true
+        chunkerVersion:
+          type: string
+          nullable: true
+        embeddingModel:
+          type: string
+          nullable: true
+        artifactContentHash:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+          nullable: true
+        chunkContentHash:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
           nullable: true
         relevanceScore:
           type: number

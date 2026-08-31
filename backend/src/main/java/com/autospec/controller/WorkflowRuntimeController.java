@@ -81,7 +81,9 @@ public class WorkflowRuntimeController {
                 "EDITOR"
         );
         WorkflowExecutionPolicyRequest policy = request.executionPolicy();
-        Map<String, Object> trustedInput = trustedInput(request.input(), actorUserId);
+        Map<String, Object> trustedInput = trustedInput(
+                request.input(), request.projectId(), actorUserId
+        );
         try {
             return WorkflowRunResponse.from(runCreationService.start(
                     new WorkflowRunCreationService.StartCommand(
@@ -101,18 +103,26 @@ public class WorkflowRuntimeController {
         }
     }
 
-    private Map<String, Object> trustedInput(Map<String, Object> requested, Long actorUserId) {
+    private Map<String, Object> trustedInput(
+            Map<String, Object> requested,
+            Long projectId,
+            Long actorUserId
+    ) {
         Map<String, Object> trusted = new LinkedHashMap<>(requested);
+        trusted.remove("rework_directive");
+        trusted.remove("context_manifest");
         Object rawRequirement = trusted.get("requirement");
         String requirement = rawRequirement instanceof String value ? value.trim() : "";
         if (requirement.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "input.requirement is required");
         }
-        List<Map<String, Object>> sources = knowledgeIndexService.retrieve(
+        List<Map<String, Object>> sources = knowledgeIndexService.retrieveForProject(
                         requirement,
                         5,
+                        projectId,
                         actorUserId
                 ).stream()
+                .filter(source -> projectId.equals(source.projectId()))
                 .map(source -> {
                     Map<String, Object> value = new LinkedHashMap<>();
                     String citationId = "artifact:" + source.artifactId()
@@ -121,6 +131,7 @@ public class WorkflowRuntimeController {
                         citationId += ":chunk:" + source.chunkIndex();
                     }
                     value.put("citation_id", citationId);
+                    value.put("project_id", source.projectId());
                     value.put("artifact_id", source.artifactId());
                     value.put("artifact_type", source.artifactType());
                     value.put("title", source.title());
@@ -130,13 +141,18 @@ public class WorkflowRuntimeController {
                     value.put("citation_location", source.citationLocation());
                     value.put("content", source.content());
                     value.put("retrieval_strategy", source.retrievalStrategy());
+                    value.put("chunker_version", source.chunkerVersion());
+                    value.put("embedding_model", source.embeddingModel());
+                    value.put("artifact_content_hash", source.artifactContentHash());
+                    value.put("chunk_content_hash", source.chunkContentHash());
                     value.put("relevance_score", source.relevanceScore());
                     return value;
                 })
                 .toList();
         trusted.put("requirement", requirement);
         trusted.put("retrieved_sources", sources);
-        trusted.put("retrieval_policy", "ACTOR_ACCESSIBLE_APPROVED_ARTIFACTS_V1");
+        trusted.put("retrieval_project_id", projectId);
+        trusted.put("retrieval_policy", "CURRENT_PROJECT_ACTIVE_APPROVED_ARTIFACTS_V2");
         return trusted;
     }
 

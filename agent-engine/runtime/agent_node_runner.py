@@ -83,6 +83,7 @@ def _run_node_output(
     )
     retrieved_sources = payload.get("retrieved_sources", [])
     context_manifest = payload.get("context_manifest", {})
+    rework_directive = payload.get("rework_directive")
 
     if node_name == "product_manager":
         return ProductManagerAgent(model_client).run(
@@ -98,6 +99,7 @@ def _run_node_output(
             prd,
             retrieved_sources=retrieved_sources,
             context_manifest=context_manifest,
+            rework_directive=rework_directive,
         )
 
     architecture_design = ArchitectureDesignArtifact.model_validate(
@@ -110,6 +112,7 @@ def _run_node_output(
             architecture_design,
             retrieved_sources=retrieved_sources,
             context_manifest=context_manifest,
+            rework_directive=rework_directive,
         )
 
     backend_design = BackendDesignArtifact.model_validate(payload["backend_design"])
@@ -121,6 +124,7 @@ def _run_node_output(
             backend_design,
             retrieved_sources=retrieved_sources,
             context_manifest=context_manifest,
+            rework_directive=rework_directive,
         )
 
     frontend_skeleton = FrontendSkeletonArtifact.model_validate(

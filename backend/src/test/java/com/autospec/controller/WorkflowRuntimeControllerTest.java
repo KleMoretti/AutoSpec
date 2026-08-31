@@ -68,8 +68,9 @@ class WorkflowRuntimeControllerTest {
     void startOverwritesClientSourcesWithActorAccessibleTrustedCitationsAndFreezesPolicy()
             throws Exception {
         when(projectAccessService.resolveUserId("session")).thenReturn(42L);
-        when(knowledgeIndexService.retrieve("Build a clinic", 5, 42L)).thenReturn(List.of(
+        when(knowledgeIndexService.retrieveForProject("Build a clinic", 5, 7L, 42L)).thenReturn(List.of(
                 new KnowledgeSourceResponse(
+                        7L,
                         9L,
                         "PRD",
                         "Approved clinic PRD",
@@ -79,6 +80,10 @@ class WorkflowRuntimeControllerTest {
                         "chunk[2]",
                         "trusted excerpt",
                         "HYBRID_RRF_HASHING_V1",
+                        "structured-text-900-120-v1",
+                        "autospec-hashing-ngram-v1",
+                        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
                         32.4
                 )
         ));
@@ -100,7 +105,9 @@ class WorkflowRuntimeControllerTest {
                         5L,
                         Map.of(
                                 "requirement", "  Build a clinic  ",
-                                "retrieved_sources", List.of(Map.of("content", "untrusted browser data"))
+                                "retrieved_sources", List.of(Map.of("content", "untrusted browser data")),
+                                "rework_directive", Map.of("issue_ids", List.of("CLIENT-INJECTED")),
+                                "context_manifest", Map.of("policy", "client-controlled")
                         ),
                         "start-1",
                         new WorkflowExecutionPolicyRequest(
@@ -124,9 +131,19 @@ class WorkflowRuntimeControllerTest {
                 .isEqualTo("artifact:9:v3:chunk:2");
         assertThat(input.path("retrieved_sources").get(0).path("chunk_id").asLong())
                 .isEqualTo(91L);
+        assertThat(input.path("retrieved_sources").get(0).path("project_id").asLong())
+                .isEqualTo(7L);
+        assertThat(input.path("retrieved_sources").get(0).path("chunker_version").asText())
+                .isEqualTo("structured-text-900-120-v1");
+        assertThat(input.path("retrieved_sources").get(0).path("artifact_content_hash").asText())
+                .hasSize(64);
         assertThat(input.toString()).doesNotContain("untrusted browser data");
+        assertThat(input.toString())
+                .doesNotContain("CLIENT-INJECTED", "client-controlled");
+        assertThat(input.path("retrieval_project_id").asLong()).isEqualTo(7L);
         assertThat(input.path("retrieval_policy").asText())
-                .isEqualTo("ACTOR_ACCESSIBLE_APPROVED_ARTIFACTS_V1");
+                .isEqualTo("CURRENT_PROJECT_ACTIVE_APPROVED_ARTIFACTS_V2");
+        verify(knowledgeIndexService).retrieveForProject("Build a clinic", 5, 7L, 42L);
         assertThat(command.getValue().qualityProfile()).isEqualTo("DEEP");
         assertThat(command.getValue().maxTokens()).isEqualTo(250_000L);
         assertThat(command.getValue().maxCost()).isEqualByComparingTo("12.50");

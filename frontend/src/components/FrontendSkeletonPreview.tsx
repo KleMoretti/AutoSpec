@@ -1,4 +1,5 @@
 import { Alert, Descriptions, Empty, List, Space, Table, Tag, Typography } from 'antd';
+import { useTranslation } from 'react-i18next';
 
 interface FrontendSkeletonArtifact {
   routes?: Array<{ path?: string; page?: string }>;
@@ -13,9 +14,10 @@ interface FrontendSkeletonPreviewProps {
 }
 
 function FrontendSkeletonPreview({ content }: FrontendSkeletonPreviewProps) {
+  const { t } = useTranslation();
   const parsed = parseSkeleton(content);
   if (!parsed.ok) {
-    return <Alert type="warning" showIcon message="Invalid frontend skeleton JSON" description={content} />;
+    return <Alert type="warning" showIcon message={t('skeleton.invalidJson')} description={content} />;
   }
 
   const skeleton = parsed.value;
@@ -24,7 +26,7 @@ function FrontendSkeletonPreview({ content }: FrontendSkeletonPreviewProps) {
   return (
     <Space direction="vertical" size={20} className="full-width skeleton-preview">
       <div>
-        <Typography.Text strong>Routes</Typography.Text>
+        <Typography.Text strong>{t('skeleton.routes')}</Typography.Text>
         {skeleton.routes?.length ? (
           <Table
             size="small"
@@ -32,56 +34,56 @@ function FrontendSkeletonPreview({ content }: FrontendSkeletonPreviewProps) {
             rowKey={(record) => `${record.path}-${record.page}`}
             dataSource={skeleton.routes}
             columns={[
-              { title: 'Path', dataIndex: 'path' },
-              { title: 'Page', dataIndex: 'page' }
+              { title: t('skeleton.path'), dataIndex: 'path' },
+              { title: t('skeleton.page'), dataIndex: 'page' }
             ]}
           />
         ) : (
-          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No routes" />
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={t('skeleton.noRoutes')} />
         )}
       </div>
       <div>
-        <Typography.Text strong>Pages</Typography.Text>
+        <Typography.Text strong>{t('skeleton.pages')}</Typography.Text>
         <List
           dataSource={skeleton.pages ?? []}
-          locale={{ emptyText: 'No pages' }}
+          locale={{ emptyText: t('skeleton.noPages') }}
           renderItem={(page) => (
             <List.Item>
               <Descriptions size="small" column={1}>
-                <Descriptions.Item label="Name">{page.name}</Descriptions.Item>
-                <Descriptions.Item label="Purpose">{page.purpose}</Descriptions.Item>
-                <Descriptions.Item label="Components">{renderTags(page.components)}</Descriptions.Item>
+                <Descriptions.Item label={t('skeleton.name')}>{page.name}</Descriptions.Item>
+                <Descriptions.Item label={t('skeleton.purpose')}>{page.purpose}</Descriptions.Item>
+                <Descriptions.Item label={t('skeleton.components')}>{renderTags(page.components, t('skeleton.none'))}</Descriptions.Item>
               </Descriptions>
             </List.Item>
           )}
         />
       </div>
       <div>
-        <Typography.Text strong>Components</Typography.Text>
+        <Typography.Text strong>{t('skeleton.components')}</Typography.Text>
         <Table
           size="small"
           pagination={false}
           rowKey={(record) => record.name ?? Math.random().toString(36)}
           dataSource={skeleton.components ?? []}
           columns={[
-            { title: 'Name', dataIndex: 'name' },
-            { title: 'Type', dataIndex: 'type' },
-            { title: 'Props', render: (_, record) => renderTags(record.props) },
-            { title: 'State', render: (_, record) => renderTags(record.state) }
+            { title: t('skeleton.name'), dataIndex: 'name' },
+            { title: t('skeleton.type'), dataIndex: 'type' },
+            { title: t('skeleton.props'), render: (_, record) => renderTags(record.props, t('skeleton.none')) },
+            { title: t('skeleton.state'), render: (_, record) => renderTags(record.state, t('skeleton.none')) }
           ]}
         />
       </div>
       <div>
-        <Typography.Text strong>API bindings</Typography.Text>
+        <Typography.Text strong>{t('skeleton.apiBindings')}</Typography.Text>
         <Table
           size="small"
           pagination={false}
           rowKey={(record) => `${record.method}-${record.path}-${record.consumer}`}
           dataSource={apiBindings}
           columns={[
-            { title: 'Method', render: (_, record) => <Tag>{record.method}</Tag> },
-            { title: 'Path', dataIndex: 'path' },
-            { title: 'Consumer', dataIndex: 'consumer' }
+            { title: t('skeleton.method'), render: (_, record) => <Tag>{record.method}</Tag> },
+            { title: t('skeleton.path'), dataIndex: 'path' },
+            { title: t('skeleton.consumer'), dataIndex: 'consumer' }
           ]}
         />
       </div>
@@ -97,9 +99,9 @@ function parseSkeleton(content: string): { ok: true; value: FrontendSkeletonArti
   }
 }
 
-function renderTags(values?: string[]) {
+function renderTags(values: string[] | undefined, emptyText: string) {
   if (!values?.length) {
-    return <Typography.Text className="muted">None</Typography.Text>;
+    return <Typography.Text className="muted">{emptyText}</Typography.Text>;
   }
   return (
     <Space size={[4, 4]} wrap>

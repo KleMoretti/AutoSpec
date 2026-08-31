@@ -16,6 +16,8 @@ import com.autospec.mapper.WorkflowVersionMapper;
 import com.autospec.service.ProjectService;
 import com.autospec.service.WorkflowReplayService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.assertj.core.groups.Tuple;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -56,6 +58,9 @@ class WorkflowReplayServiceTest {
 
     @Autowired
     private ArtifactMapper artifactMapper;
+
+    @Autowired
+    private ObjectMapper objectMapper;
 
     @Test
     void originalReplayCreatesIndependentRunFromFrozenSnapshotAndInputs() {
@@ -142,6 +147,55 @@ class WorkflowReplayServiceTest {
                 .containsExactly(
                         Tuple.tuple("author", "{\"requirement\":\"original\"}"),
                         Tuple.tuple("reviewer", "{\"artifact_version\":1}")
+                );
+    }
+
+    @Test
+    void replayKeepsOnlyFrozenSourcesFromTheRunProject() throws Exception {
+        Fixture fixture = fixture(snapshot("v5", true), "ProductManagerAgent", "v1", false);
+        fixture.author().setInputJson("""
+                {
+                  "requirement":"original",
+                  "retrieval_policy":"ACTOR_ACCESSIBLE_APPROVED_ARTIFACTS_V1",
+                  "rework_directive":{"issue_ids":["CLIENT-INJECTED"]},
+                  "context_manifest":{"policy":"stale-worker-state"},
+                  "retrieved_sources":[
+                    {"project_id":%d,"artifact_id":1,"content":"current project"},
+                    {"project_id":999999,"artifact_id":2,"content":"other project"},
+                    {"artifact_id":3,"content":"legacy unscoped"}
+                  ]
+                }
+                """.formatted(fixture.project().getId()));
+        nodeRunMapper.updateById(fixture.author());
+
+        WorkflowRun replay = replayService.replay(
+                fixture.run().getId(),
+                new WorkflowReplayService.ReplayCommand(
+                        "ORIGINAL_SNAPSHOT",
+                        null,
+                        "project-scoped-" + UUID.randomUUID()
+                )
+        );
+
+        JsonNode replayedInput = objectMapper.readTree(
+                nodes(replay.getId()).stream()
+                        .filter(node -> "author".equals(node.getNodeId()))
+                        .findFirst()
+                        .orElseThrow()
+                        .getInputJson()
+        );
+        assertThat(replayedInput.path("retrieval_project_id").asLong())
+                .isEqualTo(fixture.project().getId());
+        assertThat(replayedInput.path("retrieval_policy").asText())
+                .isEqualTo("CURRENT_PROJECT_ACTIVE_APPROVED_ARTIFACTS_V2");
+        assertThat(replayedInput.path("retrieved_sources")).hasSize(1);
+        assertThat(replayedInput.toString())
+                .contains("current project")
+                .doesNotContain(
+                        "other project",
+                        "legacy unscoped",
+                        "CLIENT-INJECTED",
+                        "stale-worker-state"
                 );
     }
 

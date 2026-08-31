@@ -60,7 +60,12 @@ class SchemaInitSqlTest {
                     .doesNotThrowAnyException();
             assertThatCode(() -> execute(connection, "select project_id, user_id, role from project_member where 1 = 0"))
                     .doesNotThrowAnyException();
-            assertThatCode(() -> execute(connection, "select artifact_id, artifact_type, artifact_version from knowledge_document where 1 = 0"))
+            assertThatCode(() -> execute(connection, """
+                    select artifact_id, artifact_type, artifact_version, status, content_hash,
+                           chunker_version, embedding_model, failure_message, updated_at,
+                           activated_at, superseded_at
+                    from knowledge_document where 1 = 0
+                    """))
                     .doesNotThrowAnyException();
             assertThatCode(() -> execute(connection, "select document_id, chunk_index, retrieval_terms from knowledge_chunk where 1 = 0"))
                     .doesNotThrowAnyException();

@@ -12,6 +12,7 @@ import com.autospec.mapper.WorkflowNodeRunMapper;
 import com.autospec.mapper.WorkflowRunMapper;
 import com.autospec.mapper.WorkflowTransitionMapper;
 import com.autospec.service.WorkflowApprovalService;
+import com.autospec.service.ArtifactApprovalOutboxService;
 import com.autospec.workflow.runtime.CompiledWorkflow;
 import com.autospec.workflow.runtime.DagCompiler;
 import com.autospec.workflow.runtime.WorkflowNodeStatus;
@@ -58,6 +59,7 @@ public class WorkflowApprovalServiceImpl implements WorkflowApprovalService {
     private final DagCompiler dagCompiler;
     private final WorkflowRunReconciliationTrigger reconciliationTrigger;
     private final WorkflowArtifactProjector artifactProjector;
+    private final ArtifactApprovalOutboxService approvalOutboxService;
 
     public WorkflowApprovalServiceImpl(
             WorkflowApprovalMapper approvalMapper,
@@ -68,6 +70,7 @@ public class WorkflowApprovalServiceImpl implements WorkflowApprovalService {
             WorkflowSnapshotParser snapshotParser,
             DagCompiler dagCompiler,
             WorkflowArtifactProjector artifactProjector,
+            ArtifactApprovalOutboxService approvalOutboxService,
             @Lazy WorkflowRunReconciliationTrigger reconciliationTrigger
     ) {
         this.approvalMapper = approvalMapper;
@@ -78,6 +81,7 @@ public class WorkflowApprovalServiceImpl implements WorkflowApprovalService {
         this.snapshotParser = snapshotParser;
         this.dagCompiler = dagCompiler;
         this.artifactProjector = artifactProjector;
+        this.approvalOutboxService = approvalOutboxService;
         this.reconciliationTrigger = reconciliationTrigger;
     }
 
@@ -233,6 +237,7 @@ public class WorkflowApprovalServiceImpl implements WorkflowApprovalService {
                 approval.setRevisedArtifactId(revised.getId());
                 approvalMapper.updateById(approval);
                 approveNode(approval, nodeRun, revised.getContent(), now);
+                approvalOutboxService.enqueue(revised);
             }
             case "REJECT" -> reject(run, nodeRun, command.reason(), now);
             case "ROLLBACK_TO_NODE" -> rollback(
@@ -324,12 +329,17 @@ public class WorkflowApprovalServiceImpl implements WorkflowApprovalService {
         if (editedOutput == null
                 && "AFTER_NODE".equals(approval.getMode())
                 && approval.getCandidateArtifactId() != null) {
-            artifactMapper.update(null, new LambdaUpdateWrapper<Artifact>()
+            int approved = artifactMapper.update(null, new LambdaUpdateWrapper<Artifact>()
                     .eq(Artifact::getId, approval.getCandidateArtifactId())
                     .eq(Artifact::getStatus, "PENDING_REVIEW")
                     .set(Artifact::getStatus, "APPROVED")
                     .set(Artifact::getApprovedAt, now)
                     .set(Artifact::getUpdatedAt, now));
+            if (approved == 0) {
+                throw conflict("Approval candidate artifact is no longer pending review");
+            }
+            Artifact candidate = artifactMapper.selectById(approval.getCandidateArtifactId());
+            approvalOutboxService.enqueue(candidate);
         }
         transition(nodeRun, "WAITING_APPROVAL", targetStatus, "APPROVAL_ACCEPTED", now);
         reconciliationTrigger.reconcile(nodeRun.getWorkflowRunId());

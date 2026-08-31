@@ -27,7 +27,7 @@ public class ArtifactVersionService {
 
     private final ArtifactService artifactService;
     private final ProjectService projectService;
-    private final KnowledgeIndexService knowledgeIndexService;
+    private final ArtifactApprovalOutboxService approvalOutboxService;
     private final ObjectMapper objectMapper;
     private final ArtifactTraceGraphService traceGraphService;
 
@@ -35,13 +35,13 @@ public class ArtifactVersionService {
     public ArtifactVersionService(
             ArtifactService artifactService,
             ProjectService projectService,
-            KnowledgeIndexService knowledgeIndexService,
+            ArtifactApprovalOutboxService approvalOutboxService,
             ObjectMapper objectMapper,
             ArtifactTraceGraphService traceGraphService
     ) {
         this.artifactService = artifactService;
         this.projectService = projectService;
-        this.knowledgeIndexService = knowledgeIndexService;
+        this.approvalOutboxService = approvalOutboxService;
         this.objectMapper = objectMapper;
         this.traceGraphService = traceGraphService;
     }
@@ -49,10 +49,10 @@ public class ArtifactVersionService {
     public ArtifactVersionService(
             ArtifactService artifactService,
             ProjectService projectService,
-            KnowledgeIndexService knowledgeIndexService,
+            ArtifactApprovalOutboxService approvalOutboxService,
             ObjectMapper objectMapper
     ) {
-        this(artifactService, projectService, knowledgeIndexService, objectMapper, null);
+        this(artifactService, projectService, approvalOutboxService, objectMapper, null);
     }
 
     @Transactional(isolation = Isolation.READ_COMMITTED)
@@ -202,7 +202,7 @@ public class ArtifactVersionService {
         artifact.setApprovedAt(now);
         artifact.setUpdatedAt(now);
         artifact.setLockVersion(artifact.getLockVersion() + 1);
-        knowledgeIndexService.indexApprovedArtifact(artifact);
+        approvalOutboxService.enqueue(artifact);
         if ("PRD".equals(artifact.getType())) {
             Project project = requireProject(projectId);
             project.setStatus("PRD_APPROVED");

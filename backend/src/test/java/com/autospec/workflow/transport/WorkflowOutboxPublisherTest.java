@@ -13,6 +13,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -33,6 +34,31 @@ class WorkflowOutboxPublisherTest {
         verify(commandPublisher).publish(
                 "autospec.workflow.commands", outbox.getEventId(), outbox.getPayloadJson()
         );
+        verify(mapper).update(any(), any());
+    }
+
+    @Test
+    void handlesArtifactApprovalLocallyThenMarksOutboxAsPublished() {
+        WorkflowOutboxMapper mapper = mock(WorkflowOutboxMapper.class);
+        WorkflowCommandPublisher commandPublisher = mock(WorkflowCommandPublisher.class);
+        ArtifactApprovalOutboxHandler handler = mock(ArtifactApprovalOutboxHandler.class);
+        WorkflowOutbox outbox = pendingOutbox();
+        outbox.setEventType("ARTIFACT_APPROVED");
+        outbox.setAggregateId("artifact:9");
+        when(mapper.selectList(any())).thenReturn(List.of(outbox));
+        when(mapper.update(any(), any())).thenReturn(1);
+        WorkflowOutboxPublisher publisher = new WorkflowOutboxPublisher(
+                mapper,
+                commandPublisher,
+                retryPolicy(),
+                WorkflowTransportMetrics.isolated(),
+                handler
+        );
+
+        assertThat(publisher.publishPending(10)).isEqualTo(1);
+
+        verify(handler).handle(outbox);
+        verifyNoInteractions(commandPublisher);
         verify(mapper).update(any(), any());
     }
 
@@ -121,12 +147,15 @@ class WorkflowOutboxPublisherTest {
             WorkflowOutboxMapper mapper,
             WorkflowCommandPublisher commandPublisher
     ) {
-        OutboxRetryPolicy retryPolicy = new OutboxRetryPolicy(
+        return new WorkflowOutboxPublisher(mapper, commandPublisher, retryPolicy());
+    }
+
+    private OutboxRetryPolicy retryPolicy() {
+        return new OutboxRetryPolicy(
                 Duration.ofSeconds(1),
                 Duration.ofMinutes(1),
                 0.2,
                 () -> 0.5
         );
-        return new WorkflowOutboxPublisher(mapper, commandPublisher, retryPolicy);
     }
 }

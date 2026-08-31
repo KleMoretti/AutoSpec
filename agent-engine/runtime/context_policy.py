@@ -84,6 +84,7 @@ def apply_context_policy(
                 "retrieved_sources",
                 "retrieval_policy",
                 "execution_policy",
+                "rework_directive",
                 "error_message",
             )
             if key in compacted
@@ -103,6 +104,8 @@ def _compact(
     max_items: int,
     trimmed_paths: list[str],
 ) -> Any:
+    if path == "$.rework_directive":
+        return value
     if isinstance(value, str):
         if len(value) <= max_string:
             return value

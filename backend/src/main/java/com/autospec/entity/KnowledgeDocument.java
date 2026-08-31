@@ -26,5 +26,19 @@ public class KnowledgeDocument {
 
     private String status;
 
+    private String contentHash;
+
+    private String chunkerVersion;
+
+    private String embeddingModel;
+
+    private String failureMessage;
+
     private LocalDateTime createdAt;
+
+    private LocalDateTime updatedAt;
+
+    private LocalDateTime activatedAt;
+
+    private LocalDateTime supersededAt;
 }

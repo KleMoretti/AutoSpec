@@ -5,11 +5,17 @@ import com.autospec.entity.Artifact;
 import com.autospec.entity.KnowledgeChunk;
 import com.autospec.entity.KnowledgeDocument;
 import com.autospec.entity.ProjectMember;
+import com.autospec.entity.Project;
+import com.autospec.mapper.ProjectMapper;
 import com.autospec.util.ContentHash;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -17,12 +23,18 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 @Service
 public class KnowledgeIndexService {
+    public static final String CHUNKER_VERSION = "structured-text-900-120-v1";
+    public static final String STATUS_INDEXING = "INDEXING";
+    public static final String STATUS_ACTIVE = "ACTIVE";
+    public static final String STATUS_SUPERSEDED = "SUPERSEDED";
+    public static final String STATUS_FAILED = "FAILED";
     private static final Pattern TERM_PATTERN = Pattern.compile("[\\p{IsHan}]+|[\\p{Alnum}]+");
     private static final String RETRIEVAL_STRATEGY = "HYBRID_RRF_HASHING_V1";
     private static final int RRF_CONSTANT = 60;
@@ -32,38 +44,72 @@ public class KnowledgeIndexService {
     private final ProjectMemberService projectMemberService;
     private final KnowledgeEmbeddingService embeddingService;
     private final ObjectMapper objectMapper;
+    private final ProjectMapper projectMapper;
 
     public KnowledgeIndexService(
             KnowledgeDocumentService knowledgeDocumentService,
             KnowledgeChunkService knowledgeChunkService,
             ProjectMemberService projectMemberService,
             KnowledgeEmbeddingService embeddingService,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            ProjectMapper projectMapper
     ) {
         this.knowledgeDocumentService = knowledgeDocumentService;
         this.knowledgeChunkService = knowledgeChunkService;
         this.projectMemberService = projectMemberService;
         this.embeddingService = embeddingService;
         this.objectMapper = objectMapper;
+        this.projectMapper = projectMapper;
     }
 
     @Transactional
     public void indexApprovedArtifact(Artifact artifact) {
-        boolean exists = knowledgeDocumentService.lambdaQuery()
-                .eq(KnowledgeDocument::getArtifactId, artifact.getId())
-                .exists();
-        if (exists) {
+        validateApprovedArtifact(artifact);
+        lockProject(artifact.getProjectId());
+        String contentHash = artifact.getContentHash() == null
+                || artifact.getContentHash().isBlank()
+                ? ContentHash.sha256(artifact.getContent())
+                : artifact.getContentHash();
+        KnowledgeDocument document = documentForArtifact(artifact.getId());
+        if (document != null
+                && STATUS_ACTIVE.equals(document.getStatus())
+                && contentHash.equals(document.getContentHash())
+                && CHUNKER_VERSION.equals(document.getChunkerVersion())
+                && KnowledgeEmbeddingService.MODEL_VERSION.equals(document.getEmbeddingModel())
+                && hasHealthyChunks(document)) {
             return;
         }
 
-        KnowledgeDocument document = new KnowledgeDocument();
-        document.setProjectId(artifact.getProjectId());
-        document.setArtifactId(artifact.getId());
-        document.setArtifactType(artifact.getType());
-        document.setArtifactVersion(artifact.getVersion());
-        document.setTitle(artifact.getTitle());
-        document.setStatus("INDEXED");
-        knowledgeDocumentService.save(document);
+        LocalDateTime now = LocalDateTime.now();
+        if (document == null) {
+            document = new KnowledgeDocument();
+            document.setProjectId(artifact.getProjectId());
+            document.setArtifactId(artifact.getId());
+            document.setArtifactType(artifact.getType());
+            document.setArtifactVersion(artifact.getVersion());
+            document.setTitle(artifact.getTitle());
+            document.setStatus(STATUS_INDEXING);
+            document.setContentHash(contentHash);
+            document.setChunkerVersion(CHUNKER_VERSION);
+            document.setEmbeddingModel(KnowledgeEmbeddingService.MODEL_VERSION);
+            document.setCreatedAt(now);
+            document.setUpdatedAt(now);
+            try {
+                knowledgeDocumentService.save(document);
+            } catch (DuplicateKeyException duplicate) {
+                document = documentForArtifact(artifact.getId());
+                if (document == null) {
+                    throw duplicate;
+                }
+                prepareForIndexing(document, artifact, contentHash, now);
+            }
+        } else {
+            prepareForIndexing(document, artifact, contentHash, now);
+        }
+
+        knowledgeChunkService.lambdaUpdate()
+                .eq(KnowledgeChunk::getDocumentId, document.getId())
+                .remove();
 
         List<String> chunks = splitIntoChunks(artifact.getContent(), 900, 120);
         for (int index = 0; index < chunks.size(); index++) {
@@ -82,11 +128,81 @@ public class KnowledgeIndexService {
             chunk.setVectorRef("knowledge_chunk:" + ContentHash.sha256(content));
             knowledgeChunkService.save(chunk);
         }
+
+        boolean newerVersionIsActive = knowledgeDocumentService.lambdaQuery()
+                .eq(KnowledgeDocument::getProjectId, artifact.getProjectId())
+                .eq(KnowledgeDocument::getArtifactType, artifact.getType())
+                .eq(KnowledgeDocument::getStatus, STATUS_ACTIVE)
+                .gt(KnowledgeDocument::getArtifactVersion, artifact.getVersion())
+                .exists();
+        if (newerVersionIsActive) {
+            markSuperseded(document.getId(), now);
+            return;
+        }
+
+        knowledgeDocumentService.lambdaUpdate()
+                .eq(KnowledgeDocument::getProjectId, artifact.getProjectId())
+                .eq(KnowledgeDocument::getArtifactType, artifact.getType())
+                .eq(KnowledgeDocument::getStatus, STATUS_ACTIVE)
+                .ne(KnowledgeDocument::getId, document.getId())
+                .set(KnowledgeDocument::getStatus, STATUS_SUPERSEDED)
+                .set(KnowledgeDocument::getSupersededAt, now)
+                .set(KnowledgeDocument::getUpdatedAt, now)
+                .update();
+        knowledgeDocumentService.lambdaUpdate()
+                .eq(KnowledgeDocument::getId, document.getId())
+                .eq(KnowledgeDocument::getStatus, STATUS_INDEXING)
+                .set(KnowledgeDocument::getStatus, STATUS_ACTIVE)
+                .set(KnowledgeDocument::getFailureMessage, null)
+                .set(KnowledgeDocument::getActivatedAt, now)
+                .set(KnowledgeDocument::getSupersededAt, null)
+                .set(KnowledgeDocument::getUpdatedAt, now)
+                .update();
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void recordIndexFailure(Artifact artifact, Throwable failure) {
+        if (artifact == null || artifact.getId() == null) {
+            return;
+        }
+        String contentHash = artifact.getContentHash() == null
+                || artifact.getContentHash().isBlank()
+                ? ContentHash.sha256(artifact.getContent())
+                : artifact.getContentHash();
+        LocalDateTime now = LocalDateTime.now();
+        KnowledgeDocument document = documentForArtifact(artifact.getId());
+        if (document == null) {
+            document = new KnowledgeDocument();
+            document.setProjectId(artifact.getProjectId());
+            document.setArtifactId(artifact.getId());
+            document.setArtifactType(artifact.getType());
+            document.setArtifactVersion(artifact.getVersion());
+            document.setTitle(artifact.getTitle());
+            document.setCreatedAt(now);
+            try {
+                knowledgeDocumentService.save(document);
+            } catch (DuplicateKeyException ignored) {
+                document = documentForArtifact(artifact.getId());
+            }
+        }
+        if (document == null) {
+            throw new IllegalStateException("Unable to persist failed knowledge index state");
+        }
+        knowledgeDocumentService.lambdaUpdate()
+                .eq(KnowledgeDocument::getId, document.getId())
+                .set(KnowledgeDocument::getStatus, STATUS_FAILED)
+                .set(KnowledgeDocument::getContentHash, contentHash)
+                .set(KnowledgeDocument::getChunkerVersion, CHUNKER_VERSION)
+                .set(KnowledgeDocument::getEmbeddingModel, KnowledgeEmbeddingService.MODEL_VERSION)
+                .set(KnowledgeDocument::getFailureMessage, failureMessage(failure))
+                .set(KnowledgeDocument::getUpdatedAt, now)
+                .update();
     }
 
     public List<KnowledgeSourceResponse> sources(Long projectId) {
         return knowledgeDocumentService.lambdaQuery()
                 .eq(KnowledgeDocument::getProjectId, projectId)
+                .eq(KnowledgeDocument::getStatus, STATUS_ACTIVE)
                 .orderByAsc(KnowledgeDocument::getId)
                 .list()
                 .stream()
@@ -94,30 +210,7 @@ public class KnowledgeIndexService {
                 .toList();
     }
 
-    public List<KnowledgeSourceResponse> retrieve(String query, int limit) {
-        return retrieveFromDocuments(query, limit, knowledgeDocumentService.list());
-    }
-
-    public List<KnowledgeSourceResponse> retrieve(String query, int limit, Long userId) {
-        Set<Long> accessibleProjectIds = projectMemberService.lambdaQuery()
-                .eq(ProjectMember::getUserId, userId)
-                .list()
-                .stream()
-                .map(ProjectMember::getProjectId)
-                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
-        if (accessibleProjectIds.isEmpty()) {
-            return List.of();
-        }
-        return retrieveFromDocuments(
-                query,
-                limit,
-                knowledgeDocumentService.lambdaQuery()
-                        .in(KnowledgeDocument::getProjectId, accessibleProjectIds)
-                        .list()
-        );
-    }
-
-    public List<KnowledgeSourceResponse> retrieveForProject(
+    private List<KnowledgeSourceResponse> retrieveWithinProject(
             String query,
             int limit,
             Long projectId
@@ -127,8 +220,44 @@ public class KnowledgeIndexService {
                 limit,
                 knowledgeDocumentService.lambdaQuery()
                         .eq(KnowledgeDocument::getProjectId, projectId)
+                        .eq(KnowledgeDocument::getStatus, STATUS_ACTIVE)
                         .list()
         );
+    }
+
+    public List<KnowledgeSourceResponse> retrieveForProject(
+            String query,
+            int limit,
+            Long projectId,
+            Long userId
+    ) {
+        boolean authorized = projectMemberService.lambdaQuery()
+                .eq(ProjectMember::getProjectId, projectId)
+                .eq(ProjectMember::getUserId, userId)
+                .exists();
+        if (!authorized) {
+            return List.of();
+        }
+        return retrieveWithinProject(query, limit, projectId);
+    }
+
+    public boolean requiresRebuild(KnowledgeDocument document) {
+        return document == null
+                || !STATUS_ACTIVE.equals(document.getStatus())
+                || document.getContentHash() == null
+                || !document.getContentHash().matches("^[0-9a-f]{64}$")
+                || !CHUNKER_VERSION.equals(document.getChunkerVersion())
+                || !KnowledgeEmbeddingService.MODEL_VERSION.equals(document.getEmbeddingModel())
+                || !hasHealthyChunks(document);
+    }
+
+    private void lockProject(Long projectId) {
+        Project project = projectMapper.selectOne(new LambdaQueryWrapper<Project>()
+                .eq(Project::getId, projectId)
+                .last("for update"));
+        if (project == null) {
+            throw new IllegalArgumentException("knowledge project does not exist: " + projectId);
+        }
     }
 
     private List<KnowledgeSourceResponse> retrieveFromDocuments(
@@ -143,6 +272,11 @@ public class KnowledgeIndexService {
         double[] queryEmbedding = embeddingService.embed(query);
         List<ChunkCandidate> candidates = new ArrayList<>();
         for (KnowledgeDocument document : documents) {
+            if (!STATUS_ACTIVE.equals(document.getStatus())
+                    || !CHUNKER_VERSION.equals(document.getChunkerVersion())
+                    || !KnowledgeEmbeddingService.MODEL_VERSION.equals(document.getEmbeddingModel())) {
+                continue;
+            }
             Set<String> titleTerms = terms(document.getTitle() + " " + document.getArtifactType());
             int titleScore = overlap(queryTerms, titleTerms) * 4;
             List<KnowledgeChunk> chunks = knowledgeChunkService.lambdaQuery()
@@ -152,10 +286,11 @@ public class KnowledgeIndexService {
             for (KnowledgeChunk chunk : chunks) {
                 Set<String> chunkTerms = terms(chunk.getContent() + " " + chunk.getRetrievalTerms());
                 int keywordScore = titleScore + overlap(queryTerms, chunkTerms) * 3;
-                double vectorScore = embeddingService.cosine(
-                        queryEmbedding,
-                        readOrCreateEmbedding(chunk)
-                );
+                double[] chunkEmbedding = readStoredEmbedding(chunk);
+                if (chunkEmbedding == null) {
+                    continue;
+                }
+                double vectorScore = embeddingService.cosine(queryEmbedding, chunkEmbedding);
                 if (keywordScore > 0 || vectorScore >= 0.10) {
                     candidates.add(new ChunkCandidate(
                             document,
@@ -238,7 +373,7 @@ public class KnowledgeIndexService {
                 .orElseGet(() -> KnowledgeSourceResponse.from(document, ""));
     }
 
-    private double[] readOrCreateEmbedding(KnowledgeChunk chunk) {
+    private double[] readStoredEmbedding(KnowledgeChunk chunk) {
         if (KnowledgeEmbeddingService.MODEL_VERSION.equals(chunk.getEmbeddingModel())
                 && chunk.getEmbeddingDimensions() != null
                 && chunk.getEmbeddingDimensions() == KnowledgeEmbeddingService.DIMENSIONS
@@ -246,10 +381,80 @@ public class KnowledgeIndexService {
             try {
                 return objectMapper.readValue(chunk.getEmbeddingJson(), double[].class);
             } catch (Exception ignored) {
-                // Corrupt or stale derived data is safely rebuilt in memory for this query.
+                return null;
             }
         }
-        return embeddingService.embed(chunk.getContent());
+        return null;
+    }
+
+    private void validateApprovedArtifact(Artifact artifact) {
+        if (artifact == null || artifact.getId() == null
+                || artifact.getProjectId() == null || artifact.getVersion() == null) {
+            throw new IllegalArgumentException("approved artifact identity is required");
+        }
+        if (!"APPROVED".equals(artifact.getStatus())) {
+            throw new IllegalArgumentException("knowledge indexing requires an APPROVED artifact");
+        }
+    }
+
+    private KnowledgeDocument documentForArtifact(Long artifactId) {
+        return knowledgeDocumentService.lambdaQuery()
+                .eq(KnowledgeDocument::getArtifactId, artifactId)
+                .last("limit 1")
+                .oneOpt()
+                .orElse(null);
+    }
+
+    private void prepareForIndexing(
+            KnowledgeDocument document,
+            Artifact artifact,
+            String contentHash,
+            LocalDateTime now
+    ) {
+        knowledgeDocumentService.lambdaUpdate()
+                .eq(KnowledgeDocument::getId, document.getId())
+                .set(KnowledgeDocument::getProjectId, artifact.getProjectId())
+                .set(KnowledgeDocument::getArtifactType, artifact.getType())
+                .set(KnowledgeDocument::getArtifactVersion, artifact.getVersion())
+                .set(KnowledgeDocument::getTitle, artifact.getTitle())
+                .set(KnowledgeDocument::getStatus, STATUS_INDEXING)
+                .set(KnowledgeDocument::getContentHash, contentHash)
+                .set(KnowledgeDocument::getChunkerVersion, CHUNKER_VERSION)
+                .set(KnowledgeDocument::getEmbeddingModel, KnowledgeEmbeddingService.MODEL_VERSION)
+                .set(KnowledgeDocument::getFailureMessage, null)
+                .set(KnowledgeDocument::getUpdatedAt, now)
+                .update();
+    }
+
+    private void markSuperseded(Long documentId, LocalDateTime now) {
+        knowledgeDocumentService.lambdaUpdate()
+                .eq(KnowledgeDocument::getId, documentId)
+                .set(KnowledgeDocument::getStatus, STATUS_SUPERSEDED)
+                .set(KnowledgeDocument::getActivatedAt, null)
+                .set(KnowledgeDocument::getSupersededAt, now)
+                .set(KnowledgeDocument::getUpdatedAt, now)
+                .update();
+    }
+
+    private boolean hasHealthyChunks(KnowledgeDocument document) {
+        List<KnowledgeChunk> chunks = knowledgeChunkService.lambdaQuery()
+                .eq(KnowledgeChunk::getDocumentId, document.getId())
+                .list();
+        return !chunks.isEmpty() && chunks.stream().allMatch(chunk ->
+                readStoredEmbedding(chunk) != null
+                        && Objects.equals(
+                                chunk.getContentHash(),
+                                ContentHash.sha256(chunk.getContent())
+                        ));
+    }
+
+    private String failureMessage(Throwable failure) {
+        if (failure == null) {
+            return "Knowledge indexing failed";
+        }
+        String message = failure.getClass().getSimpleName() + ": "
+                + (failure.getMessage() == null ? "indexing failed" : failure.getMessage());
+        return message.length() <= 1000 ? message : message.substring(0, 1000);
     }
 
     private String writeEmbedding(double[] embedding) {

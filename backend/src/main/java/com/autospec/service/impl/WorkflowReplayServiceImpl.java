@@ -18,6 +18,9 @@ import com.autospec.workflow.runtime.WorkflowExecutableContractValidator;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -119,7 +122,13 @@ public class WorkflowReplayServiceImpl implements WorkflowReplayService {
         runMapper.insert(replay);
 
         for (String nodeId : graph.nodes().keySet().stream().sorted().toList()) {
-            insertReplayNode(replay.getId(), nodeId, originalInputs.get(nodeId), now);
+            insertReplayNode(
+                    replay.getId(),
+                    source.getProjectId(),
+                    nodeId,
+                    originalInputs.get(nodeId),
+                    now
+            );
         }
         insertReplayTransition(replay, sourceRunId, mode, now);
         reconciliationService.reconcile(replay.getId());
@@ -184,6 +193,7 @@ public class WorkflowReplayServiceImpl implements WorkflowReplayService {
 
     private void insertReplayNode(
             long replayRunId,
+            long projectId,
             String nodeId,
             WorkflowNodeRun source,
             LocalDateTime now
@@ -198,11 +208,46 @@ public class WorkflowReplayServiceImpl implements WorkflowReplayService {
         node.setHandlerKey(source.getHandlerKey());
         node.setHandlerVersion(source.getHandlerVersion());
         node.setTimeoutMs(source.getTimeoutMs());
-        node.setInputJson(source.getInputJson());
+        node.setInputJson(projectScopedReplayInput(source.getInputJson(), projectId));
         node.setLockVersion(0);
         node.setCreatedAt(now);
         node.setUpdatedAt(now);
         nodeRunMapper.insert(node);
+    }
+
+    private String projectScopedReplayInput(String inputJson, long projectId) {
+        try {
+            JsonNode parsed = objectMapper.readTree(
+                    inputJson == null || inputJson.isBlank() ? "{}" : inputJson
+            );
+            if (!parsed.isObject()) {
+                throw conflict("Original replay input must be a JSON object");
+            }
+            ObjectNode input = (ObjectNode) parsed.deepCopy();
+            boolean removedControlPlaneState = input.remove("rework_directive") != null;
+            removedControlPlaneState = input.remove("context_manifest") != null
+                    || removedControlPlaneState;
+            boolean hasRetrievalSnapshot = input.has("retrieved_sources")
+                    || input.has("retrieval_policy")
+                    || input.has("retrieval_project_id");
+            if (!hasRetrievalSnapshot) {
+                return removedControlPlaneState
+                        ? objectMapper.writeValueAsString(input)
+                        : inputJson;
+            }
+            ArrayNode sources = objectMapper.createArrayNode();
+            input.path("retrieved_sources").forEach(source -> {
+                if (source.isObject() && source.path("project_id").asLong(-1) == projectId) {
+                    sources.add(source.deepCopy());
+                }
+            });
+            input.set("retrieved_sources", sources);
+            input.put("retrieval_project_id", projectId);
+            input.put("retrieval_policy", "CURRENT_PROJECT_ACTIVE_APPROVED_ARTIFACTS_V2");
+            return objectMapper.writeValueAsString(input);
+        } catch (JsonProcessingException exception) {
+            throw conflict("Original replay input is invalid JSON");
+        }
     }
 
     private void insertReplayTransition(

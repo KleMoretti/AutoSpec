@@ -18,6 +18,7 @@ from schemas.backend_design import BackendDesignArtifact
 from schemas.evaluation import EvaluationInput, EvaluationReport
 from schemas.frontend_skeleton import FrontendSkeletonArtifact
 from schemas.prd import PrdArtifact
+from schemas.rework import ReworkDirective
 from schemas.review import ReviewReport
 
 
@@ -30,6 +31,7 @@ class ProductManagerInput(BaseModel):
 
 class PrdNodeInput(ProductManagerInput):
     prd: dict[str, Any]
+    rework_directive: ReworkDirective | None = None
 
 
 class BackendDesignInput(PrdNodeInput):

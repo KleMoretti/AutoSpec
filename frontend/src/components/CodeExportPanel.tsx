@@ -1,6 +1,7 @@
 import { CodeOutlined, DownloadOutlined } from '@ant-design/icons';
 import { Button, Space, Typography, message } from 'antd';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { generateCodeSkeleton } from '../api/workflow';
 
 interface CodeExportPanelProps {
@@ -10,6 +11,7 @@ interface CodeExportPanelProps {
 }
 
 function CodeExportPanel({ projectId, disabled, onGenerated }: CodeExportPanelProps) {
+  const { t } = useTranslation();
   const [exporting, setExporting] = useState(false);
 
   async function handleGenerate() {
@@ -18,10 +20,10 @@ function CodeExportPanel({ projectId, disabled, onGenerated }: CodeExportPanelPr
       const response = await generateCodeSkeleton(projectId);
       const bytes = Uint8Array.from(atob(response.content), (char) => char.charCodeAt(0));
       downloadBlob(bytes, response.fileName, response.mediaType);
-      message.success('Code bundle passed verification and was exported');
+      message.success(t('codeExport.success'));
       await onGenerated?.();
     } catch (error) {
-      message.error(error instanceof Error ? error.message : 'Code export failed');
+      message.error(error instanceof Error ? error.message : t('codeExport.failed'));
     } finally {
       setExporting(false);
     }
@@ -32,7 +34,7 @@ function CodeExportPanel({ projectId, disabled, onGenerated }: CodeExportPanelPr
       <Space direction="vertical" size={12}>
         <Space>
           <CodeOutlined />
-          <Typography.Title level={3}>Code skeleton</Typography.Title>
+          <Typography.Title level={3}>{t('codeExport.title')}</Typography.Title>
         </Space>
         <Button
           type="primary"
@@ -41,7 +43,7 @@ function CodeExportPanel({ projectId, disabled, onGenerated }: CodeExportPanelPr
           disabled={disabled}
           onClick={handleGenerate}
         >
-          Export ZIP
+          {t('codeExport.exportZip')}
         </Button>
       </Space>
     </section>

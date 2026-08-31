@@ -25,12 +25,14 @@ import {
   message
 } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   createProject,
   getProjectDashboard,
   type ProjectDashboardItemResponse
 } from '../api/projects';
+import { formatUsd, translateEnum } from '../i18n/formatters';
 
 const { TextArea, Search } = Input;
 
@@ -40,6 +42,7 @@ interface FormValues {
 }
 
 function HomePage() {
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const [projects, setProjects] = useState<ProjectDashboardItemResponse[]>([]);
   const [loading, setLoading] = useState(true);
@@ -71,7 +74,7 @@ function HomePage() {
       setProjects(await getProjectDashboard());
       setLoadError(null);
     } catch (error) {
-      setLoadError(error instanceof Error ? error.message : 'Unable to load projects');
+      setLoadError(error instanceof Error ? error.message : t('home.list.loadFailed'));
     } finally {
       setLoading(false);
     }
@@ -81,10 +84,10 @@ function HomePage() {
     setSubmitting(true);
     try {
       const project = await createProject(values);
-      message.success('Project created');
+      message.success(t('home.create.success'));
       navigate(`/projects/${project.projectId}`);
     } catch (error) {
-      message.error(error instanceof Error ? error.message : 'Project creation failed');
+      message.error(error instanceof Error ? error.message : t('home.create.failed'));
     } finally {
       setSubmitting(false);
     }
@@ -99,32 +102,31 @@ function HomePage() {
           onClick={() => setCreating(false)}
           className="back-action"
         >
-          Back to projects
+          {t('home.backToProjects')}
         </Button>
         <section className="panel input-panel create-project-panel">
-          <Typography.Title level={1}>Create a project</Typography.Title>
+          <Typography.Title level={1}>{t('home.create.title')}</Typography.Title>
           <Typography.Paragraph className="muted readable-copy">
-            Describe the outcome you need. AutoSpec will turn it into a versioned specification,
-            review it, and keep every approval and revision traceable.
+            {t('home.create.description')}
           </Typography.Paragraph>
           <Form layout="vertical" onFinish={handleFinish} requiredMark="optional">
             <Form.Item
               name="name"
-              label="Project name"
-              rules={[{ required: true, message: 'Project name is required' }]}
+              label={t('home.create.name')}
+              rules={[{ required: true, message: t('home.create.nameRequired') }]}
             >
               <Input size="large" autoComplete="off" />
             </Form.Item>
             <Form.Item
               name="requirement"
-              label="Requirement"
-              extra="Include users, desired outcome, must-have scope, constraints, and success criteria when known."
-              rules={[{ required: true, message: 'Requirement is required' }]}
+              label={t('home.create.requirement')}
+              extra={t('home.create.requirementHelp')}
+              rules={[{ required: true, message: t('home.create.requirementRequired') }]}
             >
               <TextArea rows={10} showCount maxLength={2000} />
             </Form.Item>
             <Button type="primary" htmlType="submit" size="large" loading={submitting}>
-              Create project
+              {t('home.create.submit')}
             </Button>
           </Form>
         </section>
@@ -142,36 +144,36 @@ function HomePage() {
     <main className="workspace dashboard-stack" id="main-content">
       <section className="dashboard-hero">
         <div>
-          <Typography.Text className="eyebrow">Requirements-to-contract workspace</Typography.Text>
-          <Typography.Title level={1}>Projects</Typography.Title>
+          <Typography.Text className="eyebrow">{t('home.hero.eyebrow')}</Typography.Text>
+          <Typography.Title level={1}>{t('home.hero.title')}</Typography.Title>
           <Typography.Paragraph className="muted readable-copy">
-            Track work waiting for approval, quality blockers, and approved deliverables from one place.
+            {t('home.hero.description')}
           </Typography.Paragraph>
         </div>
         <Button type="primary" size="large" icon={<PlusOutlined />} onClick={() => setCreating(true)}>
-          New project
+          {t('home.hero.newProject')}
         </Button>
       </section>
 
-      <Row gutter={[16, 16]} aria-label="Project overview">
+      <Row gutter={[16, 16]} aria-label={t('home.overviewLabel')}>
         <Col xs={12} md={6}>
           <Card className="metric-card">
-            <Statistic title="Projects" value={projects.length} prefix={<ProjectOutlined />} />
+            <Statistic title={t('home.metrics.projects')} value={projects.length} prefix={<ProjectOutlined />} />
           </Card>
         </Col>
         <Col xs={12} md={6}>
           <Card className="metric-card">
-            <Statistic title="Running" value={runningCount} prefix={<ClockCircleOutlined />} />
+            <Statistic title={t('home.metrics.running')} value={runningCount} prefix={<ClockCircleOutlined />} />
           </Card>
         </Col>
         <Col xs={12} md={6}>
           <Card className="metric-card">
-            <Statistic title="Awaiting approval" value={pendingCount} prefix={<CheckCircleOutlined />} />
+            <Statistic title={t('home.metrics.awaitingApproval')} value={pendingCount} prefix={<CheckCircleOutlined />} />
           </Card>
         </Col>
         <Col xs={12} md={6}>
           <Card className="metric-card metric-card-warning">
-            <Statistic title="Quality blockers" value={blockerCount} prefix={<WarningOutlined />} />
+            <Statistic title={t('home.metrics.qualityBlockers')} value={blockerCount} prefix={<WarningOutlined />} />
           </Card>
         </Col>
       </Row>
@@ -179,26 +181,26 @@ function HomePage() {
       <section className="panel project-list-panel" aria-labelledby="recent-projects-title">
         <div className="section-heading project-list-heading">
           <div>
-            <Typography.Title level={2} id="recent-projects-title">Recent projects</Typography.Title>
-            <Typography.Text className="muted">Open a project to continue from its current stage.</Typography.Text>
+            <Typography.Title level={2} id="recent-projects-title">{t('home.list.title')}</Typography.Title>
+            <Typography.Text className="muted">{t('home.list.description')}</Typography.Text>
           </div>
           <Space wrap className="project-filters">
             <Search
-              aria-label="Search projects"
+              aria-label={t('home.list.searchLabel')}
               allowClear
-              placeholder="Search projects"
+              placeholder={t('home.list.searchPlaceholder')}
               onChange={(event) => setQuery(event.target.value)}
             />
             <Select
-              aria-label="Filter by workflow status"
+              aria-label={t('home.list.statusFilterLabel')}
               value={status}
               onChange={setStatus}
               options={[
-                { value: 'ALL', label: 'All statuses' },
-                { value: 'RUNNING', label: 'Running' },
-                { value: 'WAITING_APPROVAL', label: 'Waiting approval' },
-                { value: 'COMPLETED', label: 'Completed' },
-                { value: 'FAILED', label: 'Failed' }
+                { value: 'ALL', label: translateEnum(t, 'status', 'ALL') },
+                { value: 'RUNNING', label: translateEnum(t, 'status', 'RUNNING') },
+                { value: 'WAITING_APPROVAL', label: translateEnum(t, 'status', 'WAITING_APPROVAL') },
+                { value: 'COMPLETED', label: translateEnum(t, 'status', 'COMPLETED') },
+                { value: 'FAILED', label: translateEnum(t, 'status', 'FAILED') }
               ]}
             />
           </Space>
@@ -208,19 +210,19 @@ function HomePage() {
           <Alert
             type="error"
             showIcon
-            message="Projects could not be loaded"
+            message={t('home.list.loadTitle')}
             description={loadError}
-            action={<Button onClick={() => void loadProjects()}>Retry</Button>}
+            action={<Button onClick={() => void loadProjects()}>{t('common.retry')}</Button>}
           />
         ) : null}
         {loading ? <Skeleton active paragraph={{ rows: 6 }} /> : null}
         {!loading && !loadError && filtered.length === 0 ? (
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}
-            description={projects.length === 0 ? 'No projects yet' : 'No projects match these filters'}
+            description={projects.length === 0 ? t('home.list.noProjects') : t('home.list.noMatches')}
           >
             {projects.length === 0 ? (
-              <Button type="primary" onClick={() => setCreating(true)}>Create the first project</Button>
+              <Button type="primary" onClick={() => setCreating(true)}>{t('home.list.createFirst')}</Button>
             ) : null}
           </Empty>
         ) : null}
@@ -235,19 +237,19 @@ function HomePage() {
                   className="project-card"
                   title={<Link to={`/projects/${project.projectId}`}>{project.name}</Link>}
                   extra={<Tag color={statusColor(project.latestWorkflowStatus ?? project.projectStatus)}>
-                    {project.latestWorkflowStatus ?? project.projectStatus}
+                    {translateEnum(t, 'status', project.latestWorkflowStatus ?? project.projectStatus)}
                   </Tag>}
                 >
                   <Typography.Paragraph ellipsis={{ rows: 3 }} className="project-requirement">
                     {project.requirementSummary}
                   </Typography.Paragraph>
                   <div className="project-card-metrics">
-                    <span><strong>{project.pendingApprovalCount}</strong> approvals</span>
-                    <span><strong>{project.blockingReviewIssueCount}</strong> blockers</span>
-                    <span><strong>{project.qualityScore ?? '--'}</strong> quality</span>
-                    <span><strong>${Number(project.estimatedCost ?? 0).toFixed(4)}</strong> cost</span>
+                    <span><strong>{project.pendingApprovalCount}</strong> {t('home.list.approvalLabel', { count: project.pendingApprovalCount })}</span>
+                    <span><strong>{project.blockingReviewIssueCount}</strong> {t('home.list.blockerLabel', { count: project.blockingReviewIssueCount })}</span>
+                    <span><strong>{project.qualityScore ?? '--'}</strong> {t('home.list.quality')}</span>
+                    <span><strong>{formatUsd(Number(project.estimatedCost ?? 0), i18n.resolvedLanguage)}</strong> {t('home.list.cost')}</span>
                   </div>
-                  <Button block><Link to={`/projects/${project.projectId}`}>Open project</Link></Button>
+                  <Button block><Link to={`/projects/${project.projectId}`}>{t('home.list.openProject')}</Link></Button>
                 </Card>
               </List.Item>
             )}

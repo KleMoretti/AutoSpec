@@ -71,6 +71,12 @@ management:
 
 autospec:
   environment: ${AUTOSPEC_ENV:development}
+  knowledge:
+    recovery:
+      enabled: ${KNOWLEDGE_INDEX_RECOVERY_ENABLED:false}
+      batch-size: ${KNOWLEDGE_INDEX_RECOVERY_BATCH_SIZE:20}
+      fixed-delay: ${KNOWLEDGE_INDEX_RECOVERY_FIXED_DELAY:60000}
+      initial-delay: ${KNOWLEDGE_INDEX_RECOVERY_INITIAL_DELAY:30000}
   auth:
     demo-user:
       enabled: ${AUTH_DEMO_USER_ENABLED:false}
