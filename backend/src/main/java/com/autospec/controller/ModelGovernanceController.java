@@ -35,6 +35,7 @@ public class ModelGovernanceController {
     public List<ModelInvocationResponse> invocations(
             @PathVariable Long projectId,
             @RequestHeader(value = "X-AutoSpec-Session-Token", required = false) String sessionToken,
+            @RequestParam(required = false) Long workflowNodeRunId,
             @RequestParam(defaultValue = "50") Integer limit,
             @RequestParam(defaultValue = "0") Integer offset
     ) {
@@ -46,7 +47,12 @@ public class ModelGovernanceController {
                 "EDITOR",
                 "VIEWER"
         );
-        return modelInvocationService.listByProjectId(projectId, pagination.limit(), pagination.offset())
+        List<ModelInvocation> invocations = workflowNodeRunId == null
+                ? modelInvocationService.listByProjectId(
+                projectId, pagination.limit(), pagination.offset())
+                : modelInvocationService.listByProjectAndNodeRunId(
+                projectId, workflowNodeRunId, pagination.limit(), pagination.offset());
+        return invocations
                 .stream()
                 .map(ModelInvocationResponse::from)
                 .toList();
@@ -56,6 +62,7 @@ public class ModelGovernanceController {
     public CursorPageResponse<ModelInvocationResponse> invocationPage(
             @PathVariable Long projectId,
             @RequestHeader(value = "X-AutoSpec-Session-Token", required = false) String sessionToken,
+            @RequestParam(required = false) Long workflowNodeRunId,
             @RequestParam(required = false) Integer limit,
             @RequestParam(required = false) String cursor
     ) {
@@ -67,11 +74,11 @@ public class ModelGovernanceController {
                 "EDITOR",
                 "VIEWER"
         );
-        List<ModelInvocation> fetched = modelInvocationService.listByProjectIdAfterId(
-                projectId,
-                pagination.afterId(),
-                pagination.fetchLimit()
-        );
+        List<ModelInvocation> fetched = workflowNodeRunId == null
+                ? modelInvocationService.listByProjectIdAfterId(
+                projectId, pagination.afterId(), pagination.fetchLimit())
+                : modelInvocationService.listByProjectAndNodeRunIdAfterId(
+                projectId, workflowNodeRunId, pagination.afterId(), pagination.fetchLimit());
         boolean hasMore = fetched.size() > pagination.limit();
         List<ModelInvocation> page = hasMore
                 ? fetched.subList(0, pagination.limit())

@@ -24,6 +24,7 @@ public record WorkflowExecutableContract(
         String promptKey,
         String promptVersion,
         String promptChecksum,
+        JsonNode contextPolicy,
         JsonNode modelPolicy,
         JsonNode retryPolicy,
         JsonNode fallback
@@ -53,6 +54,9 @@ public record WorkflowExecutableContract(
         material.put("protocol_version", protocolVersion);
         material.put("retry_policy", generic(objectMapper, node.retryPolicy()));
         material.put("timeout_ms", node.timeoutMs());
+        if (protocolVersion >= 2) {
+            material.put("context_policy", generic(objectMapper, node.contextPolicy()));
+        }
         return new WorkflowExecutableContract(
                 protocolVersion,
                 sha256(canonicalJson(objectMapper, material)),
@@ -63,6 +67,7 @@ public record WorkflowExecutableContract(
                 node.promptKey(),
                 node.promptVersion(),
                 node.promptChecksum(),
+                node.contextPolicy().deepCopy(),
                 node.modelPolicy().deepCopy(),
                 node.retryPolicy().deepCopy(),
                 node.fallback().deepCopy()

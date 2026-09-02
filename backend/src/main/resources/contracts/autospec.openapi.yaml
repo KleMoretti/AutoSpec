@@ -598,6 +598,14 @@ paths:
       - $ref: '#/components/parameters/SessionToken'
       - $ref: '#/components/parameters/PaginationLimit'
       - $ref: '#/components/parameters/PaginationOffset'
+      - name: workflowNodeRunId
+        in: query
+        required: false
+        description: Filter to the physical calls belonging to one workflow node attempt.
+        schema:
+          type: integer
+          format: int64
+          minimum: 1
       responses:
         '200':
           description: Model invocation telemetry history.
@@ -622,6 +630,14 @@ paths:
       - $ref: '#/components/parameters/SessionToken'
       - $ref: '#/components/parameters/PaginationLimit'
       - $ref: '#/components/parameters/PaginationCursor'
+      - name: workflowNodeRunId
+        in: query
+        required: false
+        description: Filter to the physical calls belonging to one workflow node attempt.
+        schema:
+          type: integer
+          format: int64
+          minimum: 1
       responses:
         '200':
           description: Cursor page of model invocation telemetry.
@@ -1784,6 +1800,9 @@ components:
       - consumedTokens
       - consumedCost
       - modelCallCount
+      - reservedTokens
+      - reservedCost
+      - reservedModelCalls
       - status
       - startedAt
       properties:
@@ -1841,6 +1860,13 @@ components:
         consumedCost:
           type: number
         modelCallCount:
+          type: integer
+        reservedTokens:
+          type: integer
+          format: int64
+        reservedCost:
+          type: number
+        reservedModelCalls:
           type: integer
         status:
           type: string
@@ -1905,6 +1931,9 @@ components:
       - estimatedCost
       - modelCallCount
       - acceptedDuplicateEventCount
+      - reservedTokens
+      - reservedCost
+      - reservedModelCalls
       - modelUsage
       properties:
         workflowRunId:
@@ -1951,6 +1980,13 @@ components:
           type: integer
           format: int64
           nullable: true
+        reservedTokens:
+          type: integer
+          format: int64
+        reservedCost:
+          type: number
+        reservedModelCalls:
+          type: integer
         remainingTokens:
           type: integer
           format: int64
@@ -2033,6 +2069,48 @@ components:
           nullable: true
         durationMs:
           type: integer
+          nullable: true
+        budgetReservationId:
+          type: string
+          nullable: true
+        reservedInputTokens:
+          type: integer
+          format: int64
+          nullable: true
+        reservedOutputTokens:
+          type: integer
+          format: int64
+          nullable: true
+        reservedCost:
+          type: number
+          nullable: true
+        reservedModelCalls:
+          type: integer
+          nullable: true
+        actualInputTokens:
+          type: integer
+          nullable: true
+        actualOutputTokens:
+          type: integer
+          nullable: true
+        actualCacheTokens:
+          type: integer
+          nullable: true
+        actualCost:
+          type: number
+          nullable: true
+        actualModelCalls:
+          type: integer
+          nullable: true
+        actualToolCalls:
+          type: integer
+          nullable: true
+        budgetStatus:
+          type: string
+          nullable: true
+        budgetSettledAt:
+          type: string
+          format: date-time
           nullable: true
         inputJson:
           type: string
@@ -2128,6 +2206,21 @@ components:
           type: integer
           format: int64
           nullable: true
+        callId:
+          type: string
+          nullable: true
+        callType:
+          type: string
+          nullable: true
+        executionId:
+          type: string
+          nullable: true
+        callSequence:
+          type: integer
+          nullable: true
+        attempt:
+          type: integer
+          nullable: true
         correlationId:
           type: string
           nullable: true
@@ -2138,10 +2231,34 @@ components:
         promptKey:
           type: string
           nullable: true
+        promptVersion:
+          type: string
+          nullable: true
+        promptChecksum:
+          type: string
+          nullable: true
+        schemaVersion:
+          type: string
+          nullable: true
+        contractHash:
+          type: string
+          nullable: true
         providerKey:
           type: string
         modelName:
           type: string
+        routeKey:
+          type: string
+          nullable: true
+        routeReason:
+          type: string
+          nullable: true
+        fallbackUsed:
+          type: boolean
+          nullable: true
+        contextManifestJson:
+          type: string
+          nullable: true
         agentNode:
           type: string
         status:
@@ -2163,6 +2280,52 @@ components:
           nullable: true
         estimatedCost:
           type: number
+          nullable: true
+        reservedInputTokens:
+          type: integer
+          nullable: true
+        reservedOutputTokens:
+          type: integer
+          nullable: true
+        reservedCost:
+          type: number
+          nullable: true
+        settlementDeltaTokens:
+          type: integer
+          nullable: true
+        settlementDeltaCost:
+          type: number
+          nullable: true
+        normalizedParamsHash:
+          type: string
+          nullable: true
+        resultHash:
+          type: string
+          nullable: true
+        errorCode:
+          type: string
+          nullable: true
+        deadlineEpochMs:
+          type: integer
+          format: int64
+          nullable: true
+        idempotencyKey:
+          type: string
+          nullable: true
+        toolName:
+          type: string
+          nullable: true
+        toolVersion:
+          type: string
+          nullable: true
+        permissionPolicy:
+          type: string
+          nullable: true
+        referenceSourcesJson:
+          type: string
+          nullable: true
+        redactedParamsJson:
+          type: string
           nullable: true
         score:
           type: number

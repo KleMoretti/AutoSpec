@@ -108,15 +108,43 @@ public class WorkflowNodeInputAssembler {
                         .orderByAsc(ModelInvocation::getId))) {
             ObjectNode value = values.addObject();
             value.put("invocation_id", invocation.getId());
+            value.put("call_id", invocation.getCallId());
+            value.put("call_type", invocation.getCallType());
+            value.put("execution_id", invocation.getExecutionId());
+            value.put("call_sequence", invocation.getCallSequence());
+            value.put("attempt", invocation.getAttempt());
             value.put("node_run_id", invocation.getWorkflowNodeRunId());
             value.put("provider", invocation.getProviderKey());
             value.put("model", invocation.getModelName());
             value.put("status", invocation.getStatus());
+            value.put("route_key", invocation.getRouteKey());
+            value.put("route_reason", invocation.getRouteReason());
+            value.put("fallback_used", Boolean.TRUE.equals(invocation.getFallbackUsed()));
             value.put("model_call_count", invocation.getCallCount());
             value.put("input_tokens", invocation.getInputTokens());
             value.put("output_tokens", invocation.getOutputTokens());
+            value.put("cache_tokens", invocation.getCacheTokens());
+            value.put("estimated_cost", invocation.getEstimatedCost());
             value.put("prompt_version", invocation.getPromptVersion());
+            value.put("prompt_checksum", invocation.getPromptChecksum());
+            value.put("schema_version", invocation.getSchemaVersion());
             value.put("contract_hash", invocation.getContractHash());
+            value.put("normalized_params_hash", invocation.getNormalizedParamsHash());
+            value.put("result_hash", invocation.getResultHash());
+            value.put("reserved_input_tokens", invocation.getReservedInputTokens());
+            value.put("reserved_output_tokens", invocation.getReservedOutputTokens());
+            value.put("reserved_cost", invocation.getReservedCost());
+            value.put("settlement_delta_tokens", invocation.getSettlementDeltaTokens());
+            value.put("settlement_delta_cost", invocation.getSettlementDeltaCost());
+            value.put("error_code", invocation.getErrorCode());
+            value.put("error_message", invocation.getErrorMessage());
+            value.put("duration_ms", invocation.getDurationMs());
+            value.put("deadline_epoch_ms", invocation.getDeadlineEpochMs());
+            value.put("idempotency_key", invocation.getIdempotencyKey());
+            value.put("tool_name", invocation.getToolName());
+            value.put("tool_version", invocation.getToolVersion());
+            value.put("permission_policy", invocation.getPermissionPolicy());
+            value.put("reference_sources_json", invocation.getReferenceSourcesJson());
         }
         return values;
     }

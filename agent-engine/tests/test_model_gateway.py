@@ -14,6 +14,7 @@ from model_gateway import (
     model_routing_request,
 )
 from runtime.model_telemetry import (
+    ModelCallBudgetExceeded,
     ModelInvocationTelemetry,
     capture_model_invocations,
     record_model_invocation,
@@ -155,6 +156,81 @@ def test_frozen_contract_controls_prompt_temperature_deadline_and_idempotency() 
     assert invocations[0].prompt_key == "architect"
     assert invocations[0].prompt_version == "v1"
     assert invocations[0].prompt_checksum == contract.prompt_checksum
+
+
+def test_v2_gateway_enforces_hard_output_call_limit_and_cached_price() -> None:
+    prompt_dir = Path(__file__).resolve().parents[1] / "prompts"
+    prompt_material = (prompt_dir / "architect_v1.md").read_bytes()
+    calls = []
+    usage = SimpleNamespace(
+        prompt_tokens=100,
+        completion_tokens=10,
+        prompt_tokens_details=SimpleNamespace(cached_tokens=80),
+    )
+
+    class Completions:
+        def create(self, **kwargs):
+            calls.append(kwargs)
+            return SimpleNamespace(
+                usage=usage,
+                choices=[SimpleNamespace(message=SimpleNamespace(content='{"ok":true}'))],
+            )
+
+    gateway = OpenAICompatibleModelClient(
+        api_key="test-key",
+        base_url="https://model.invalid/v1",
+        model_name="test-model",
+        provider_key="test-provider",
+        prompt_dir=prompt_dir,
+        client=SimpleNamespace(chat=SimpleNamespace(completions=Completions())),
+    )
+    deadline = round(time.time() * 1000) + 5000
+    contract = ModelExecutionContract(
+        execution_id="7:architect:1:1",
+        prompt_key="architect",
+        prompt_version="v1",
+        prompt_checksum=hashlib.sha256(prompt_material).hexdigest(),
+        model_policy={
+            "route_key": "balanced",
+            "temperature": 0,
+            "context_window_tokens": 2048,
+            "max_output_tokens": 64,
+            "max_calls": 1,
+            "input_cost_per_million": 2,
+            "cached_input_cost_per_million": 5,
+            "output_cost_per_million": 8,
+            "required_capabilities": ["json_object", "usage", "idempotency"],
+        },
+        context_policy={
+            "tokenizer": "conservative-multilingual-v1",
+            "max_input_tokens": 512,
+        },
+        deadline_epoch_ms=deadline,
+        protocol_version=2,
+        contract_hash="4" * 64,
+        schema_version="FixtureOutput",
+    )
+
+    with capture_model_invocations(
+        execution_id=contract.execution_id,
+        max_model_calls=1,
+        deadline_epoch_ms=deadline,
+    ) as invocations:
+        with bind_model_execution_contract(contract):
+            assert gateway.generate_json("ignored", {"value": "需求"}) == {"ok": True}
+            with pytest.raises(ModelCallBudgetExceeded):
+                gateway.generate_json("ignored", {"value": "second"})
+
+    assert len(calls) == 1
+    assert calls[0]["max_tokens"] == 64
+    assert calls[0]["extra_headers"] == {
+        "Idempotency-Key": "7:architect:1:1:model:1"
+    }
+    assert 0 < calls[0]["timeout"] <= 5
+    assert len(invocations) == 1
+    assert invocations[0].estimated_cost == pytest.approx(0.00052)
+    assert invocations[0].reserved_cost == pytest.approx(0.003072)
+    assert invocations[0].cache_tokens == 80
 
 
 def test_routed_gateway_uses_quality_profile_and_persists_reason() -> None:

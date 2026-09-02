@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Data
@@ -19,6 +20,19 @@ public class WorkflowNodeRun {
     private String executionId;
     private String contractHash;
     private Long fencingToken;
+    private String budgetReservationId;
+    private Long reservedInputTokens;
+    private Long reservedOutputTokens;
+    private BigDecimal reservedCost;
+    private Integer reservedModelCalls;
+    private Integer actualInputTokens;
+    private Integer actualOutputTokens;
+    private Integer actualCacheTokens;
+    private BigDecimal actualCost;
+    private Integer actualModelCalls;
+    private Integer actualToolCalls;
+    private String budgetStatus;
+    private LocalDateTime budgetSettledAt;
     private String status;
     private String handlerKey;
     private String handlerVersion;

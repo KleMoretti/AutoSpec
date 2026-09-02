@@ -31,10 +31,10 @@ public class WorkflowSnapshotParser {
                 throw new IllegalArgumentException("workflow snapshot must be a JSON object");
             }
             int protocolVersion = root.path("protocol_version").asInt(0);
-            if (protocolVersion < 0 || protocolVersion > 1) {
+            if (protocolVersion < 0 || protocolVersion > 2) {
                 throw new IllegalArgumentException("unsupported workflow protocol_version: " + protocolVersion);
             }
-            if (protocolVersion == 1) {
+            if (protocolVersion >= 1) {
                 rejectUnknownFields(
                         root,
                         Set.of(
@@ -78,7 +78,7 @@ public class WorkflowSnapshotParser {
         }
         List<WorkflowNodeDocument> result = new ArrayList<>();
         values.forEach(node -> {
-            if (protocolVersion == 1) {
+            if (protocolVersion >= 1) {
                 rejectUnknownFields(
                         node,
                         Set.of(
@@ -92,6 +92,7 @@ public class WorkflowSnapshotParser {
                                 "prompt_key",
                                 "prompt_version",
                                 "prompt_checksum",
+                                "context_policy",
                                 "model_policy",
                                 "retry_policy",
                                 "fallback",
@@ -120,6 +121,7 @@ public class WorkflowSnapshotParser {
                     optionalText(node, "prompt_key"),
                     optionalText(node, "prompt_version"),
                     optionalText(node, "prompt_checksum"),
+                    optionalObject(node, "context_policy"),
                     optionalObject(node, "model_policy"),
                     optionalObject(node, "retry_policy"),
                     optionalObject(node, "fallback"),
@@ -151,7 +153,7 @@ public class WorkflowSnapshotParser {
         }
         List<WorkflowEdgeDocument> result = new ArrayList<>();
         values.forEach(edge -> {
-            if (protocolVersion == 1) {
+            if (protocolVersion >= 1) {
                 rejectUnknownFields(
                         edge,
                         Set.of("from_node", "to_node", "edge_type", "condition"),

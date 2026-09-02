@@ -19,7 +19,30 @@ import java.util.regex.Pattern;
 public final class WorkflowExecutableContractValidator {
     private static final Pattern SHA256 = Pattern.compile("^[0-9a-f]{64}$");
     private static final Set<String> MODEL_FIELDS = Set.of(
-            "route_key", "provider_key", "model_name", "temperature"
+            "route_key",
+            "provider_key",
+            "model_name",
+            "temperature",
+            "context_window_tokens",
+            "max_output_tokens",
+            "max_calls",
+            "input_cost_per_million",
+            "cached_input_cost_per_million",
+            "output_cost_per_million",
+            "required_capabilities"
+    );
+    private static final Set<String> CONTEXT_FIELDS = Set.of(
+            "version",
+            "tokenizer",
+            "max_input_tokens",
+            "prompt_token_reserve",
+            "manifest_token_reserve",
+            "field_priority",
+            "required_paths",
+            "compression_strategy",
+            "rag_token_budget",
+            "long_text_token_budget",
+            "max_single_source_ratio"
     );
     private static final Set<String> RETRY_FIELDS = Set.of(
             "max_attempts",
@@ -40,13 +63,13 @@ public final class WorkflowExecutableContractValidator {
         if (spec.protocolVersion() == 0) {
             return;
         }
-        if (spec.protocolVersion() != 1) {
+        if (spec.protocolVersion() < 1 || spec.protocolVersion() > 2) {
             throw new IllegalArgumentException(
                     "unsupported workflow protocol_version: " + spec.protocolVersion()
             );
         }
         for (WorkflowNodeDocument node : spec.nodes()) {
-            validateNode(node);
+            validateNode(node, spec.protocolVersion());
         }
         boolean hasRework = false;
         RestrictedConditionEvaluator conditionEvaluator = new RestrictedConditionEvaluator();
@@ -70,7 +93,7 @@ public final class WorkflowExecutableContractValidator {
         }
     }
 
-    private static void validateNode(WorkflowNodeDocument node) {
+    private static void validateNode(WorkflowNodeDocument node, int protocolVersion) {
         if (node.agentName() == null || node.agentName().isBlank()) {
             throw new IllegalArgumentException("Node agent_name is required: " + node.nodeId());
         }
@@ -104,6 +127,41 @@ public final class WorkflowExecutableContractValidator {
                 );
             }
         }
+        int contextWindow = model.path("context_window_tokens").asInt(128_000);
+        int maxOutput = model.path("max_output_tokens").asInt(4_096);
+        int maxCalls = model.path("max_calls").asInt(1);
+        if (contextWindow < 1_024 || maxOutput < 1 || maxOutput >= contextWindow) {
+            throw new IllegalArgumentException(
+                    "Node model token limits are invalid: " + node.nodeId()
+            );
+        }
+        if (maxCalls < 1 || maxCalls > 8) {
+            throw new IllegalArgumentException(
+                    "Node model_policy max_calls must be between 1 and 8: " + node.nodeId()
+            );
+        }
+        for (String price : Set.of(
+                "input_cost_per_million",
+                "cached_input_cost_per_million",
+                "output_cost_per_million"
+        )) {
+            if (model.has(price)
+                    && (!model.path(price).isNumber() || model.path(price).asDouble() < 0)) {
+                throw new IllegalArgumentException(
+                        "Node model_policy " + price + " must not be negative: " + node.nodeId()
+                );
+            }
+        }
+        if (model.has("required_capabilities")
+                && !model.path("required_capabilities").isArray()) {
+            throw new IllegalArgumentException(
+                    "Node model_policy required_capabilities must be an array: " + node.nodeId()
+            );
+        }
+
+        if (protocolVersion >= 2) {
+            validateContextPolicy(node, contextWindow, maxOutput);
+        }
 
         JsonNode retry = node.retryPolicy();
         int maxAttempts = retry.path("max_attempts").asInt(1);
@@ -117,6 +175,69 @@ public final class WorkflowExecutableContractValidator {
                     "Node retry_policy retryable_errors must be an array: " + node.nodeId()
             );
         }
+    }
+
+    private static void validateContextPolicy(
+            WorkflowNodeDocument node,
+            int contextWindow,
+            int maxOutput
+    ) {
+        JsonNode context = node.contextPolicy();
+        if (context == null || context.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "Node context_policy is required by protocol version 2: " + node.nodeId()
+            );
+        }
+        rejectUnknown(context, CONTEXT_FIELDS, "context_policy", node.nodeId());
+        if (text(context, "version") == null || text(context, "tokenizer") == null) {
+            throw new IllegalArgumentException(
+                    "Node context_policy version and tokenizer are required: " + node.nodeId()
+            );
+        }
+        if (!"schema-aware-v2".equals(text(context, "compression_strategy"))) {
+            throw new IllegalArgumentException(
+                    "Node context_policy compression_strategy must be schema-aware-v2: "
+                            + node.nodeId()
+            );
+        }
+        int maxInput = context.path("max_input_tokens").asInt(0);
+        int promptReserve = context.path("prompt_token_reserve").asInt(0);
+        int manifestReserve = context.path("manifest_token_reserve").asInt(0);
+        int ragBudget = context.path("rag_token_budget").asInt(0);
+        int longTextBudget = context.path("long_text_token_budget").asInt(0);
+        double sourceRatio = context.path("max_single_source_ratio").asDouble(0);
+        if (maxInput < 256
+                || promptReserve < 0
+                || manifestReserve < 0
+                || promptReserve + manifestReserve >= maxInput
+                || maxInput + maxOutput > contextWindow
+                || ragBudget < 0
+                || longTextBudget < 0
+                || ragBudget > maxInput - promptReserve - manifestReserve
+                || longTextBudget > maxInput - promptReserve - manifestReserve
+                || !Double.isFinite(sourceRatio)
+                || sourceRatio <= 0
+                || sourceRatio > 1) {
+            throw new IllegalArgumentException(
+                    "Node context_policy token quotas are invalid: " + node.nodeId()
+            );
+        }
+        if (!context.path("field_priority").isArray()
+                || context.path("field_priority").isEmpty()
+                || !context.path("required_paths").isArray()
+                || context.path("required_paths").isEmpty()) {
+            throw new IllegalArgumentException(
+                    "Node context_policy priorities and required paths must be non-empty arrays: "
+                            + node.nodeId()
+            );
+        }
+        context.path("required_paths").forEach(path -> {
+            if (!path.isTextual() || !path.asText().startsWith("$.")) {
+                throw new IllegalArgumentException(
+                        "Node context_policy required_paths must use $. prefixes: " + node.nodeId()
+                );
+            }
+        });
     }
 
     private static void requireHash(String value, String field, String nodeId) {

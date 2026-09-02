@@ -51,6 +51,12 @@ public class WorkflowRun {
 
     private Integer modelCallCount;
 
+    private Long reservedTokens;
+
+    private BigDecimal reservedCost;
+
+    private Integer reservedModelCalls;
+
     private Integer lockVersion;
 
     private LocalDateTime lastHeartbeatAt;

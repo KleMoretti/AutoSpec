@@ -5,6 +5,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 public record WorkflowExecutionEvent(
         @JsonProperty("event_id") String eventId,
@@ -28,10 +29,13 @@ public record WorkflowExecutionEvent(
         @JsonProperty("fallback_used") Boolean fallbackUsed,
         @JsonProperty("context_manifest") JsonNode contextManifest,
         @JsonProperty("model_call_count") Integer modelCallCount,
+        @JsonProperty("tool_call_count") Integer toolCallCount,
         @JsonProperty("input_tokens") Integer inputTokens,
         @JsonProperty("output_tokens") Integer outputTokens,
         @JsonProperty("cache_tokens") Integer cacheTokens,
         @JsonProperty("estimated_cost") BigDecimal estimatedCost,
+        @JsonProperty("call_records") List<WorkflowCallRecord> callRecords,
+        @JsonProperty("budget_reservation_id") String budgetReservationId,
         @JsonProperty("correlation_id") String correlationId,
         @JsonProperty("traceparent") String traceparent,
         @JsonProperty("tracestate") String tracestate,
@@ -47,6 +51,7 @@ public record WorkflowExecutionEvent(
         @JsonProperty("worker_id") String workerId
 ) {
     public WorkflowExecutionEvent {
+        callRecords = callRecords == null ? List.of() : List.copyOf(callRecords);
         if (eventId == null || eventId.isBlank()
                 || eventType == null || eventType.isBlank()
                 || workflowRunId == null || workflowRunId < 1
@@ -71,16 +76,38 @@ public record WorkflowExecutionEvent(
         if (tracestate != null && tracestate.length() > 512) {
             throw new IllegalArgumentException("tracestate must not exceed 512 characters");
         }
-        if (safe(modelCallCount) < 0 || safe(inputTokens) < 0
+        if (safe(modelCallCount) < 0 || safe(toolCallCount) < 0 || safe(inputTokens) < 0
                 || safe(outputTokens) < 0 || safe(cacheTokens) < 0
                 || estimatedCost != null && estimatedCost.signum() < 0) {
             throw new IllegalArgumentException("model usage values must not be negative");
         }
-        if (protocolVersion != null && (protocolVersion < 0 || protocolVersion > 1)) {
+        if (protocolVersion != null && (protocolVersion < 0 || protocolVersion > 2)) {
             throw new IllegalArgumentException("unsupported protocol_version: " + protocolVersion);
         }
         if (fencingToken != null && fencingToken < 0) {
             throw new IllegalArgumentException("fencing_token must not be negative");
+        }
+        if (safe(protocolVersion) >= 2 && isTerminalType(eventType)) {
+            validateCallRecords(
+                    executionId,
+                    attempt,
+                    modelCallCount,
+                    toolCallCount,
+                    inputTokens,
+                    outputTokens,
+                    cacheTokens,
+                    estimatedCost,
+                    contractHash,
+                    promptKey,
+                    promptVersion,
+                    promptChecksum,
+                    callRecords
+            );
+            if (!executionId.equals(budgetReservationId)) {
+                throw new IllegalArgumentException(
+                        "budget_reservation_id must match execution_id for protocol version 2"
+                );
+            }
         }
     }
 
@@ -136,10 +163,13 @@ public record WorkflowExecutionEvent(
                 fallbackUsed,
                 contextManifest,
                 modelCallCount,
+                0,
                 inputTokens,
                 outputTokens,
                 cacheTokens,
                 estimatedCost,
+                List.of(),
+                null,
                 correlationId,
                 traceparent,
                 tracestate,
@@ -157,7 +187,69 @@ public record WorkflowExecutionEvent(
     }
 
     public boolean isTerminal() {
+        return isTerminalType(eventType);
+    }
+
+    private static boolean isTerminalType(String eventType) {
         return "NODE_SUCCEEDED".equals(eventType) || "NODE_FAILED".equals(eventType);
+    }
+
+    private static void validateCallRecords(
+            String executionId,
+            Integer attempt,
+            Integer modelCallCount,
+            Integer toolCallCount,
+            Integer inputTokens,
+            Integer outputTokens,
+            Integer cacheTokens,
+            BigDecimal estimatedCost,
+            String contractHash,
+            String promptKey,
+            String promptVersion,
+            String promptChecksum,
+            List<WorkflowCallRecord> records
+    ) {
+        long uniqueCalls = records.stream().map(WorkflowCallRecord::callId).distinct().count();
+        long uniqueSequences = records.stream()
+                .map(WorkflowCallRecord::callSequence)
+                .distinct()
+                .count();
+        if (uniqueCalls != records.size() || uniqueSequences != records.size()
+                || records.stream().anyMatch(record ->
+                !executionId.equals(record.executionId())
+                        || !attempt.equals(record.attempt())
+                        || !java.util.Objects.equals(contractHash, record.contractHash())
+                        || record.isModelCall() && (
+                        !java.util.Objects.equals(promptKey, record.promptKey())
+                                || !java.util.Objects.equals(
+                                promptVersion, record.promptVersion())
+                                || !java.util.Objects.equals(
+                                promptChecksum, record.promptChecksum())
+                ))) {
+            throw new IllegalArgumentException("call_records do not belong to the terminal execution");
+        }
+        List<WorkflowCallRecord> models = records.stream()
+                .filter(WorkflowCallRecord::isModelCall)
+                .toList();
+        long tools = records.stream().filter(WorkflowCallRecord::isToolCall).count();
+        if (models.size() != safe(modelCallCount) || tools != safe(toolCallCount)
+                || models.stream().mapToInt(record -> safe(record.inputTokens())).sum()
+                != safe(inputTokens)
+                || models.stream().mapToInt(record -> safe(record.outputTokens())).sum()
+                != safe(outputTokens)
+                || models.stream().mapToInt(record -> safe(record.cacheTokens())).sum()
+                != safe(cacheTokens)) {
+            throw new IllegalArgumentException("call_records do not match terminal usage totals");
+        }
+        BigDecimal recordedCost = records.stream()
+                .map(WorkflowCallRecord::estimatedCost)
+                .map(value -> value == null ? BigDecimal.ZERO : value)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal terminalCost = estimatedCost == null ? BigDecimal.ZERO : estimatedCost;
+        if (recordedCost.subtract(terminalCost).abs()
+                .compareTo(new BigDecimal("0.000001")) > 0) {
+            throw new IllegalArgumentException("call_records do not match terminal cost");
+        }
     }
 
     private static int safe(Integer value) {

@@ -77,7 +77,7 @@ React 产品工作台
 
 ## Harness 优化计划
 
-> 状态：H0 已于 2026-08-30 完成；H1、H2 待实施。以下工作只增强 `autospec-v5:v5` 的运行 Harness，不改变六节点产品能力，不新增同步 `/generate*` 流水线。正式节点仍由 Redis Worker 执行，MySQL 仍是事实源，Redis 缓存和执行台账不得成为业务事实源。
+> 状态：H0 已于 2026-08-30 完成，H1 已于 2026-09-02 完成；H2 待实施。以下工作只增强 `autospec-v5:v5` 的运行 Harness，不改变六节点产品能力，不新增同步 `/generate*` 流水线。正式节点仍由 Redis Worker 执行，MySQL 仍是事实源，Redis 缓存和执行台账不得成为业务事实源。
 
 ### H0：先修复正确性与隔离边界
 
@@ -130,7 +130,7 @@ H0 实施记录：
 
 ### H1：冻结记忆、上下文、预算与调用契约
 
-#### H-04 结构化 Context/Memory Policy
+#### H-04 结构化 Context/Memory Policy（已完成）
 
 不建设无边界增长的自由文本“长期记忆”。记忆分为三层，并复用现有事实表：
 
@@ -146,7 +146,7 @@ H0 实施记录：
 - 压缩后重新执行 Pydantic/JSON Schema 与跨 Artifact 引用校验，失败时在模型调用前终止。
 - Context Manifest 记录策略版本、输入/输出 Token、各来源配额、裁剪路径、来源 hash 和压缩原因。
 
-#### H-05 模型预算预占与硬输出上限
+#### H-05 模型预算预占与硬输出上限（已完成）
 
 WorkflowSpec 的 `model_policy` 增加模型上下文窗口、`max_output_tokens` 和必要的 Provider 能力约束。每次模型或工具调用执行“预占 -> 调用 -> 实际结算 -> 释放余额”：
 
@@ -158,7 +158,7 @@ WorkflowSpec 的 `model_policy` 增加模型上下文窗口、`max_output_tokens
 
 验收标准：并行节点、fallback、超时和重复事件下均不能突破已冻结的最大调用次数或最大可请求 Token；预算拒绝发生在外部调用之前。
 
-#### H-06 逐次模型与工具调用台账
+#### H-06 逐次模型与工具调用台账（已完成）
 
 节点终态事件继续提供汇总指标，但每次实际调用必须有独立记录，不能把 primary 失败和 fallback 成功折叠为一条 `provider=multiple` 记录。单次调用台账至少包含：
 
@@ -169,6 +169,13 @@ WorkflowSpec 的 `model_policy` 增加模型上下文窗口、`max_output_tokens
 - 工具名称/version、权限策略、幂等键和引用来源；敏感参数只保存脱敏摘要。
 
 Evaluator、诊断页和审计查询应能从节点下钻到每次调用，同时保持事件重复消费幂等。
+
+H1 实施记录：
+
+- WorkflowSpec 已升级为协议 v2，六节点分别冻结 `context_policy` 与 `model_policy` 并纳入 executable contract hash；Worker 使用保守多语言 Token 估算、结构化语义裁剪、独立 RAG/长文本配额和完整 Context Manifest，模型调用前重新校验 Pydantic 契约及跨 Artifact ID 引用。
+- 控制面在发布 Redis 命令前，按节点最大输入、最大输出、调用次数和冻结单价原子预占 MySQL 工作流预算；Worker 对每个物理调用执行硬输出上限、共享 deadline、能力检查和调用次数门禁，primary/fallback 共用同一额度，并在成功、取消和超时路径精确结算或释放。预留节点拒绝协议降级终态，避免绕过 v2 结算。
+- 节点终态事件新增逐次 `call_records`，模型与未来受控工具调用统一记录 call ID/序号、Provider/route、Prompt/Schema/contract hash、参数/结果 hash、错误、deadline、Token、缓存 Token、成本、预留与差额；Evaluator 输入和模型调用诊断 API 支持按 node run 下钻。当前 V5 节点未授权物理工具调用，工具 allowlist、调用上限和副作用策略仍由 H-08 冻结后启用。
+- 已新增 V85 预算与调用台账迁移、V86 协议 v2 WorkflowSpec 契约迁移，并同步 Java/Python/TypeScript、OpenAPI、Compose 与环境示例；后端 194 项、Agent 82 项、前端 24 项测试、前端生产构建、OpenAPI 解析、契约同步及基础/监控 Compose 配置验证通过。
 
 ### H2：增强节点级 RAG、工具调用和缓存
 

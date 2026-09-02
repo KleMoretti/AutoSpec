@@ -14,6 +14,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -48,6 +49,11 @@ class WorkflowRunServiceTest {
         WorkflowRun staleRunning = workflowRun(project.getId(), "stale-run", "RUNNING", now.minusHours(2));
         WorkflowRun recentRunning = workflowRun(project.getId(), "recent-run", "RUNNING", now.minusMinutes(5));
         WorkflowRun alreadyFailed = workflowRun(project.getId(), "failed-run", "FAILED", now.minusHours(3));
+        staleRunning.setReservedTokens(6_000L);
+        staleRunning.setReservedCost(new BigDecimal("0.42"));
+        staleRunning.setReservedModelCalls(2);
+        workflowRunService.updateById(staleRunning);
+        WorkflowNodeRun staleNode = reservedNode(staleRunning, "architect", "RUNNING");
 
         int timedOut = workflowRunService.timeoutRunningRunsBefore(now.minusMinutes(30));
 
@@ -56,6 +62,13 @@ class WorkflowRunServiceTest {
         assertThat(timedOutRun.getStatus()).isEqualTo("FAILED");
         assertThat(timedOutRun.getErrorMessage()).isEqualTo("Timed out while running workflow run");
         assertThat(timedOutRun.getCompletedAt()).isNotNull();
+        assertThat(timedOutRun.getReservedTokens()).isZero();
+        assertThat(timedOutRun.getReservedCost()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(timedOutRun.getReservedModelCalls()).isZero();
+        WorkflowNodeRun timedOutNode = nodeRunMapper.selectById(staleNode.getId());
+        assertThat(timedOutNode.getStatus()).isEqualTo("CANCELLED");
+        assertThat(timedOutNode.getBudgetStatus()).isEqualTo("RELEASED");
+        assertThat(timedOutNode.getBudgetSettledAt()).isNotNull();
         assertThat(workflowRunService.getById(recentRunning.getId()).getStatus()).isEqualTo("RUNNING");
         assertThat(workflowRunService.getById(alreadyFailed.getId()).getStatus()).isEqualTo("FAILED");
     }
@@ -72,17 +85,11 @@ class WorkflowRunServiceTest {
         LocalDateTime now = LocalDateTime.now();
         WorkflowRun running = workflowRun(project.getId(), "running-cancel-key", "RUNNING", now.minusMinutes(5));
         WorkflowRun completed = workflowRun(project.getId(), "completed-cancel-key", "COMPLETED", now.minusMinutes(10));
-        WorkflowNodeRun node = new WorkflowNodeRun();
-        node.setWorkflowRunId(running.getId());
-        node.setNodeId("architect");
-        node.setRevision(1);
-        node.setAttempt(1);
-        node.setExecutionId(running.getId() + ":architect:1:1");
-        node.setStatus("QUEUED");
-        node.setHandlerKey("ArchitectAgent");
-        node.setHandlerVersion("v1");
-        node.setLockVersion(0);
-        nodeRunMapper.insert(node);
+        running.setReservedTokens(4_000L);
+        running.setReservedCost(new BigDecimal("0.25"));
+        running.setReservedModelCalls(1);
+        workflowRunService.updateById(running);
+        WorkflowNodeRun node = reservedNode(running, "architect", "QUEUED");
         WorkflowOutbox outbox = new WorkflowOutbox();
         outbox.setEventId("cancel-command-" + running.getId());
         outbox.setAggregateId(Long.toString(running.getId()));
@@ -97,12 +104,43 @@ class WorkflowRunServiceTest {
         assertThat(cancelled.getStatus()).isEqualTo("CANCELLED");
         assertThat(cancelled.getErrorMessage()).isEqualTo("Cancelled by user request");
         assertThat(cancelled.getCompletedAt()).isNotNull();
-        assertThat(nodeRunMapper.selectById(node.getId()).getStatus()).isEqualTo("CANCELLED");
+        assertThat(cancelled.getReservedTokens()).isZero();
+        assertThat(cancelled.getReservedCost()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(cancelled.getReservedModelCalls()).isZero();
+        WorkflowRun storedCancelled = workflowRunService.getById(running.getId());
+        assertThat(storedCancelled.getReservedTokens()).isZero();
+        assertThat(storedCancelled.getReservedCost()).isEqualByComparingTo(BigDecimal.ZERO);
+        assertThat(storedCancelled.getReservedModelCalls()).isZero();
+        WorkflowNodeRun cancelledNode = nodeRunMapper.selectById(node.getId());
+        assertThat(cancelledNode.getStatus()).isEqualTo("CANCELLED");
+        assertThat(cancelledNode.getBudgetStatus()).isEqualTo("RELEASED");
+        assertThat(cancelledNode.getBudgetSettledAt()).isNotNull();
         assertThat(outboxMapper.selectById(outbox.getId()).getStatus()).isEqualTo("CLOSED");
 
         assertThatThrownBy(() -> workflowRunService.cancelRunningRun(project.getId(), completed.getId()))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("Only running workflow runs can be cancelled");
+    }
+
+    private WorkflowNodeRun reservedNode(WorkflowRun run, String nodeId, String status) {
+        WorkflowNodeRun node = new WorkflowNodeRun();
+        node.setWorkflowRunId(run.getId());
+        node.setNodeId(nodeId);
+        node.setRevision(1);
+        node.setAttempt(1);
+        node.setExecutionId(run.getId() + ":" + nodeId + ":1:1");
+        node.setStatus(status);
+        node.setHandlerKey("ArchitectAgent");
+        node.setHandlerVersion("v1");
+        node.setBudgetReservationId("reservation-" + run.getId());
+        node.setReservedInputTokens(3_000L);
+        node.setReservedOutputTokens(1_000L);
+        node.setReservedCost(new BigDecimal("0.25"));
+        node.setReservedModelCalls(1);
+        node.setBudgetStatus("RESERVED");
+        node.setLockVersion(0);
+        nodeRunMapper.insert(node);
+        return node;
     }
 
     private WorkflowRun workflowRun(Long projectId, String idempotencyKey, String status, LocalDateTime createdAt) {

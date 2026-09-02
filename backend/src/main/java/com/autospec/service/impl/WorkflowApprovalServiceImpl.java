@@ -403,10 +403,15 @@ public class WorkflowApprovalServiceImpl implements WorkflowApprovalService {
         runMapper.update(null, new LambdaUpdateWrapper<WorkflowRun>()
                 .eq(WorkflowRun::getId, run.getId())
                 .set(WorkflowRun::getStatus, "FAILED")
+                .set(WorkflowRun::getResponseStatus, "APPROVAL_REJECTED")
                 .set(WorkflowRun::getErrorMessage,
                         reason == null || reason.isBlank() ? "Approval rejected" : reason)
+                .set(WorkflowRun::getReservedTokens, 0L)
+                .set(WorkflowRun::getReservedCost, java.math.BigDecimal.ZERO)
+                .set(WorkflowRun::getReservedModelCalls, 0)
                 .set(WorkflowRun::getCompletedAt, now)
                 .set(WorkflowRun::getUpdatedAt, now));
+        cancelRemainingNodes(run.getId(), "APPROVAL_REJECTED", now);
         transition(nodeRun, "WAITING_APPROVAL", "FAILED", "APPROVAL_REJECTED", now);
     }
 
@@ -451,10 +456,35 @@ public class WorkflowApprovalServiceImpl implements WorkflowApprovalService {
         runMapper.update(null, new LambdaUpdateWrapper<WorkflowRun>()
                 .eq(WorkflowRun::getId, run.getId())
                 .set(WorkflowRun::getStatus, "CANCELLED")
+                .set(WorkflowRun::getResponseStatus, "CANCELLED")
                 .set(WorkflowRun::getErrorMessage, "Cancelled by approval decision")
+                .set(WorkflowRun::getReservedTokens, 0L)
+                .set(WorkflowRun::getReservedCost, java.math.BigDecimal.ZERO)
+                .set(WorkflowRun::getReservedModelCalls, 0)
                 .set(WorkflowRun::getCompletedAt, now)
                 .set(WorkflowRun::getUpdatedAt, now));
+        cancelRemainingNodes(run.getId(), "APPROVAL_CANCELLED", now);
         transition(nodeRun, "WAITING_APPROVAL", "CANCELLED", "APPROVAL_CANCELLED", now);
+    }
+
+    private void cancelRemainingNodes(Long runId, String errorCode, LocalDateTime now) {
+        nodeRunMapper.update(null, new LambdaUpdateWrapper<WorkflowNodeRun>()
+                .eq(WorkflowNodeRun::getWorkflowRunId, runId)
+                .in(WorkflowNodeRun::getStatus,
+                        "PENDING", "READY", "QUEUED", "RUNNING", "RETRY_WAIT",
+                        "FALLBACK_READY", "WAITING_APPROVAL", "STALE", "ORPHANED")
+                .set(WorkflowNodeRun::getStatus, WorkflowNodeStatus.CANCELLED.name())
+                .set(WorkflowNodeRun::getErrorCode, errorCode)
+                .set(WorkflowNodeRun::getErrorMessage,
+                        "Parent workflow run was terminated by approval")
+                .set(WorkflowNodeRun::getFinishedAt, now)
+                .set(WorkflowNodeRun::getUpdatedAt, now));
+        nodeRunMapper.update(null, new LambdaUpdateWrapper<WorkflowNodeRun>()
+                .eq(WorkflowNodeRun::getWorkflowRunId, runId)
+                .eq(WorkflowNodeRun::getBudgetStatus, "RESERVED")
+                .set(WorkflowNodeRun::getBudgetStatus, "RELEASED")
+                .set(WorkflowNodeRun::getBudgetSettledAt, now)
+                .set(WorkflowNodeRun::getUpdatedAt, now));
     }
 
     private void updateWaitingNode(

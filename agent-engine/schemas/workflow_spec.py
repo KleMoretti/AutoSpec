@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -13,6 +13,13 @@ class ModelPolicy(BaseModel):
     provider_key: str | None = Field(default=None, min_length=1)
     model_name: str | None = Field(default=None, min_length=1)
     temperature: float = Field(default=0.0, ge=0.0, le=2.0)
+    context_window_tokens: int = Field(default=128_000, ge=1_024)
+    max_output_tokens: int = Field(default=4_096, ge=1, le=128_000)
+    max_calls: int = Field(default=1, ge=1, le=8)
+    input_cost_per_million: float = Field(default=0.0, ge=0.0)
+    cached_input_cost_per_million: float = Field(default=0.0, ge=0.0)
+    output_cost_per_million: float = Field(default=0.0, ge=0.0)
+    required_capabilities: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_target(self) -> "ModelPolicy":
@@ -20,6 +27,44 @@ class ModelPolicy(BaseModel):
             raise ValueError(
                 "model_policy requires route_key or provider_key plus model_name"
             )
+        if self.max_output_tokens >= self.context_window_tokens:
+            raise ValueError("max_output_tokens must be smaller than context_window_tokens")
+        if len(set(self.required_capabilities)) != len(self.required_capabilities):
+            raise ValueError("required_capabilities must not contain duplicates")
+        return self
+
+
+class ContextPolicy(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    version: str = Field(min_length=1)
+    tokenizer: str = Field(min_length=1)
+    max_input_tokens: int = Field(ge=256, le=1_000_000)
+    prompt_token_reserve: int = Field(default=512, ge=0)
+    manifest_token_reserve: int = Field(default=384, ge=0)
+    field_priority: list[str] = Field(min_length=1)
+    required_paths: list[str] = Field(min_length=1)
+    compression_strategy: Literal["schema-aware-v2"] = "schema-aware-v2"
+    rag_token_budget: int = Field(default=0, ge=0)
+    long_text_token_budget: int = Field(default=0, ge=0)
+    max_single_source_ratio: float = Field(default=0.35, gt=0.0, le=1.0)
+
+    @model_validator(mode="after")
+    def validate_budget(self) -> "ContextPolicy":
+        reserved = self.prompt_token_reserve + self.manifest_token_reserve
+        if reserved >= self.max_input_tokens:
+            raise ValueError("context policy reserves must leave input token capacity")
+        payload_budget = self.max_input_tokens - reserved
+        if self.rag_token_budget > payload_budget:
+            raise ValueError("rag_token_budget exceeds available input capacity")
+        if self.long_text_token_budget > payload_budget:
+            raise ValueError("long_text_token_budget exceeds available input capacity")
+        if len(set(self.field_priority)) != len(self.field_priority):
+            raise ValueError("field_priority must not contain duplicates")
+        if len(set(self.required_paths)) != len(self.required_paths):
+            raise ValueError("required_paths must not contain duplicates")
+        if any(not path.startswith("$.") for path in self.required_paths):
+            raise ValueError("required_paths must use JSONPath-like $. prefixes")
         return self
 
 
@@ -108,6 +153,7 @@ class WorkflowNodeSpec(BaseModel):
     prompt_key: str = Field(min_length=1)
     prompt_version: str = Field(min_length=1)
     prompt_checksum: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    context_policy: ContextPolicy | None = None
     model_policy: ModelPolicy
     retry_policy: RetryPolicy
     timeout_ms: int = Field(default=30000, ge=1000)
@@ -130,7 +176,7 @@ class WorkflowSpec(BaseModel):
 
     workflow_key: str = Field(min_length=1)
     version: str = Field(min_length=1)
-    protocol_version: int = Field(default=0, ge=0, le=1)
+    protocol_version: int = Field(default=0, ge=0, le=2)
     nodes: list[WorkflowNodeSpec] = Field(min_length=1)
     edges: list[WorkflowEdgeSpec] = Field(default_factory=list)
     runtime: WorkflowRuntimePolicy = Field(default_factory=WorkflowRuntimePolicy)
@@ -166,7 +212,7 @@ class WorkflowSpec(BaseModel):
             if self.runtime.max_review_rounds < 1:
                 raise ValueError("rework edges require max_review_rounds greater than zero")
 
-        if self.protocol_version == 1:
+        if self.protocol_version in {1, 2}:
             for node in self.nodes:
                 missing = [
                     name
@@ -182,6 +228,19 @@ class WorkflowSpec(BaseModel):
                         f"node {node.node_id} executable contract is missing: "
                         + ", ".join(missing)
                     )
+                if self.protocol_version == 2:
+                    if node.context_policy is None:
+                        raise ValueError(
+                            f"node {node.node_id} executable contract is missing context_policy"
+                        )
+                    if (
+                        node.context_policy.max_input_tokens
+                        + node.model_policy.max_output_tokens
+                        > node.model_policy.context_window_tokens
+                    ):
+                        raise ValueError(
+                            f"node {node.node_id} context and output budgets exceed model window"
+                        )
 
         adjacency = {node_id: set() for node_id in node_ids}
         indegree = {node_id: 0 for node_id in node_ids}

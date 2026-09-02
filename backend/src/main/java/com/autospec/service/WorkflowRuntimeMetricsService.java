@@ -100,9 +100,12 @@ public class WorkflowRuntimeMetricsService {
                 run.getMaxCost(),
                 run.getMaxModelCalls(),
                 run.getMaxWallTimeMs(),
-                remaining(run.getMaxTokens(), run.getConsumedTokens()),
-                remaining(run.getMaxCost(), run.getConsumedCost()),
-                remaining(run.getMaxModelCalls(), run.getModelCallCount()),
+                run.getReservedTokens(),
+                run.getReservedCost(),
+                run.getReservedModelCalls(),
+                remaining(run.getMaxTokens(), run.getConsumedTokens(), run.getReservedTokens()),
+                remaining(run.getMaxCost(), run.getConsumedCost(), run.getReservedCost()),
+                remaining(run.getMaxModelCalls(), run.getModelCallCount(), run.getReservedModelCalls()),
                 aggregateUsage(invocations)
         );
     }
@@ -141,19 +144,31 @@ public class WorkflowRuntimeMetricsService {
                 .toList();
     }
 
-    private Long remaining(Long maximum, Long consumed) {
-        return maximum == null ? null : Math.max(0, maximum - (consumed == null ? 0 : consumed));
+    private Long remaining(Long maximum, Long consumed, Long reserved) {
+        return maximum == null
+                ? null
+                : Math.max(0, maximum - (consumed == null ? 0 : consumed)
+                - (reserved == null ? 0 : reserved));
     }
 
-    private Integer remaining(Integer maximum, Integer consumed) {
-        return maximum == null ? null : Math.max(0, maximum - safe(consumed));
+    private Integer remaining(Integer maximum, Integer consumed, Integer reserved) {
+        return maximum == null
+                ? null
+                : Math.max(0, maximum - safe(consumed) - safe(reserved));
     }
 
-    private BigDecimal remaining(BigDecimal maximum, BigDecimal consumed) {
+    private BigDecimal remaining(
+            BigDecimal maximum,
+            BigDecimal consumed,
+            BigDecimal reserved
+    ) {
         if (maximum == null) {
             return null;
         }
-        return maximum.subtract(consumed == null ? BigDecimal.ZERO : consumed).max(BigDecimal.ZERO);
+        return maximum
+                .subtract(consumed == null ? BigDecimal.ZERO : consumed)
+                .subtract(reserved == null ? BigDecimal.ZERO : reserved)
+                .max(BigDecimal.ZERO);
     }
 
     private int safe(Integer value) {

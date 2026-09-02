@@ -111,6 +111,9 @@ public class WorkflowReplayServiceImpl implements WorkflowReplayService {
         replay.setConsumedTokens(0L);
         replay.setConsumedCost(java.math.BigDecimal.ZERO);
         replay.setModelCallCount(0);
+        replay.setReservedTokens(0L);
+        replay.setReservedCost(java.math.BigDecimal.ZERO);
+        replay.setReservedModelCalls(0);
         replay.setLockVersion(0);
         replay.setLastHeartbeatAt(now);
         replay.setStatus("RUNNING");

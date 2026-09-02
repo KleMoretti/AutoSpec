@@ -124,6 +124,9 @@ public class WorkflowRunCreationServiceImpl implements WorkflowRunCreationServic
         run.setConsumedTokens(0L);
         run.setConsumedCost(java.math.BigDecimal.ZERO);
         run.setModelCallCount(0);
+        run.setReservedTokens(0L);
+        run.setReservedCost(java.math.BigDecimal.ZERO);
+        run.setReservedModelCalls(0);
         run.setLockVersion(0);
         run.setLastHeartbeatAt(now);
         run.setStatus("RUNNING");

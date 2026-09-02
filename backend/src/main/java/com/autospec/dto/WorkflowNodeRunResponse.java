@@ -2,6 +2,7 @@ package com.autospec.dto;
 
 import com.autospec.entity.WorkflowNodeRun;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 public record WorkflowNodeRunResponse(
@@ -16,6 +17,19 @@ public record WorkflowNodeRunResponse(
         String handlerVersion,
         Integer timeoutMs,
         Integer durationMs,
+        String budgetReservationId,
+        Long reservedInputTokens,
+        Long reservedOutputTokens,
+        BigDecimal reservedCost,
+        Integer reservedModelCalls,
+        Integer actualInputTokens,
+        Integer actualOutputTokens,
+        Integer actualCacheTokens,
+        BigDecimal actualCost,
+        Integer actualModelCalls,
+        Integer actualToolCalls,
+        String budgetStatus,
+        LocalDateTime budgetSettledAt,
         String inputJson,
         String outputJson,
         String errorCode,
@@ -39,6 +53,19 @@ public record WorkflowNodeRunResponse(
                 run.getHandlerVersion(),
                 run.getTimeoutMs(),
                 run.getDurationMs(),
+                run.getBudgetReservationId(),
+                run.getReservedInputTokens(),
+                run.getReservedOutputTokens(),
+                run.getReservedCost(),
+                run.getReservedModelCalls(),
+                run.getActualInputTokens(),
+                run.getActualOutputTokens(),
+                run.getActualCacheTokens(),
+                run.getActualCost(),
+                run.getActualModelCalls(),
+                run.getActualToolCalls(),
+                run.getBudgetStatus(),
+                run.getBudgetSettledAt(),
                 run.getInputJson(),
                 run.getOutputJson(),
                 run.getErrorCode(),
