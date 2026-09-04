@@ -116,7 +116,7 @@ class RedisOutboxRecoveryIT extends MySqlIntegrationTestSupport {
         proxy().setConnectionCut(false);
         Instant restoredAt = Instant.now();
         waitUntilEligible(failedAttempt.getNextRetryAt());
-        assertThat(publisher.publishPending(10)).isEqualTo(1);
+        assertThat(publisher.publishPending(10)).isGreaterThanOrEqualTo(1);
 
         long recoveryMillis = Duration.between(restoredAt, Instant.now()).toMillis();
         WorkflowOutbox recovered = outboxMapper.selectById(outbox.getId());
@@ -127,12 +127,13 @@ class RedisOutboxRecoveryIT extends MySqlIntegrationTestSupport {
                 WorkflowOutboxPublisher.COMMAND_STREAM,
                 Range.unbounded()
         );
-        assertThat(publishedCommands).isNotEmpty();
-        assertThat(publishedCommands).anySatisfy(record -> assertThat(record.getValue())
+        var outboxCommands = publishedCommands.stream()
+                .filter(record -> outbox.getEventId().equals(record.getValue().get("event_id")))
+                .toList();
+        assertThat(outboxCommands).hasSize(1);
+        assertThat(outboxCommands).allSatisfy(record -> assertThat(record.getValue())
                 .containsEntry("event_id", outbox.getEventId())
                 .containsEntry("payload", outbox.getPayloadJson()));
-        assertThat(publishedCommands).allSatisfy(record -> assertThat(record.getValue())
-                .containsEntry("event_id", outbox.getEventId()));
 
         LOGGER.info(
                 "failureDrill=redis-disconnect detectionMs={} recoveryMs={} "

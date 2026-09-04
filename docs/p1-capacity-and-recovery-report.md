@@ -48,15 +48,17 @@
 
 建议使用的收尾验证：
 
+以下命令从仓库根目录执行：
+
 ```powershell
-Set-Location 'D:\@Java\MetaGPT\backend'
-& 'D:\apache-maven-3.8.9\bin\mvn.cmd' test
+Set-Location 'backend'
+mvn test
 
-Set-Location 'D:\@Java\MetaGPT\agent-engine'
-& 'D:\miniconda3\envs\CrewAI_Study\python.exe' -m pytest -q
+Set-Location '..\agent-engine'
+python -m pytest -q
 
-Set-Location 'D:\@Java\MetaGPT'
-& 'D:\miniconda3\envs\CrewAI_Study\python.exe' scripts/verify_workflow_contract.py
+Set-Location '..'
+python scripts/verify_workflow_contract.py
 docker compose config --quiet
 docker compose --profile monitoring config --quiet
 ```

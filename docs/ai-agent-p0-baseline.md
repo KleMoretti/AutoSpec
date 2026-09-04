@@ -16,8 +16,8 @@
 - `schemas/evaluation.py`、`evaluation/runner.py` 和 `runtime/trace.py`：提供版本化 `EvalCase`/`EvalRun`、分层指标、离线 fixture baseline、节点级脱敏 Trace 和回放排序。运行方式：
 
   ```powershell
-  Set-Location 'D:\@Java\MetaGPT\agent-engine'
-  & 'D:\miniconda3\envs\CrewAI_Study\python.exe' -m evaluation.runner --output ..\artifacts\autospec-p0-baseline.json
+  Set-Location 'agent-engine'
+  python -m evaluation.runner --output ..\artifacts\autospec-p0-baseline.json
   ```
 
 评测输出只保存引用、版本、耗时、调用台账摘要和路由理由，不保存原始简历、需求或模型回答。RAG 指标在节点级检索能力完成后再填充，不以空数据冒充结果。
