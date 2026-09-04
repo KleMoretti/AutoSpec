@@ -17,6 +17,8 @@ public class WorkflowRun {
 
     private Long projectId;
 
+    private Long initiatedByUserId;
+
     private String operation;
 
     private String idempotencyKey;

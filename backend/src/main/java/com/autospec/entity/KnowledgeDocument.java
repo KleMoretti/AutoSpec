@@ -20,6 +20,8 @@ public class KnowledgeDocument {
 
     private String artifactType;
 
+    private String corpusType;
+
     private Integer artifactVersion;
 
     private String title;
@@ -41,4 +43,6 @@ public class KnowledgeDocument {
     private LocalDateTime activatedAt;
 
     private LocalDateTime supersededAt;
+
+    private LocalDateTime expiresAt;
 }

@@ -187,7 +187,7 @@ class WorkflowReplayServiceTest {
         assertThat(replayedInput.path("retrieval_project_id").asLong())
                 .isEqualTo(fixture.project().getId());
         assertThat(replayedInput.path("retrieval_policy").asText())
-                .isEqualTo("CURRENT_PROJECT_ACTIVE_APPROVED_ARTIFACTS_V2");
+                .isEqualTo("PROJECT_KNOWLEDGE_BM25_EMBEDDING_RRF_RERANK_V2");
         assertThat(replayedInput.path("retrieved_sources")).hasSize(1);
         assertThat(replayedInput.toString())
                 .contains("current project")

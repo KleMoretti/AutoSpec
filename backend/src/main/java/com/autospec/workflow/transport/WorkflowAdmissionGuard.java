@@ -2,7 +2,10 @@ package com.autospec.workflow.transport;
 
 import com.autospec.dto.WorkflowOutboxBacklogSnapshot;
 import com.autospec.exception.RetryAfterResponseStatusException;
+import com.autospec.entity.WorkflowRun;
+import com.autospec.mapper.WorkflowRunMapper;
 import com.autospec.mapper.WorkflowOutboxMapper;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -23,11 +26,13 @@ public class WorkflowAdmissionGuard {
     static final String WORKER_GROUP = "autospec-workers";
 
     private final WorkflowOutboxMapper outboxMapper;
+    private final WorkflowRunMapper runMapper;
     private final StringRedisTemplate redisTemplate;
     private final boolean enabled;
     private final long maxPendingOutbox;
     private final Duration maxOldestOutboxAge;
     private final long maxWorkerBacklog;
+    private final long maxActiveRunsPerUser;
     private final long retryAfterSeconds;
     private final Clock clock;
     private final Counter pendingCountRejections;
@@ -35,10 +40,12 @@ public class WorkflowAdmissionGuard {
     private final Counter workerBacklogRejections;
     private final Counter outboxUnavailableRejections;
     private final Counter workerUnavailableRejections;
+    private final Counter perUserRejections;
 
     @Autowired
     public WorkflowAdmissionGuard(
             WorkflowOutboxMapper outboxMapper,
+            WorkflowRunMapper runMapper,
             StringRedisTemplate redisTemplate,
             MeterRegistry meterRegistry,
             @Value("${autospec.workflow.admission.enabled:true}") boolean enabled,
@@ -48,10 +55,13 @@ public class WorkflowAdmissionGuard {
             Duration maxOldestOutboxAge,
             @Value("${autospec.workflow.admission.max-worker-backlog:1000}")
             long maxWorkerBacklog,
-            @Value("${autospec.workflow.admission.retry-after:5s}") Duration retryAfter
+            @Value("${autospec.workflow.admission.retry-after:5s}") Duration retryAfter,
+            @Value("${autospec.workflow.admission.max-active-runs-per-user:3}")
+            long maxActiveRunsPerUser
     ) {
         this(
                 outboxMapper,
+                runMapper,
                 redisTemplate,
                 meterRegistry,
                 enabled,
@@ -59,11 +69,12 @@ public class WorkflowAdmissionGuard {
                 maxOldestOutboxAge,
                 maxWorkerBacklog,
                 retryAfter,
+                maxActiveRunsPerUser,
                 Clock.systemDefaultZone()
         );
     }
 
-    WorkflowAdmissionGuard(
+    public WorkflowAdmissionGuard(
             WorkflowOutboxMapper outboxMapper,
             StringRedisTemplate redisTemplate,
             MeterRegistry meterRegistry,
@@ -71,7 +82,34 @@ public class WorkflowAdmissionGuard {
             long maxPendingOutbox,
             Duration maxOldestOutboxAge,
             long maxWorkerBacklog,
+            Duration retryAfter
+    ) {
+        this(
+                outboxMapper,
+                null,
+                redisTemplate,
+                meterRegistry,
+                enabled,
+                maxPendingOutbox,
+                maxOldestOutboxAge,
+                maxWorkerBacklog,
+                retryAfter,
+                0,
+                Clock.systemDefaultZone()
+        );
+    }
+
+    WorkflowAdmissionGuard(
+            WorkflowOutboxMapper outboxMapper,
+            WorkflowRunMapper runMapper,
+            StringRedisTemplate redisTemplate,
+            MeterRegistry meterRegistry,
+            boolean enabled,
+            long maxPendingOutbox,
+            Duration maxOldestOutboxAge,
+            long maxWorkerBacklog,
             Duration retryAfter,
+            long maxActiveRunsPerUser,
             Clock clock
     ) {
         if (maxPendingOutbox < 1) {
@@ -86,12 +124,17 @@ public class WorkflowAdmissionGuard {
         if (retryAfter.isZero() || retryAfter.isNegative()) {
             throw new IllegalArgumentException("Workflow Retry-After must be positive");
         }
+        if (maxActiveRunsPerUser < 0) {
+            throw new IllegalArgumentException("Maximum active runs per user must not be negative");
+        }
         this.outboxMapper = outboxMapper;
+        this.runMapper = runMapper;
         this.redisTemplate = redisTemplate;
         this.enabled = enabled;
         this.maxPendingOutbox = maxPendingOutbox;
         this.maxOldestOutboxAge = maxOldestOutboxAge;
         this.maxWorkerBacklog = maxWorkerBacklog;
+        this.maxActiveRunsPerUser = maxActiveRunsPerUser;
         this.retryAfterSeconds = Math.max(1, (retryAfter.toMillis() + 999) / 1_000);
         this.clock = clock;
         this.pendingCountRejections = counter(meterRegistry, "pending_count");
@@ -99,9 +142,40 @@ public class WorkflowAdmissionGuard {
         this.workerBacklogRejections = counter(meterRegistry, "worker_backlog");
         this.outboxUnavailableRejections = counter(meterRegistry, "outbox_store_unavailable");
         this.workerUnavailableRejections = counter(meterRegistry, "worker_store_unavailable");
+        this.perUserRejections = counter(meterRegistry, "per_user_active");
+    }
+
+    WorkflowAdmissionGuard(
+            WorkflowOutboxMapper outboxMapper,
+            StringRedisTemplate redisTemplate,
+            MeterRegistry meterRegistry,
+            boolean enabled,
+            long maxPendingOutbox,
+            Duration maxOldestOutboxAge,
+            long maxWorkerBacklog,
+            Duration retryAfter,
+            Clock clock
+    ) {
+        this(
+                outboxMapper,
+                null,
+                redisTemplate,
+                meterRegistry,
+                enabled,
+                maxPendingOutbox,
+                maxOldestOutboxAge,
+                maxWorkerBacklog,
+                retryAfter,
+                0,
+                clock
+        );
     }
 
     public void admit() {
+        admit(null);
+    }
+
+    public void admit(Long userId) {
         if (!enabled) {
             return;
         }
@@ -133,6 +207,21 @@ public class WorkflowAdmissionGuard {
         if (workerBacklog >= maxWorkerBacklog) {
             workerBacklogRejections.increment();
             throw rejected("Workflow admission paused by worker command backlog", null);
+        }
+        if (userId != null && runMapper != null && maxActiveRunsPerUser > 0) {
+            long activeRuns;
+            try {
+                activeRuns = runMapper.selectCount(new LambdaQueryWrapper<WorkflowRun>()
+                        .eq(WorkflowRun::getInitiatedByUserId, userId)
+                        .eq(WorkflowRun::getStatus, "RUNNING"));
+            } catch (RuntimeException exception) {
+                perUserRejections.increment();
+                throw rejected("User workflow admission state is temporarily unavailable", exception);
+            }
+            if (activeRuns >= maxActiveRunsPerUser) {
+                perUserRejections.increment();
+                throw rejected("Workflow admission paused by per-user active run limit", null);
+            }
         }
     }
 

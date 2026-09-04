@@ -18,8 +18,46 @@ public record KnowledgeSourceResponse(
         String embeddingModel,
         String artifactContentHash,
         String chunkContentHash,
-        Double relevanceScore
+        Double relevanceScore,
+        String corpusType
 ) {
+
+    public KnowledgeSourceResponse(
+            Long projectId,
+            Long artifactId,
+            String artifactType,
+            String title,
+            Integer artifactVersion,
+            Long chunkId,
+            Integer chunkIndex,
+            String citationLocation,
+            String content,
+            String retrievalStrategy,
+            String chunkerVersion,
+            String embeddingModel,
+            String artifactContentHash,
+            String chunkContentHash,
+            Double relevanceScore
+    ) {
+        this(
+                projectId,
+                artifactId,
+                artifactType,
+                title,
+                artifactVersion,
+                chunkId,
+                chunkIndex,
+                citationLocation,
+                content,
+                retrievalStrategy,
+                chunkerVersion,
+                embeddingModel,
+                artifactContentHash,
+                chunkContentHash,
+                relevanceScore,
+                null
+        );
+    }
 
     public KnowledgeSourceResponse(
             Long artifactId,
@@ -38,6 +76,7 @@ public record KnowledgeSourceResponse(
                 null,
                 null,
                 content,
+                null,
                 null,
                 null,
                 null,
@@ -74,7 +113,8 @@ public record KnowledgeSourceResponse(
                 null,
                 null,
                 null,
-                relevanceScore
+                relevanceScore,
+                null
         );
     }
 
@@ -94,7 +134,8 @@ public record KnowledgeSourceResponse(
                 document.getEmbeddingModel(),
                 document.getContentHash(),
                 null,
-                null
+                null,
+                document.getCorpusType()
         );
     }
 
@@ -119,7 +160,8 @@ public record KnowledgeSourceResponse(
                 document.getEmbeddingModel(),
                 document.getContentHash(),
                 chunk.getContentHash(),
-                relevanceScore
+                relevanceScore,
+                document.getCorpusType()
         );
     }
 }

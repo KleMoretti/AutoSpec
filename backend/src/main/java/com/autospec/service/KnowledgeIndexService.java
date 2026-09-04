@@ -25,6 +25,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -36,7 +37,10 @@ public class KnowledgeIndexService {
     public static final String STATUS_SUPERSEDED = "SUPERSEDED";
     public static final String STATUS_FAILED = "FAILED";
     private static final Pattern TERM_PATTERN = Pattern.compile("[\\p{IsHan}]+|[\\p{Alnum}]+");
-    private static final String RETRIEVAL_STRATEGY = "HYBRID_RRF_HASHING_V1";
+    public static final String RETRIEVAL_STRATEGY = "HYBRID_BM25_EMBEDDING_RRF_RERANK_V2";
+    public static final String RETRIEVAL_POLICY = "PROJECT_KNOWLEDGE_BM25_EMBEDDING_RRF_RERANK_V2";
+    public static final String RERANKER_VERSION = "deterministic-rerank-v1";
+    public static final String ACCESS_POLICY_VERSION = "project-member-active-expiry-v1";
     private static final int RRF_CONSTANT = 60;
 
     private final KnowledgeDocumentService knowledgeDocumentService;
@@ -45,6 +49,7 @@ public class KnowledgeIndexService {
     private final KnowledgeEmbeddingService embeddingService;
     private final ObjectMapper objectMapper;
     private final ProjectMapper projectMapper;
+    private final KnowledgeQueryRewriter queryRewriter;
 
     public KnowledgeIndexService(
             KnowledgeDocumentService knowledgeDocumentService,
@@ -52,7 +57,8 @@ public class KnowledgeIndexService {
             ProjectMemberService projectMemberService,
             KnowledgeEmbeddingService embeddingService,
             ObjectMapper objectMapper,
-            ProjectMapper projectMapper
+            ProjectMapper projectMapper,
+            KnowledgeQueryRewriter queryRewriter
     ) {
         this.knowledgeDocumentService = knowledgeDocumentService;
         this.knowledgeChunkService = knowledgeChunkService;
@@ -60,6 +66,7 @@ public class KnowledgeIndexService {
         this.embeddingService = embeddingService;
         this.objectMapper = objectMapper;
         this.projectMapper = projectMapper;
+        this.queryRewriter = queryRewriter;
     }
 
     @Transactional
@@ -76,6 +83,8 @@ public class KnowledgeIndexService {
                 && contentHash.equals(document.getContentHash())
                 && CHUNKER_VERSION.equals(document.getChunkerVersion())
                 && KnowledgeEmbeddingService.MODEL_VERSION.equals(document.getEmbeddingModel())
+                && KnowledgeCorpus.fromArtifactType(artifact.getType()).name()
+                .equals(KnowledgeCorpus.normalize(document.getCorpusType()))
                 && hasHealthyChunks(document)) {
             return;
         }
@@ -86,6 +95,7 @@ public class KnowledgeIndexService {
             document.setProjectId(artifact.getProjectId());
             document.setArtifactId(artifact.getId());
             document.setArtifactType(artifact.getType());
+            document.setCorpusType(KnowledgeCorpus.fromArtifactType(artifact.getType()).name());
             document.setArtifactVersion(artifact.getVersion());
             document.setTitle(artifact.getTitle());
             document.setStatus(STATUS_INDEXING);
@@ -176,6 +186,7 @@ public class KnowledgeIndexService {
             document.setProjectId(artifact.getProjectId());
             document.setArtifactId(artifact.getId());
             document.setArtifactType(artifact.getType());
+            document.setCorpusType(KnowledgeCorpus.fromArtifactType(artifact.getType()).name());
             document.setArtifactVersion(artifact.getVersion());
             document.setTitle(artifact.getTitle());
             document.setCreatedAt(now);
@@ -194,15 +205,28 @@ public class KnowledgeIndexService {
                 .set(KnowledgeDocument::getContentHash, contentHash)
                 .set(KnowledgeDocument::getChunkerVersion, CHUNKER_VERSION)
                 .set(KnowledgeDocument::getEmbeddingModel, KnowledgeEmbeddingService.MODEL_VERSION)
+                .set(KnowledgeDocument::getCorpusType,
+                        KnowledgeCorpus.fromArtifactType(artifact.getType()).name())
                 .set(KnowledgeDocument::getFailureMessage, failureMessage(failure))
                 .set(KnowledgeDocument::getUpdatedAt, now)
                 .update();
     }
 
     public List<KnowledgeSourceResponse> sources(Long projectId) {
+        return sources(projectId, null);
+    }
+
+    public List<KnowledgeSourceResponse> sources(Long projectId, String corpusType) {
         return knowledgeDocumentService.lambdaQuery()
                 .eq(KnowledgeDocument::getProjectId, projectId)
                 .eq(KnowledgeDocument::getStatus, STATUS_ACTIVE)
+                .eq(corpusType != null && !corpusType.isBlank(),
+                        KnowledgeDocument::getCorpusType,
+                        KnowledgeCorpus.normalize(corpusType))
+                .and(wrapper -> wrapper
+                        .isNull(KnowledgeDocument::getExpiresAt)
+                        .or()
+                        .gt(KnowledgeDocument::getExpiresAt, LocalDateTime.now()))
                 .orderByAsc(KnowledgeDocument::getId)
                 .list()
                 .stream()
@@ -213,14 +237,23 @@ public class KnowledgeIndexService {
     private List<KnowledgeSourceResponse> retrieveWithinProject(
             String query,
             int limit,
-            Long projectId
+            Long projectId,
+            String corpusType
     ) {
+        LocalDateTime now = LocalDateTime.now();
         return retrieveFromDocuments(
                 query,
                 limit,
                 knowledgeDocumentService.lambdaQuery()
                         .eq(KnowledgeDocument::getProjectId, projectId)
                         .eq(KnowledgeDocument::getStatus, STATUS_ACTIVE)
+                        .eq(corpusType != null && !corpusType.isBlank(),
+                                KnowledgeDocument::getCorpusType,
+                                KnowledgeCorpus.normalize(corpusType))
+                        .and(wrapper -> wrapper
+                                .isNull(KnowledgeDocument::getExpiresAt)
+                                .or()
+                                .gt(KnowledgeDocument::getExpiresAt, now))
                         .list()
         );
     }
@@ -231,6 +264,22 @@ public class KnowledgeIndexService {
             Long projectId,
             Long userId
     ) {
+        return retrieveForProject(
+                query,
+                limit,
+                projectId,
+                userId,
+                null
+        );
+    }
+
+    public List<KnowledgeSourceResponse> retrieveForProject(
+            String query,
+            int limit,
+            Long projectId,
+            Long userId,
+            String corpusType
+    ) {
         boolean authorized = projectMemberService.lambdaQuery()
                 .eq(ProjectMember::getProjectId, projectId)
                 .eq(ProjectMember::getUserId, userId)
@@ -238,7 +287,7 @@ public class KnowledgeIndexService {
         if (!authorized) {
             return List.of();
         }
-        return retrieveWithinProject(query, limit, projectId);
+        return retrieveWithinProject(query, limit, projectId, corpusType);
     }
 
     public boolean requiresRebuild(KnowledgeDocument document) {
@@ -265,12 +314,31 @@ public class KnowledgeIndexService {
             int limit,
             List<KnowledgeDocument> documents
     ) {
-        Set<String> queryTerms = terms(query);
+        KnowledgeQueryRewriter.Rewrite rewrite = queryRewriter.rewrite(query);
+        Set<String> queryTerms = rewrite.terms();
         if (queryTerms.isEmpty() || documents.isEmpty()) {
             return List.of();
         }
-        double[] queryEmbedding = embeddingService.embed(query);
-        List<ChunkCandidate> candidates = new ArrayList<>();
+        List<double[]> queryEmbeddings = rewrite.variants().stream()
+                .map(embeddingService::embed)
+                .toList();
+        Map<Long, KnowledgeDocument> documentsById = documents.stream()
+                .filter(document -> document.getId() != null)
+                .collect(Collectors.toMap(KnowledgeDocument::getId, document -> document));
+        if (documentsById.isEmpty()) {
+            return List.of();
+        }
+        List<KnowledgeChunk> chunks = knowledgeChunkService.lambdaQuery()
+                .in(KnowledgeChunk::getDocumentId, documentsById.keySet())
+                .orderByAsc(KnowledgeChunk::getDocumentId)
+                .orderByAsc(KnowledgeChunk::getChunkIndex)
+                .list();
+        if (chunks.isEmpty()) {
+            return List.of();
+        }
+        List<ChunkFeatures> features = new ArrayList<>();
+        Map<String, Integer> documentFrequency = new HashMap<>();
+        long totalTermLength = 0;
         for (KnowledgeDocument document : documents) {
             if (!STATUS_ACTIVE.equals(document.getStatus())
                     || !CHUNKER_VERSION.equals(document.getChunkerVersion())
@@ -278,36 +346,53 @@ public class KnowledgeIndexService {
                 continue;
             }
             Set<String> titleTerms = terms(document.getTitle() + " " + document.getArtifactType());
-            int titleScore = overlap(queryTerms, titleTerms) * 4;
-            List<KnowledgeChunk> chunks = knowledgeChunkService.lambdaQuery()
-                    .eq(KnowledgeChunk::getDocumentId, document.getId())
-                    .orderByAsc(KnowledgeChunk::getChunkIndex)
-                    .list();
             for (KnowledgeChunk chunk : chunks) {
+                if (!document.getId().equals(chunk.getDocumentId())) {
+                    continue;
+                }
                 Set<String> chunkTerms = terms(chunk.getContent() + " " + chunk.getRetrievalTerms());
-                int keywordScore = titleScore + overlap(queryTerms, chunkTerms) * 3;
                 double[] chunkEmbedding = readStoredEmbedding(chunk);
                 if (chunkEmbedding == null) {
                     continue;
                 }
-                double vectorScore = embeddingService.cosine(queryEmbedding, chunkEmbedding);
-                if (keywordScore > 0 || vectorScore >= 0.10) {
-                    candidates.add(new ChunkCandidate(
-                            document,
-                            chunk,
-                            keywordScore,
-                            vectorScore
-                    ));
+                double vectorScore = queryEmbeddings.stream()
+                        .mapToDouble(queryEmbedding -> embeddingService.cosine(queryEmbedding, chunkEmbedding))
+                        .max()
+                        .orElse(0.0);
+                ChunkFeatures feature = new ChunkFeatures(
+                        document,
+                        chunk,
+                        chunkTerms,
+                        titleTerms,
+                        vectorScore
+                );
+                features.add(feature);
+                totalTermLength += chunkTerms.size();
+                for (String term : chunkTerms) {
+                    documentFrequency.merge(term, 1, Integer::sum);
                 }
             }
         }
+        if (features.isEmpty()) {
+            return List.of();
+        }
+        double averageTermLength = (double) totalTermLength / features.size();
+        List<ChunkCandidate> candidates = features.stream()
+                .map(feature -> new ChunkCandidate(
+                        feature.document(),
+                        feature.chunk(),
+                        bm25Score(queryTerms, feature, documentFrequency, features.size(), averageTermLength),
+                        feature.vectorScore()
+                ))
+                .filter(candidate -> candidate.keywordScore() > 0 || candidate.vectorScore() >= 0.10)
+                .toList();
         if (candidates.isEmpty()) {
             return List.of();
         }
 
         Map<String, Integer> keywordRanks = ranks(
                 candidates,
-                Comparator.comparingInt(ChunkCandidate::keywordScore)
+                Comparator.comparingDouble(ChunkCandidate::keywordScore)
                         .reversed()
                         .thenComparing(candidate -> candidate.document().getId())
                         .thenComparing(candidate -> candidate.chunk().getChunkIndex())
@@ -321,20 +406,39 @@ public class KnowledgeIndexService {
         );
 
         int safeLimit = Math.max(1, Math.min(limit, 50));
-        return candidates.stream()
+        int topN = Math.min(100, Math.max(20, safeLimit * 4));
+        List<RankedChunk> rankedChunks = candidates.stream()
+                .sorted(Comparator.comparingDouble((ChunkCandidate candidate) ->
+                                rrfScore(candidate, keywordRanks, vectorRanks))
+                        .reversed()
+                        .thenComparing(candidate -> candidate.document().getId())
+                        .thenComparing(candidate -> candidate.chunk().getChunkIndex()))
+                .limit(topN)
                 .map(candidate -> rerank(candidate, keywordRanks, vectorRanks))
                 .sorted(Comparator.comparingDouble(RankedChunk::score)
                         .reversed()
                         .thenComparing(ranked -> ranked.candidate().document().getId())
                         .thenComparing(ranked -> ranked.candidate().chunk().getChunkIndex()))
-                .limit(safeLimit)
-                .map(ranked -> KnowledgeSourceResponse.from(
-                        ranked.candidate().document(),
-                        ranked.candidate().chunk(),
-                        RETRIEVAL_STRATEGY,
-                        roundScore(ranked.score())
-                ))
                 .toList();
+        Map<Long, Integer> perDocument = new HashMap<>();
+        List<KnowledgeSourceResponse> result = new ArrayList<>();
+        for (RankedChunk ranked : rankedChunks) {
+            Long documentId = ranked.candidate().document().getId();
+            if (perDocument.getOrDefault(documentId, 0) >= 2) {
+                continue;
+            }
+            perDocument.merge(documentId, 1, Integer::sum);
+            result.add(KnowledgeSourceResponse.from(
+                    ranked.candidate().document(),
+                    ranked.candidate().chunk(),
+                    RETRIEVAL_STRATEGY,
+                    roundScore(ranked.score())
+            ));
+            if (result.size() >= safeLimit) {
+                break;
+            }
+        }
+        return result;
     }
 
     private RankedChunk rerank(
@@ -343,12 +447,59 @@ public class KnowledgeIndexService {
             Map<String, Integer> vectorRanks
     ) {
         String key = key(candidate);
-        double reciprocalRankFusion = 1.0 / (RRF_CONSTANT + keywordRanks.get(key))
-                + 1.0 / (RRF_CONSTANT + vectorRanks.get(key));
+        double reciprocalRankFusion = rrfScore(candidate, keywordRanks, vectorRanks);
         double score = reciprocalRankFusion * 1_000
                 + candidate.keywordScore() * 0.35
                 + Math.max(0.0, candidate.vectorScore()) * 2.0;
         return new RankedChunk(candidate, score);
+    }
+
+    private double rrfScore(
+            ChunkCandidate candidate,
+            Map<String, Integer> keywordRanks,
+            Map<String, Integer> vectorRanks
+    ) {
+        String key = key(candidate);
+        return 1.0 / (RRF_CONSTANT + keywordRanks.get(key))
+                + 1.0 / (RRF_CONSTANT + vectorRanks.get(key));
+    }
+
+    private double bm25Score(
+            Set<String> queryTerms,
+            ChunkFeatures feature,
+            Map<String, Integer> documentFrequency,
+            int documentCount,
+            double averageLength
+    ) {
+        double score = 0.0;
+        double lengthNorm = 1.0 - 0.75
+                + 0.75 * feature.terms().size() / Math.max(1.0, averageLength);
+        for (String term : queryTerms) {
+            int frequency = termFrequency(feature.chunk().getContent(), term);
+            if (frequency == 0) {
+                continue;
+            }
+            int documentFrequencyValue = documentFrequency.getOrDefault(term, 0);
+            double idf = Math.log(1.0 + (documentCount - documentFrequencyValue + 0.5)
+                    / (documentFrequencyValue + 0.5));
+            score += idf * (frequency * 2.2 / (frequency + 1.2 * lengthNorm));
+        }
+        return score + overlap(queryTerms, feature.titleTerms()) * 0.8;
+    }
+
+    private int termFrequency(String content, String term) {
+        String source = content == null ? "" : content.toLowerCase(Locale.ROOT);
+        String needle = term.toLowerCase(Locale.ROOT);
+        if (needle.isBlank()) {
+            return 0;
+        }
+        int frequency = 0;
+        int offset = 0;
+        while ((offset = source.indexOf(needle, offset)) >= 0) {
+            frequency++;
+            offset += needle.length();
+        }
+        return frequency;
     }
 
     private Map<String, Integer> ranks(
@@ -415,6 +566,8 @@ public class KnowledgeIndexService {
                 .eq(KnowledgeDocument::getId, document.getId())
                 .set(KnowledgeDocument::getProjectId, artifact.getProjectId())
                 .set(KnowledgeDocument::getArtifactType, artifact.getType())
+                .set(KnowledgeDocument::getCorpusType,
+                        KnowledgeCorpus.fromArtifactType(artifact.getType()).name())
                 .set(KnowledgeDocument::getArtifactVersion, artifact.getVersion())
                 .set(KnowledgeDocument::getTitle, artifact.getTitle())
                 .set(KnowledgeDocument::getStatus, STATUS_INDEXING)
@@ -561,7 +714,16 @@ public class KnowledgeIndexService {
     private record ChunkCandidate(
             KnowledgeDocument document,
             KnowledgeChunk chunk,
-            int keywordScore,
+            double keywordScore,
+            double vectorScore
+    ) {
+    }
+
+    private record ChunkFeatures(
+            KnowledgeDocument document,
+            KnowledgeChunk chunk,
+            Set<String> terms,
+            Set<String> titleTerms,
             double vectorScore
     ) {
     }

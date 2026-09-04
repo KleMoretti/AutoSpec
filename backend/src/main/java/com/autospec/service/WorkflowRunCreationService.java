@@ -16,7 +16,8 @@ public interface WorkflowRunCreationService {
             Long maxTokens,
             BigDecimal maxCost,
             Integer maxModelCalls,
-            Long maxWallTimeMs
+            Long maxWallTimeMs,
+            Long actorUserId
     ) {
         public StartCommand(
                 long projectId,
@@ -25,7 +26,22 @@ public interface WorkflowRunCreationService {
                 String idempotencyKey
         ) {
             this(projectId, workflowVersionId, inputJson, idempotencyKey,
-                    null, null, null, null, null);
+                    null, null, null, null, null, null);
+        }
+
+        public StartCommand(
+                long projectId,
+                long workflowVersionId,
+                String inputJson,
+                String idempotencyKey,
+                String qualityProfile,
+                Long maxTokens,
+                BigDecimal maxCost,
+                Integer maxModelCalls,
+                Long maxWallTimeMs
+        ) {
+            this(projectId, workflowVersionId, inputJson, idempotencyKey,
+                    qualityProfile, maxTokens, maxCost, maxModelCalls, maxWallTimeMs, null);
         }
     }
 }

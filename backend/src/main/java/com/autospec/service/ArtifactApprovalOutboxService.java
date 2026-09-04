@@ -123,6 +123,7 @@ public class ArtifactApprovalOutboxService {
         payload.put("artifact_id", artifact.getId());
         payload.put("project_id", artifact.getProjectId());
         payload.put("artifact_type", artifact.getType());
+        payload.put("corpus_type", KnowledgeCorpus.fromArtifactType(artifact.getType()).name());
         payload.put("artifact_version", artifact.getVersion());
         payload.put("content_hash", contentHash);
         payload.put("chunker_version", KnowledgeIndexService.CHUNKER_VERSION);
@@ -138,6 +139,7 @@ public class ArtifactApprovalOutboxService {
     private String indexKey(Artifact artifact, String contentHash) {
         return ContentHash.sha256(
                 artifact.getId() + "|" + contentHash + "|"
+                        + KnowledgeCorpus.fromArtifactType(artifact.getType()).name() + "|"
                         + KnowledgeIndexService.CHUNKER_VERSION + "|"
                         + KnowledgeEmbeddingService.MODEL_VERSION
         );

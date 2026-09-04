@@ -9,6 +9,8 @@ import com.autospec.mapper.WorkflowRunMapper;
 import com.autospec.mapper.WorkflowTransitionMapper;
 import com.autospec.mapper.WorkflowVersionMapper;
 import com.autospec.service.WorkflowReplayService;
+import com.autospec.service.KnowledgeIndexService;
+import com.autospec.workflow.transport.WorkflowAdmissionGuard;
 import com.autospec.workflow.runtime.CompiledWorkflow;
 import com.autospec.workflow.runtime.DagCompiler;
 import com.autospec.workflow.runtime.WorkflowHandlerCatalog;
@@ -45,6 +47,7 @@ public class WorkflowReplayServiceImpl implements WorkflowReplayService {
     private final DagCompiler dagCompiler;
     private final WorkflowHandlerCatalog handlerCatalog;
     private final WorkflowRunReconciliationService reconciliationService;
+    private final WorkflowAdmissionGuard admissionGuard;
     private final ObjectMapper objectMapper;
 
     public WorkflowReplayServiceImpl(
@@ -56,6 +59,7 @@ public class WorkflowReplayServiceImpl implements WorkflowReplayService {
             DagCompiler dagCompiler,
             WorkflowHandlerCatalog handlerCatalog,
             WorkflowRunReconciliationService reconciliationService,
+            WorkflowAdmissionGuard admissionGuard,
             ObjectMapper objectMapper
     ) {
         this.runMapper = runMapper;
@@ -66,6 +70,7 @@ public class WorkflowReplayServiceImpl implements WorkflowReplayService {
         this.dagCompiler = dagCompiler;
         this.handlerCatalog = handlerCatalog;
         this.reconciliationService = reconciliationService;
+        this.admissionGuard = admissionGuard;
         this.objectMapper = objectMapper;
     }
 
@@ -85,6 +90,11 @@ public class WorkflowReplayServiceImpl implements WorkflowReplayService {
             return duplicate;
         }
 
+        Long actorUserId = command.actorUserId() == null
+                ? source.getInitiatedByUserId()
+                : command.actorUserId();
+        admissionGuard.admit(actorUserId);
+
         ReplaySnapshot replaySnapshot = resolveSnapshot(source, mode, command.selectedWorkflowVersionId());
         var document = snapshotParser.parse(replaySnapshot.snapshotJson());
         WorkflowExecutableContractValidator.validate(document);
@@ -95,6 +105,7 @@ public class WorkflowReplayServiceImpl implements WorkflowReplayService {
         LocalDateTime now = LocalDateTime.now();
         WorkflowRun replay = new WorkflowRun();
         replay.setProjectId(source.getProjectId());
+        replay.setInitiatedByUserId(actorUserId);
         replay.setOperation("REPLAY_V5");
         replay.setIdempotencyKey(idempotencyKey);
         replay.setCorrelationId(UUID.randomUUID().toString());
@@ -130,6 +141,7 @@ public class WorkflowReplayServiceImpl implements WorkflowReplayService {
                     source.getProjectId(),
                     nodeId,
                     originalInputs.get(nodeId),
+                    actorUserId,
                     now
             );
         }
@@ -199,6 +211,7 @@ public class WorkflowReplayServiceImpl implements WorkflowReplayService {
             long projectId,
             String nodeId,
             WorkflowNodeRun source,
+            Long actorUserId,
             LocalDateTime now
     ) {
         WorkflowNodeRun node = new WorkflowNodeRun();
@@ -211,14 +224,14 @@ public class WorkflowReplayServiceImpl implements WorkflowReplayService {
         node.setHandlerKey(source.getHandlerKey());
         node.setHandlerVersion(source.getHandlerVersion());
         node.setTimeoutMs(source.getTimeoutMs());
-        node.setInputJson(projectScopedReplayInput(source.getInputJson(), projectId));
+        node.setInputJson(projectScopedReplayInput(source.getInputJson(), projectId, actorUserId));
         node.setLockVersion(0);
         node.setCreatedAt(now);
         node.setUpdatedAt(now);
         nodeRunMapper.insert(node);
     }
 
-    private String projectScopedReplayInput(String inputJson, long projectId) {
+    private String projectScopedReplayInput(String inputJson, long projectId, Long actorUserId) {
         try {
             JsonNode parsed = objectMapper.readTree(
                     inputJson == null || inputJson.isBlank() ? "{}" : inputJson
@@ -234,7 +247,10 @@ public class WorkflowReplayServiceImpl implements WorkflowReplayService {
                     || input.has("retrieval_policy")
                     || input.has("retrieval_project_id");
             if (!hasRetrievalSnapshot) {
-                return removedControlPlaneState
+                if (actorUserId != null) {
+                    input.put("_autospec_actor_user_id", actorUserId.toString());
+                }
+                return removedControlPlaneState || actorUserId != null
                         ? objectMapper.writeValueAsString(input)
                         : inputJson;
             }
@@ -246,7 +262,17 @@ public class WorkflowReplayServiceImpl implements WorkflowReplayService {
             });
             input.set("retrieved_sources", sources);
             input.put("retrieval_project_id", projectId);
-            input.put("retrieval_policy", "CURRENT_PROJECT_ACTIVE_APPROVED_ARTIFACTS_V2");
+            input.put("retrieval_policy", KnowledgeIndexService.RETRIEVAL_POLICY);
+            if (input.path("retrieval_trace").isObject()) {
+                ObjectNode retrievalTrace = (ObjectNode) input.path("retrieval_trace").deepCopy();
+                retrievalTrace.put("hit_count", sources.size());
+                retrievalTrace.put("empty_recall", sources.isEmpty());
+                retrievalTrace.put("replayed_snapshot", true);
+                input.set("retrieval_trace", retrievalTrace);
+            }
+            if (actorUserId != null) {
+                input.put("_autospec_actor_user_id", actorUserId.toString());
+            }
             return objectMapper.writeValueAsString(input);
         } catch (JsonProcessingException exception) {
             throw conflict("Original replay input is invalid JSON");

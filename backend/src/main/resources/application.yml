@@ -93,6 +93,8 @@ autospec:
       same-site: ${AUTH_SESSION_SAME_SITE:Strict}
       expose-token-in-response: ${AUTH_SESSION_EXPOSE_TOKEN:false}
   observability:
+    trace:
+      retention-days: ${WORKFLOW_TRACE_RETENTION_DAYS:30}
     workflow-backlog:
       enabled: ${WORKFLOW_BACKLOG_METRICS_ENABLED:false}
       fixed-delay: ${WORKFLOW_BACKLOG_METRICS_FIXED_DELAY:15000}
@@ -105,6 +107,7 @@ autospec:
       max-pending-outbox: ${WORKFLOW_ADMISSION_MAX_PENDING_OUTBOX:10000}
       max-oldest-outbox-age: ${WORKFLOW_ADMISSION_MAX_OLDEST_OUTBOX_AGE:5m}
       max-worker-backlog: ${WORKFLOW_ADMISSION_MAX_WORKER_BACKLOG:1000}
+      max-active-runs-per-user: ${WORKFLOW_ADMISSION_MAX_ACTIVE_RUNS_PER_USER:3}
       retry-after: ${WORKFLOW_ADMISSION_RETRY_AFTER:5s}
     available-handlers: ${WORKFLOW_AVAILABLE_HANDLERS:ProductManagerAgent:v1,ArchitectAgent:v1,BackendEngineerAgent:v1,FrontendEngineerAgent:v1,ReviewerAgent:v1,EvaluatorAgent:v1}
     commands:
