@@ -1,0 +1,221 @@
+{
+  "schemaVersion": 1,
+  "planId": "ai-interview-agent-roadmap",
+  "title": "AI 面试 Agent 项目优化计划",
+  "status": "active",
+  "createdAt": "2026-09-04",
+  "updatedAt": "2026-09-04",
+  "sourceConversationId": "6a9a95a0-76d8-83ee-974c-23bcbea6ffbc",
+  "objective": "将现有 Java + LLM 面试应用升级为可解释、可恢复、可评测的 AI Interview Agent 工程项目",
+  "targetPattern": "Deterministic Workflow + Constrained Agent Decisions + Tool Harness + Memory + RAG + Evaluation + Trace",
+  "baselineAssumptions": {
+    "verificationStatus": "audited_and_p1_implemented",
+    "knownCapabilities": [
+      "state_machine",
+      "redis_stream_async_tasks",
+      "structured_output",
+      "retry",
+      "cache"
+    ]
+  },
+  "statusFlow": [
+    "planned",
+    "in_progress",
+    "blocked",
+    "done"
+  ],
+  "epics": [
+    {
+      "id": "AGT-P0-01",
+      "priority": "P0",
+      "title": "Agent 编排",
+      "status": "done",
+      "dependsOn": [],
+      "objective": "通过状态图与条件路由实现受约束、可解释的动态面试决策",
+      "tasks": [
+        {"id": "AGT-P0-01-T01", "title": "定义版本化 InterviewState", "status": "done"},
+        {"id": "AGT-P0-01-T02", "title": "实现 Router、Planner、Interviewer、Evaluator、Reviewer 节点", "status": "done"},
+        {"id": "AGT-P0-01-T03", "title": "实现追问、技能切换、追加问题与结束条件路由", "status": "done"},
+        {"id": "AGT-P0-01-T04", "title": "实现步数、时间、问题数、Token 与覆盖率预算", "status": "done"},
+        {"id": "AGT-P0-01-T05", "title": "接入 Checkpoint、Resume 与路由理由记录", "status": "done"}
+      ],
+      "acceptanceCriteria": [
+        "完整节点序列和路由依据可回放",
+        "达到任一预算上限时必定终止",
+        "中间节点失败后可以从最近 Checkpoint 恢复",
+        "Workflow 与 Agent 的职责边界可在代码中核验"
+      ]
+    },
+    {
+      "id": "AGT-P0-02",
+      "priority": "P0",
+      "title": "Memory 与 Context",
+      "status": "done",
+      "dependsOn": ["AGT-P0-01"],
+      "objective": "支持会话内状态和跨会话能力画像，同时控制上下文膨胀与摘要污染",
+      "tasks": [
+        {"id": "AGT-P0-02-T01", "title": "实现 Short-term Memory", "status": "done"},
+        {"id": "AGT-P0-02-T02", "title": "实现带证据和置信度的 Long-term Memory", "status": "done"},
+        {"id": "AGT-P0-02-T03", "title": "实现 Context Builder 与 Token Budget", "status": "done"},
+        {"id": "AGT-P0-02-T04", "title": "实现可版本化、可重建的摘要", "status": "done"},
+        {"id": "AGT-P0-02-T05", "title": "验证用户隔离、冲突记忆和摘要错误降级", "status": "done"}
+      ],
+      "acceptanceCriteria": [
+        "上下文大小受到预算约束",
+        "关键事实可以追溯到原始消息",
+        "摘要可从原始会话重建",
+        "跨 Session 召回严格隔离用户并展示证据"
+      ]
+    },
+    {
+      "id": "AGT-P0-03",
+      "priority": "P0",
+      "title": "Tool Harness",
+      "status": "done",
+      "dependsOn": ["AGT-P0-01"],
+      "objective": "构建带校验、权限、幂等、限流和恢复能力的工具运行时",
+      "tasks": [
+        {"id": "AGT-P0-03-T01", "title": "建立版本化 Tool Registry 和输入输出 Schema", "status": "done"},
+        {"id": "AGT-P0-03-T02", "title": "实现校验、白名单和权限检查", "status": "done"},
+        {"id": "AGT-P0-03-T03", "title": "实现超时、退避、熔断、限流和幂等", "status": "done"},
+        {"id": "AGT-P0-03-T04", "title": "实现结果校验、受控 Self-Repair 与 Fallback", "status": "done"},
+        {"id": "AGT-P0-03-T05", "title": "补齐异常、越权和 Prompt Injection 测试", "status": "done"}
+      ],
+      "acceptanceCriteria": [
+        "非法参数不会进入真实工具执行",
+        "副作用工具重试不会重复生效",
+        "超时、重复投递、半成功和连续失败具备自动化测试",
+        "每次工具调用可关联完整 Trace"
+      ]
+    },
+    {
+      "id": "AGT-P0-04",
+      "priority": "P0",
+      "title": "Evaluation 与基础 Trace",
+      "status": "done",
+      "dependsOn": ["AGT-P0-01"],
+      "objective": "通过版本化评测集、Baseline 和节点 Trace 证明优化并定位失败",
+      "tasks": [
+        {"id": "AGT-P0-04-T01", "title": "定义 EvalCase 和 EvalRun Schema", "status": "done"},
+        {"id": "AGT-P0-04-T02", "title": "构建脱敏离线评测集", "status": "done"},
+        {"id": "AGT-P0-04-T03", "title": "固化当前实现 Baseline", "status": "done"},
+        {"id": "AGT-P0-04-T04", "title": "实现 Agent、业务和工程分层指标", "status": "done"},
+        {"id": "AGT-P0-04-T05", "title": "实现节点 Trace、版本记录和失败回放", "status": "done"},
+        {"id": "AGT-P0-04-T06", "title": "运行 Planner 与 Reviewer 对照实验", "status": "done"}
+      ],
+      "acceptanceCriteria": [
+        "离线评测可以重复运行",
+        "每次变更都有相对 Baseline 的结果",
+        "失败可归因到模型、检索、工具或编排层",
+        "效果数字来自可复现的真实实验"
+      ]
+    },
+    {
+      "id": "AGT-P1-01",
+      "priority": "P1",
+      "title": "Hybrid RAG",
+      "status": "done",
+      "dependsOn": ["AGT-P0-04"],
+      "objective": "为 Resume、Question 与 Rubric 建立可评测的混合检索链路",
+      "tasks": [
+        {"id": "AGT-P1-01-T01", "title": "拆分三类索引与权限边界", "status": "done"},
+        {"id": "AGT-P1-01-T02", "title": "实现 Query Rewrite、BM25、Embedding、RRF 与 Rerank", "status": "done"},
+        {"id": "AGT-P1-01-T03", "title": "实现 Recall@K、MRR、nDCG 与失败 Case", "status": "done"}
+      ],
+      "acceptanceCriteria": [
+        "检索质量和生成质量可以独立评测",
+        "空召回、错误召回、过期和越权文档均有降级策略"
+      ]
+    },
+    {
+      "id": "AGT-P1-02",
+      "priority": "P1",
+      "title": "可观测性深化",
+      "status": "done",
+      "dependsOn": ["AGT-P0-04"],
+      "objective": "形成节点级耗时、Token、成本、失败归因和版本对比能力",
+      "tasks": [
+        {"id": "AGT-P1-02-T01", "title": "建设节点指标与版本切片看板", "status": "done"},
+        {"id": "AGT-P1-02-T02", "title": "实现失败聚类与 Trace Replay", "status": "done"},
+        {"id": "AGT-P1-02-T03", "title": "配置脱敏、保留期与访问控制", "status": "done"}
+      ],
+      "acceptanceCriteria": [
+        "可按模型、Prompt、Tool 和 Retriever 版本比较",
+        "线上失败可以沉淀为离线评测 Case"
+      ]
+    },
+    {
+      "id": "AGT-P1-03",
+      "priority": "P1",
+      "title": "并发与恢复",
+      "status": "done",
+      "dependsOn": ["AGT-P0-03"],
+      "objective": "强化 Redis Stream Worker 链路的背压、限流、幂等与断点恢复",
+      "tasks": [
+        {"id": "AGT-P1-03-T01", "title": "完善 Consumer Group、Retry Queue 与 Dead Letter Queue", "status": "done"},
+        {"id": "AGT-P1-03-T02", "title": "实现 per-user 限流和全局 LLM Semaphore", "status": "done"},
+        {"id": "AGT-P1-03-T03", "title": "实现重复消息幂等与 Checkpoint Resume", "status": "done"},
+        {"id": "AGT-P1-03-T04", "title": "执行压测与故障演练", "status": "done"}
+      ],
+      "acceptanceCriteria": [
+        "系统在积压、限流、超时和 Worker 崩溃时行为明确",
+        "输出容量边界、P95 延迟、恢复率和资源成本报告"
+      ]
+    },
+    {
+      "id": "AGT-P2-01",
+      "priority": "P2",
+      "title": "MCP / Skills",
+      "status": "planned",
+      "dependsOn": ["AGT-P0-01", "AGT-P0-02", "AGT-P0-03", "AGT-P0-04", "AGT-P1-01", "AGT-P1-02", "AGT-P1-03"],
+      "objective": "仅对跨应用、可复用且权限边界清晰的工具做标准化",
+      "tasks": [
+        {"id": "AGT-P2-01-T01", "title": "识别适合 MCP/Skill 的候选工具", "status": "planned"},
+        {"id": "AGT-P2-01-T02", "title": "实现按任务动态暴露工具", "status": "planned"},
+        {"id": "AGT-P2-01-T03", "title": "复用统一 Tool Harness、Trace 与权限模型", "status": "planned"}
+      ],
+      "acceptanceCriteria": [
+        "引入标准化协议有明确复用或集成收益",
+        "工具数量受控且不会显著增加误选率"
+      ]
+    }
+  ],
+  "metrics": {
+    "agent": [
+      "task_success_rate",
+      "plan_completion_rate",
+      "tool_selection_accuracy",
+      "tool_argument_valid_rate",
+      "loop_rate",
+      "replan_rate"
+    ],
+    "business": [
+      "question_relevance",
+      "skill_coverage",
+      "duplicate_question_rate",
+      "difficulty_match",
+      "evaluation_consistency"
+    ],
+    "rag": [
+      "recall_at_k",
+      "mrr",
+      "ndcg",
+      "rerank_hit_rate"
+    ],
+    "engineering": [
+      "p50_latency",
+      "p95_latency",
+      "tokens_per_interview",
+      "cost_per_interview",
+      "tool_failure_rate",
+      "retry_rate",
+      "recovery_rate"
+    ]
+  },
+  "nextAction": {
+    "id": "AGT-P2-01",
+    "title": "MCP / Skills",
+    "status": "planned",
+    "description": "仅在 P1 的检索、观测和恢复指标经过真实环境验证后，选择有明确复用收益的跨应用工具做标准化"
+  }
+}
