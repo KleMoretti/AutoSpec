@@ -142,7 +142,11 @@ class WorkflowRuntimeControllerTest {
                 .doesNotContain("CLIENT-INJECTED", "client-controlled");
         assertThat(input.path("retrieval_project_id").asLong()).isEqualTo(7L);
         assertThat(input.path("retrieval_policy").asText())
-                .isEqualTo("CURRENT_PROJECT_ACTIVE_APPROVED_ARTIFACTS_V2");
+                .isEqualTo("PROJECT_KNOWLEDGE_BM25_EMBEDDING_RRF_RERANK_V2");
+        assertThat(input.path("retrieval_trace").path("reranker_version").asText())
+                .isEqualTo("deterministic-rerank-v1");
+        assertThat(input.path("retrieval_trace").path("filters").path("status").asText())
+                .isEqualTo("ACTIVE");
         verify(knowledgeIndexService).retrieveForProject("Build a clinic", 5, 7L, 42L);
         assertThat(command.getValue().qualityProfile()).isEqualTo("DEEP");
         assertThat(command.getValue().maxTokens()).isEqualTo(250_000L);

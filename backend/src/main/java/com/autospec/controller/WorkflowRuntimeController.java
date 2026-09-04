@@ -8,20 +8,25 @@ import com.autospec.dto.WorkflowReplayRequest;
 import com.autospec.dto.WorkflowRunResponse;
 import com.autospec.dto.WorkflowRunStartRequest;
 import com.autospec.dto.WorkflowRuntimeMetricsResponse;
+import com.autospec.dto.WorkflowTraceResponse;
 import com.autospec.entity.WorkflowNodeRun;
 import com.autospec.entity.WorkflowRun;
 import com.autospec.mapper.WorkflowNodeRunMapper;
 import com.autospec.mapper.WorkflowRunMapper;
 import com.autospec.service.ProjectAccessService;
+import com.autospec.service.KnowledgeEmbeddingService;
 import com.autospec.service.KnowledgeIndexService;
+import com.autospec.service.KnowledgeQueryRewriter;
 import com.autospec.service.WorkflowReplayService;
 import com.autospec.service.WorkflowRunCreationService;
 import com.autospec.service.WorkflowRuntimeMetricsService;
+import com.autospec.service.WorkflowTraceService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -46,7 +51,31 @@ public class WorkflowRuntimeController {
     private final WorkflowRunCreationService runCreationService;
     private final WorkflowRuntimeMetricsService metricsService;
     private final KnowledgeIndexService knowledgeIndexService;
+    private final WorkflowTraceService traceService;
     private final ObjectMapper objectMapper;
+
+    @Autowired
+    public WorkflowRuntimeController(
+            WorkflowRunMapper runMapper,
+            WorkflowNodeRunMapper nodeRunMapper,
+            ProjectAccessService projectAccessService,
+            WorkflowReplayService replayService,
+            WorkflowRunCreationService runCreationService,
+            WorkflowRuntimeMetricsService metricsService,
+            KnowledgeIndexService knowledgeIndexService,
+            WorkflowTraceService traceService,
+            ObjectMapper objectMapper
+    ) {
+        this.runMapper = runMapper;
+        this.nodeRunMapper = nodeRunMapper;
+        this.projectAccessService = projectAccessService;
+        this.replayService = replayService;
+        this.runCreationService = runCreationService;
+        this.metricsService = metricsService;
+        this.knowledgeIndexService = knowledgeIndexService;
+        this.traceService = traceService;
+        this.objectMapper = objectMapper;
+    }
 
     public WorkflowRuntimeController(
             WorkflowRunMapper runMapper,
@@ -58,14 +87,17 @@ public class WorkflowRuntimeController {
             KnowledgeIndexService knowledgeIndexService,
             ObjectMapper objectMapper
     ) {
-        this.runMapper = runMapper;
-        this.nodeRunMapper = nodeRunMapper;
-        this.projectAccessService = projectAccessService;
-        this.replayService = replayService;
-        this.runCreationService = runCreationService;
-        this.metricsService = metricsService;
-        this.knowledgeIndexService = knowledgeIndexService;
-        this.objectMapper = objectMapper;
+        this(
+                runMapper,
+                nodeRunMapper,
+                projectAccessService,
+                replayService,
+                runCreationService,
+                metricsService,
+                knowledgeIndexService,
+                null,
+                objectMapper
+        );
     }
 
     @PostMapping
@@ -95,7 +127,8 @@ public class WorkflowRuntimeController {
                             policy == null ? null : policy.maxTokens(),
                             policy == null ? null : policy.maxCost(),
                             policy == null ? null : policy.maxModelCalls(),
-                            policy == null ? null : policy.maxWallTimeMs()
+                            policy == null ? null : policy.maxWallTimeMs(),
+                            actorUserId
                     )
             ));
         } catch (JsonProcessingException exception) {
@@ -134,6 +167,7 @@ public class WorkflowRuntimeController {
                     value.put("project_id", source.projectId());
                     value.put("artifact_id", source.artifactId());
                     value.put("artifact_type", source.artifactType());
+                    value.put("corpus_type", source.corpusType());
                     value.put("title", source.title());
                     value.put("artifact_version", source.artifactVersion());
                     value.put("chunk_id", source.chunkId());
@@ -152,7 +186,23 @@ public class WorkflowRuntimeController {
         trusted.put("requirement", requirement);
         trusted.put("retrieved_sources", sources);
         trusted.put("retrieval_project_id", projectId);
-        trusted.put("retrieval_policy", "CURRENT_PROJECT_ACTIVE_APPROVED_ARTIFACTS_V2");
+        trusted.put("retrieval_policy", KnowledgeIndexService.RETRIEVAL_POLICY);
+        trusted.put("retrieval_trace", Map.of(
+                "retriever_version", KnowledgeIndexService.RETRIEVAL_STRATEGY,
+                "query_rewrite_version", KnowledgeQueryRewriter.VERSION,
+                "embedding_version", KnowledgeEmbeddingService.MODEL_VERSION,
+                "reranker_version", KnowledgeIndexService.RERANKER_VERSION,
+                "access_policy_version", KnowledgeIndexService.ACCESS_POLICY_VERSION,
+                "filters", Map.of(
+                        "project_id", projectId,
+                        "corpus", "ALL_PROJECT_CORPORA",
+                        "status", "ACTIVE",
+                        "expiry", "NULL_OR_FUTURE",
+                        "user_scope", "PROJECT_MEMBER"
+                ),
+                "hit_count", sources.size(),
+                "empty_recall", sources.isEmpty()
+        ));
         return trusted;
     }
 
@@ -221,6 +271,19 @@ public class WorkflowRuntimeController {
         return metricsService.metrics(runId);
     }
 
+    @GetMapping("/{runId}/trace")
+    public WorkflowTraceResponse trace(
+            @PathVariable Long runId,
+            @RequestHeader(value = "X-AutoSpec-Session-Token", required = false) String sessionToken
+    ) {
+        WorkflowRun run = requireRun(runId);
+        requireAccess(run, sessionToken, "OWNER", "EDITOR", "VIEWER");
+        if (traceService == null) {
+            throw new IllegalStateException("Workflow trace service is not configured");
+        }
+        return traceService.trace(runId);
+    }
+
     @PostMapping("/{runId}/replay")
     public WorkflowRunResponse replay(
             @PathVariable Long runId,
@@ -228,13 +291,15 @@ public class WorkflowRuntimeController {
             @RequestHeader(value = "X-AutoSpec-Session-Token", required = false) String sessionToken
     ) {
         WorkflowRun source = requireRun(runId);
-        requireAccess(source, sessionToken, "OWNER", "EDITOR");
+        Long actorUserId = projectAccessService.resolveUserId(sessionToken);
+        projectAccessService.requireProjectRole(source.getProjectId(), actorUserId, "OWNER", "EDITOR");
         return WorkflowRunResponse.from(replayService.replay(
                 runId,
                 new WorkflowReplayService.ReplayCommand(
                         request.mode(),
                         request.selectedWorkflowVersionId(),
-                        request.idempotencyKey()
+                        request.idempotencyKey(),
+                        actorUserId
                 )
         ));
     }

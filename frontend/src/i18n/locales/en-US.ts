@@ -250,7 +250,14 @@ const enUS = {
       duplicateEvents: 'Duplicate events',
       profile: 'Profile',
       tokenBudget: 'Token budget',
-      usage: '{{calls}} calls · {{tokens}} tokens · {{cost}}'
+      usage: '{{calls}} calls · {{tokens}} tokens · {{cost}}',
+      nodeBreakdown: 'Node metrics',
+      queueP95: 'Queue P95',
+      executionP95: 'Execution P95',
+      retries: 'Retries',
+      tokens: 'Tokens',
+      cost: 'Cost',
+      versionSlices: 'Version slices'
     },
     noNodeAttempts: 'No node attempts recorded.',
     node: {

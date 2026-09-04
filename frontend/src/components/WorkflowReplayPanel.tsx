@@ -420,6 +420,34 @@ function WorkflowReplayPanel({
                             })}
                           />
                         ))}
+                        {timeline.metrics.nodeMetrics?.length ? (
+                          <Card size="small" title={t('workflow.metrics.nodeBreakdown')}>
+                            <Space direction="vertical" size={8} className="full-width">
+                              {timeline.metrics.nodeMetrics.map((node) => (
+                                <Descriptions key={node.nodeId} size="small" column={{ xs: 1, sm: 2, md: 4 }}>
+                                  <Descriptions.Item label={t('workflow.node.node')}>{node.nodeId}</Descriptions.Item>
+                                  <Descriptions.Item label={t('workflow.metrics.queueP95')}>{formatNumber(node.queueP95Ms, i18n.resolvedLanguage)} ms</Descriptions.Item>
+                                  <Descriptions.Item label={t('workflow.metrics.executionP95')}>{formatNumber(node.executionP95Ms, i18n.resolvedLanguage)} ms</Descriptions.Item>
+                                  <Descriptions.Item label={t('workflow.metrics.retries')}>{formatNumber(node.retryCount, i18n.resolvedLanguage)}</Descriptions.Item>
+                                  <Descriptions.Item label={t('workflow.metrics.tokens')}>{formatNumber(node.tokenCount, i18n.resolvedLanguage)}</Descriptions.Item>
+                                  <Descriptions.Item label={t('workflow.metrics.cost')}>{formatUsd(Number(node.estimatedCost), i18n.resolvedLanguage, 6)}</Descriptions.Item>
+                                  <Descriptions.Item label={t('workflow.node.status')}>{node.latestStatus ? translateEnum(t, 'status', node.latestStatus) : '—'}</Descriptions.Item>
+                                </Descriptions>
+                              ))}
+                            </Space>
+                          </Card>
+                        ) : null}
+                        {timeline.metrics.versionSlices?.length ? (
+                          <Card size="small" title={t('workflow.metrics.versionSlices')}>
+                            <Space wrap>
+                              {timeline.metrics.versionSlices.map((slice) => (
+                                <Tag key={`${slice.dimension}-${slice.key}-${slice.version}`}>
+                                  {slice.dimension} · {slice.key} · {slice.version} · {formatNumber(slice.invocationCount, i18n.resolvedLanguage)} · P95 {formatNumber(slice.p95DurationMs, i18n.resolvedLanguage)} ms
+                                </Tag>
+                              ))}
+                            </Space>
+                          </Card>
+                        ) : null}
                       </>
                     ) : null}
                     {timeline.nodes.length === 0 && !timeline.loading && !timeline.error ? (

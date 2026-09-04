@@ -250,7 +250,14 @@ const zhCN = {
       duplicateEvents: '重复事件',
       profile: '质量配置',
       tokenBudget: 'Token 预算',
-      usage: '{{calls}} 次调用 · {{tokens}} Token · {{cost}}'
+      usage: '{{calls}} 次调用 · {{tokens}} Token · {{cost}}',
+      nodeBreakdown: '节点指标',
+      queueP95: '排队 P95',
+      executionP95: '执行 P95',
+      retries: '重试',
+      tokens: 'Token',
+      cost: '成本',
+      versionSlices: '版本切片'
     },
     noNodeAttempts: '还没有节点执行记录。',
     node: {

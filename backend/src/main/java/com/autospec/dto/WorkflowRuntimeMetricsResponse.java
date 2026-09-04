@@ -26,6 +26,8 @@ public record WorkflowRuntimeMetricsResponse(
         Long remainingTokens,
         BigDecimal remainingCost,
         Integer remainingModelCalls,
-        List<ModelUsageResponse> modelUsage
+        List<ModelUsageResponse> modelUsage,
+        List<WorkflowNodeMetricsResponse> nodeMetrics,
+        List<WorkflowMetricSliceResponse> versionSlices
 ) {
 }
