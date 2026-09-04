@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -26,7 +27,8 @@ public class KnowledgeController {
     @GetMapping("/{projectId}/knowledge/sources")
     public List<KnowledgeSourceResponse> sources(
             @PathVariable Long projectId,
-            @RequestHeader(value = "X-AutoSpec-Session-Token", required = false) String sessionToken
+            @RequestHeader(value = "X-AutoSpec-Session-Token", required = false) String sessionToken,
+            @RequestParam(required = false) String corpusType
     ) {
         projectAccessService.requireProjectRole(
                 projectId,
@@ -35,6 +37,6 @@ public class KnowledgeController {
                 "EDITOR",
                 "VIEWER"
         );
-        return knowledgeIndexService.sources(projectId);
+        return knowledgeIndexService.sources(projectId, corpusType);
     }
 }

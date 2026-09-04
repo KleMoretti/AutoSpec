@@ -12,6 +12,7 @@ import com.autospec.mapper.WorkflowNodeRunMapper;
 import com.autospec.mapper.WorkflowRunMapper;
 import com.autospec.mapper.WorkflowTransitionMapper;
 import com.autospec.service.WorkflowApprovalService;
+import com.autospec.service.ArtifactApprovalOutboxService;
 import com.autospec.workflow.runtime.CompiledWorkflow;
 import com.autospec.workflow.runtime.DagCompiler;
 import com.autospec.workflow.runtime.WorkflowNodeStatus;
@@ -58,6 +59,7 @@ public class WorkflowApprovalServiceImpl implements WorkflowApprovalService {
     private final DagCompiler dagCompiler;
     private final WorkflowRunReconciliationTrigger reconciliationTrigger;
     private final WorkflowArtifactProjector artifactProjector;
+    private final ArtifactApprovalOutboxService approvalOutboxService;
 
     public WorkflowApprovalServiceImpl(
             WorkflowApprovalMapper approvalMapper,
@@ -68,6 +70,7 @@ public class WorkflowApprovalServiceImpl implements WorkflowApprovalService {
             WorkflowSnapshotParser snapshotParser,
             DagCompiler dagCompiler,
             WorkflowArtifactProjector artifactProjector,
+            ArtifactApprovalOutboxService approvalOutboxService,
             @Lazy WorkflowRunReconciliationTrigger reconciliationTrigger
     ) {
         this.approvalMapper = approvalMapper;
@@ -78,6 +81,7 @@ public class WorkflowApprovalServiceImpl implements WorkflowApprovalService {
         this.snapshotParser = snapshotParser;
         this.dagCompiler = dagCompiler;
         this.artifactProjector = artifactProjector;
+        this.approvalOutboxService = approvalOutboxService;
         this.reconciliationTrigger = reconciliationTrigger;
     }
 
@@ -233,6 +237,7 @@ public class WorkflowApprovalServiceImpl implements WorkflowApprovalService {
                 approval.setRevisedArtifactId(revised.getId());
                 approvalMapper.updateById(approval);
                 approveNode(approval, nodeRun, revised.getContent(), now);
+                approvalOutboxService.enqueue(revised);
             }
             case "REJECT" -> reject(run, nodeRun, command.reason(), now);
             case "ROLLBACK_TO_NODE" -> rollback(
@@ -324,12 +329,17 @@ public class WorkflowApprovalServiceImpl implements WorkflowApprovalService {
         if (editedOutput == null
                 && "AFTER_NODE".equals(approval.getMode())
                 && approval.getCandidateArtifactId() != null) {
-            artifactMapper.update(null, new LambdaUpdateWrapper<Artifact>()
+            int approved = artifactMapper.update(null, new LambdaUpdateWrapper<Artifact>()
                     .eq(Artifact::getId, approval.getCandidateArtifactId())
                     .eq(Artifact::getStatus, "PENDING_REVIEW")
                     .set(Artifact::getStatus, "APPROVED")
                     .set(Artifact::getApprovedAt, now)
                     .set(Artifact::getUpdatedAt, now));
+            if (approved == 0) {
+                throw conflict("Approval candidate artifact is no longer pending review");
+            }
+            Artifact candidate = artifactMapper.selectById(approval.getCandidateArtifactId());
+            approvalOutboxService.enqueue(candidate);
         }
         transition(nodeRun, "WAITING_APPROVAL", targetStatus, "APPROVAL_ACCEPTED", now);
         reconciliationTrigger.reconcile(nodeRun.getWorkflowRunId());
@@ -393,10 +403,15 @@ public class WorkflowApprovalServiceImpl implements WorkflowApprovalService {
         runMapper.update(null, new LambdaUpdateWrapper<WorkflowRun>()
                 .eq(WorkflowRun::getId, run.getId())
                 .set(WorkflowRun::getStatus, "FAILED")
+                .set(WorkflowRun::getResponseStatus, "APPROVAL_REJECTED")
                 .set(WorkflowRun::getErrorMessage,
                         reason == null || reason.isBlank() ? "Approval rejected" : reason)
+                .set(WorkflowRun::getReservedTokens, 0L)
+                .set(WorkflowRun::getReservedCost, java.math.BigDecimal.ZERO)
+                .set(WorkflowRun::getReservedModelCalls, 0)
                 .set(WorkflowRun::getCompletedAt, now)
                 .set(WorkflowRun::getUpdatedAt, now));
+        cancelRemainingNodes(run.getId(), "APPROVAL_REJECTED", now);
         transition(nodeRun, "WAITING_APPROVAL", "FAILED", "APPROVAL_REJECTED", now);
     }
 
@@ -441,10 +456,35 @@ public class WorkflowApprovalServiceImpl implements WorkflowApprovalService {
         runMapper.update(null, new LambdaUpdateWrapper<WorkflowRun>()
                 .eq(WorkflowRun::getId, run.getId())
                 .set(WorkflowRun::getStatus, "CANCELLED")
+                .set(WorkflowRun::getResponseStatus, "CANCELLED")
                 .set(WorkflowRun::getErrorMessage, "Cancelled by approval decision")
+                .set(WorkflowRun::getReservedTokens, 0L)
+                .set(WorkflowRun::getReservedCost, java.math.BigDecimal.ZERO)
+                .set(WorkflowRun::getReservedModelCalls, 0)
                 .set(WorkflowRun::getCompletedAt, now)
                 .set(WorkflowRun::getUpdatedAt, now));
+        cancelRemainingNodes(run.getId(), "APPROVAL_CANCELLED", now);
         transition(nodeRun, "WAITING_APPROVAL", "CANCELLED", "APPROVAL_CANCELLED", now);
+    }
+
+    private void cancelRemainingNodes(Long runId, String errorCode, LocalDateTime now) {
+        nodeRunMapper.update(null, new LambdaUpdateWrapper<WorkflowNodeRun>()
+                .eq(WorkflowNodeRun::getWorkflowRunId, runId)
+                .in(WorkflowNodeRun::getStatus,
+                        "PENDING", "READY", "QUEUED", "RUNNING", "RETRY_WAIT",
+                        "FALLBACK_READY", "WAITING_APPROVAL", "STALE", "ORPHANED")
+                .set(WorkflowNodeRun::getStatus, WorkflowNodeStatus.CANCELLED.name())
+                .set(WorkflowNodeRun::getErrorCode, errorCode)
+                .set(WorkflowNodeRun::getErrorMessage,
+                        "Parent workflow run was terminated by approval")
+                .set(WorkflowNodeRun::getFinishedAt, now)
+                .set(WorkflowNodeRun::getUpdatedAt, now));
+        nodeRunMapper.update(null, new LambdaUpdateWrapper<WorkflowNodeRun>()
+                .eq(WorkflowNodeRun::getWorkflowRunId, runId)
+                .eq(WorkflowNodeRun::getBudgetStatus, "RESERVED")
+                .set(WorkflowNodeRun::getBudgetStatus, "RELEASED")
+                .set(WorkflowNodeRun::getBudgetSettledAt, now)
+                .set(WorkflowNodeRun::getUpdatedAt, now));
     }
 
     private void updateWaitingNode(

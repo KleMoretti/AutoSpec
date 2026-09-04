@@ -12,6 +12,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 
 from runtime.handler_registry import HandlerRegistry, UnknownHandlerError
+from runtime.concurrency import ConcurrencyController
 from runtime.execution_context import (
     ModelExecutionContract,
     bind_model_execution_contract,
@@ -21,7 +22,19 @@ from runtime.model_telemetry import (
     capture_model_invocations,
     summarize_model_invocations,
 )
-from schemas.workflow_spec import FallbackPolicy, ModelPolicy, RetryPolicy
+from runtime.tool_harness import (
+    ToolHarness,
+    ToolRegistry,
+    ToolRuntimeContext,
+    bind_tool_runtime_context,
+)
+from schemas.workflow_spec import (
+    ContextPolicy,
+    FallbackPolicy,
+    ModelPolicy,
+    RetryPolicy,
+    ToolPolicy,
+)
 
 
 TRACEPARENT_PATTERN = re.compile(
@@ -48,6 +61,95 @@ class TraceContextEnvelope(BaseModel):
         return value
 
 
+class BudgetReservation(BaseModel):
+    reservation_id: str = Field(min_length=1)
+    input_tokens: int = Field(ge=0)
+    output_tokens: int = Field(ge=0)
+    model_calls: int = Field(ge=0)
+    estimated_cost: float = Field(ge=0.0)
+
+
+class InvocationRecord(BaseModel):
+    call_id: str = Field(min_length=1, max_length=255)
+    call_type: Literal["MODEL", "TOOL"] = "MODEL"
+    execution_id: str | None = None
+    call_sequence: int = Field(ge=1)
+    attempt: int = Field(ge=1)
+    provider_key: str = Field(min_length=1)
+    model_name: str = Field(min_length=1)
+    prompt_key: str = Field(min_length=1)
+    prompt_version: str | None = Field(default=None, min_length=1)
+    prompt_checksum: str | None = Field(
+        default=None, pattern=r"^[0-9a-f]{64}$"
+    )
+    schema_version: str | None = Field(default=None, min_length=1)
+    contract_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    input_tokens: int = Field(default=0, ge=0)
+    output_tokens: int = Field(default=0, ge=0)
+    cache_tokens: int = Field(default=0, ge=0)
+    estimated_cost: float = Field(default=0.0, ge=0.0)
+    reserved_input_tokens: int = Field(default=0, ge=0)
+    reserved_output_tokens: int = Field(default=0, ge=0)
+    reserved_cost: float = Field(default=0.0, ge=0.0)
+    route_key: str | None = None
+    route_reason: str | None = None
+    fallback_used: bool = False
+    normalized_params_hash: str | None = Field(
+        default=None, pattern=r"^[0-9a-f]{64}$"
+    )
+    result_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    status: Literal["SUCCEEDED", "FAILED"]
+    error_code: str | None = None
+    error_message: str | None = None
+    duration_ms: int = Field(default=0, ge=0)
+    deadline_epoch_ms: int | None = Field(default=None, ge=0)
+    idempotency_key: str | None = None
+    tool_name: str | None = None
+    tool_version: str | None = None
+    permission_policy: str | None = None
+    reference_sources: list[str] | None = None
+    redacted_params: dict[str, Any] | None = None
+
+    def validate_frozen_call(self) -> None:
+        if self.status == "FAILED" and not self.error_code:
+            raise ValueError("failed invocation records require error_code")
+        if self.call_type == "MODEL":
+            required = {
+                "prompt_version": self.prompt_version,
+                "prompt_checksum": self.prompt_checksum,
+                "schema_version": self.schema_version,
+                "contract_hash": self.contract_hash,
+                "normalized_params_hash": self.normalized_params_hash,
+                "idempotency_key": self.idempotency_key,
+                "deadline_epoch_ms": self.deadline_epoch_ms,
+            }
+            missing = [name for name, value in required.items() if not value]
+            if missing:
+                raise ValueError(
+                    "model invocation record is incomplete: " + ", ".join(missing)
+                )
+            if self.status == "SUCCEEDED" and self.result_hash is None:
+                raise ValueError("successful model invocation requires result_hash")
+            if (
+                self.input_tokens > self.reserved_input_tokens
+                or self.output_tokens > self.reserved_output_tokens
+                or self.estimated_cost - self.reserved_cost > 0.000001
+            ):
+                raise ValueError("model invocation exceeds its frozen call reservation")
+        elif not all(
+            (
+                self.tool_name,
+                self.tool_version,
+                self.permission_policy,
+                self.idempotency_key,
+                self.normalized_params_hash,
+                self.contract_hash,
+                self.schema_version,
+            )
+        ):
+            raise ValueError("tool invocation record is incomplete")
+
+
 class NodeCommand(TraceContextEnvelope):
     event_id: str = Field(min_length=1)
     workflow_run_id: int
@@ -60,7 +162,7 @@ class NodeCommand(TraceContextEnvelope):
     handler_version: str = Field(min_length=1)
     timeout_ms: int = Field(default=30000, ge=1)
     input_payload: dict[str, Any] = Field(default_factory=dict)
-    protocol_version: int = Field(default=0, ge=0, le=1)
+    protocol_version: int = Field(default=0, ge=0, le=2)
     contract_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     input_schema: str | None = None
     input_schema_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
@@ -69,15 +171,20 @@ class NodeCommand(TraceContextEnvelope):
     prompt_key: str | None = None
     prompt_version: str | None = None
     prompt_checksum: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    context_policy: dict[str, Any] = Field(default_factory=dict)
     model_policy: dict[str, Any] = Field(default_factory=dict)
     retry_policy: dict[str, Any] = Field(default_factory=dict)
     fallback: dict[str, Any] = Field(default_factory=dict)
+    tool_policy: dict[str, Any] = Field(default_factory=dict)
+    budget_reservation: BudgetReservation | None = None
     deadline_epoch_ms: int = Field(default=0, ge=0)
     fencing_token: int = Field(default=0, ge=0)
     worker_id: str | None = Field(default=None, min_length=1, max_length=128)
 
     @model_validator(mode="after")
     def validate_contract_envelope(self) -> "NodeCommand":
+        if self.tool_policy:
+            ToolPolicy.model_validate(self.tool_policy)
         if self.protocol_version == 0:
             if self.contract_hash is not None:
                 raise ValueError("contract_hash requires protocol_version 1")
@@ -103,6 +210,34 @@ class NodeCommand(TraceContextEnvelope):
         ModelPolicy.model_validate(self.model_policy)
         RetryPolicy.model_validate(self.retry_policy)
         FallbackPolicy.model_validate(self.fallback)
+        if self.protocol_version == 2:
+            if not self.context_policy or self.budget_reservation is None:
+                raise ValueError(
+                    "protocol_version 2 command requires context_policy and budget_reservation"
+                )
+            context = ContextPolicy.model_validate(self.context_policy)
+            model = ModelPolicy.model_validate(self.model_policy)
+            if context.max_input_tokens + model.max_output_tokens > model.context_window_tokens:
+                raise ValueError("context and output budgets exceed model context window")
+            reservation = self.budget_reservation
+            if reservation.reservation_id != self.execution_id:
+                raise ValueError("budget reservation_id must match execution_id")
+            if reservation.model_calls != model.max_calls:
+                raise ValueError("budget reservation model_calls does not match model policy")
+            if reservation.input_tokens != context.max_input_tokens * model.max_calls:
+                raise ValueError("budget reservation input_tokens does not match context policy")
+            if reservation.output_tokens != model.max_output_tokens * model.max_calls:
+                raise ValueError("budget reservation output_tokens does not match model policy")
+            expected_cost = model.max_calls * (
+                context.max_input_tokens
+                * max(
+                    model.input_cost_per_million,
+                    model.cached_input_cost_per_million,
+                )
+                + model.max_output_tokens * model.output_cost_per_million
+            ) / 1_000_000
+            if abs(reservation.estimated_cost - expected_cost) > 0.000001:
+                raise ValueError("budget reservation estimated_cost does not match model policy")
         return self
 
 
@@ -128,11 +263,14 @@ class NodeExecutionEvent(TraceContextEnvelope):
     fallback_used: bool = False
     context_manifest: dict[str, Any] | None = None
     model_call_count: int = Field(default=0, ge=0)
+    tool_call_count: int = Field(default=0, ge=0)
     input_tokens: int = Field(default=0, ge=0)
     output_tokens: int = Field(default=0, ge=0)
     cache_tokens: int = Field(default=0, ge=0)
     estimated_cost: float = Field(default=0.0, ge=0.0)
-    protocol_version: int = Field(default=0, ge=0, le=1)
+    call_records: list[InvocationRecord] = Field(default_factory=list)
+    budget_reservation_id: str | None = None
+    protocol_version: int = Field(default=0, ge=0, le=2)
     contract_hash: str | None = None
     input_schema: str | None = None
     input_schema_hash: str | None = None
@@ -143,10 +281,61 @@ class NodeExecutionEvent(TraceContextEnvelope):
     fencing_token: int = Field(default=0, ge=0)
     worker_id: str | None = None
 
+    @model_validator(mode="after")
+    def validate_call_records(self) -> "NodeExecutionEvent":
+        if self.protocol_version < 2 or not self.is_terminal:
+            return self
+        for record in self.call_records:
+            record.validate_frozen_call()
+        call_ids = [record.call_id for record in self.call_records]
+        sequences = [record.call_sequence for record in self.call_records]
+        if len(call_ids) != len(set(call_ids)) or len(sequences) != len(set(sequences)):
+            raise ValueError("call_records must have unique call ids and sequences")
+        if any(
+            record.execution_id != self.execution_id
+            or record.attempt != self.attempt
+            or record.contract_hash != self.contract_hash
+            or record.call_type == "MODEL"
+            and (
+                record.prompt_key != self.prompt_key
+                or record.prompt_version != self.prompt_version
+                or record.prompt_checksum != self.prompt_checksum
+            )
+            for record in self.call_records
+        ):
+            raise ValueError("call_records do not belong to the terminal execution")
+        models = [record for record in self.call_records if record.call_type == "MODEL"]
+        tools = [record for record in self.call_records if record.call_type == "TOOL"]
+        if len(models) != self.model_call_count or len(tools) != self.tool_call_count:
+            raise ValueError("call record counts do not match terminal usage totals")
+        if sum(record.input_tokens for record in models) != self.input_tokens:
+            raise ValueError("call record input tokens do not match terminal usage")
+        if sum(record.output_tokens for record in models) != self.output_tokens:
+            raise ValueError("call record output tokens do not match terminal usage")
+        if sum(record.cache_tokens for record in models) != self.cache_tokens:
+            raise ValueError("call record cache tokens do not match terminal usage")
+        if abs(
+            sum(record.estimated_cost for record in self.call_records)
+            - self.estimated_cost
+        ) > 0.000001:
+            raise ValueError("call record costs do not match terminal usage")
+        return self
+
+    @property
+    def is_terminal(self) -> bool:
+        return self.event_type in {"NODE_SUCCEEDED", "NODE_FAILED"}
+
 
 class NodeExecutor:
-    def __init__(self, registry: HandlerRegistry) -> None:
+    def __init__(
+        self,
+        registry: HandlerRegistry,
+        tool_harness: ToolHarness | None = None,
+        concurrency: ConcurrencyController | None = None,
+    ) -> None:
         self._registry = registry
+        self._tool_harness = tool_harness or ToolHarness(ToolRegistry())
+        self._concurrency = concurrency
 
     async def execute(self, command: NodeCommand) -> NodeExecutionEvent:
         started = perf_counter()
@@ -170,41 +359,79 @@ class NodeExecutor:
                 "node command deadline elapsed before execution",
             )
 
+        execution_payload = dict(command.input_payload)
+        raw_user_key = execution_payload.pop("_autospec_actor_user_id", None)
+        user_key = None if raw_user_key is None else str(raw_user_key)
         try:
-            validated_input = registration.input_model.model_validate(command.input_payload)
+            validated_input = registration.input_model.model_validate(execution_payload)
         except ValidationError as exception:
             return self._failure(command, started, "VALIDATION_ERROR", str(exception))
 
         execution_contract = self._model_execution_contract(command)
+        tool_policy = ToolPolicy.model_validate(command.tool_policy or {})
+        tool_context = ToolRuntimeContext(
+            execution_id=command.execution_id,
+            node_id=command.node_id,
+            attempt=command.attempt,
+            policy=tool_policy,
+            deadline_epoch_ms=(
+                command.deadline_epoch_ms if command.deadline_epoch_ms > 0 else None
+            ),
+            contract_hash=command.contract_hash,
+            schema_version=command.output_schema,
+            harness=self._tool_harness,
+        )
         with bind_model_execution_contract(execution_contract):
-            with capture_model_invocations() as invocations, capture_context_manifests() as manifests:
-                try:
-                    raw_output = await asyncio.wait_for(
-                        self._invoke(registration.handler, validated_input),
-                        timeout=remaining_ms / 1000,
-                    )
-                except asyncio.TimeoutError:
-                    timeout_message = (
-                        f"node exceeded timeout of {command.timeout_ms} ms"
-                        if command.deadline_epoch_ms <= 0
-                        else f"node exceeded execution deadline after {remaining_ms} ms"
-                    )
-                    return self._failure(
-                        command,
-                        started,
-                        "MODEL_TIMEOUT",
-                        timeout_message,
-                        self._metadata(invocations, manifests),
-                    )
-                except Exception as exception:  # noqa: BLE001 - converted to runtime envelope.
-                    return self._failure(
-                        command,
-                        started,
-                        getattr(exception, "error_code", "HANDLER_ERROR"),
-                        str(exception),
-                        self._metadata(invocations, manifests),
-                    )
-                usage = self._metadata(invocations, manifests)
+            with bind_tool_runtime_context(tool_context):
+                with capture_model_invocations(
+                    execution_id=command.execution_id,
+                    attempt=command.attempt,
+                    max_model_calls=(
+                        int(command.model_policy.get("max_calls", 1))
+                        if command.protocol_version >= 2
+                        else None
+                    ),
+                    deadline_epoch_ms=(
+                        command.deadline_epoch_ms if command.deadline_epoch_ms > 0 else None
+                    ),
+                ) as invocations, capture_context_manifests() as manifests:
+                    try:
+                        if self._concurrency is None:
+                            raw_output = await asyncio.wait_for(
+                                self._invoke(registration.handler, validated_input),
+                                timeout=remaining_ms / 1000,
+                            )
+                        else:
+                            async with self._concurrency.hold(
+                                user_key=user_key,
+                                requires_model=bool(command.model_policy),
+                            ):
+                                raw_output = await asyncio.wait_for(
+                                    self._invoke(registration.handler, validated_input),
+                                    timeout=remaining_ms / 1000,
+                                )
+                    except asyncio.TimeoutError:
+                        timeout_message = (
+                            f"node exceeded timeout of {command.timeout_ms} ms"
+                            if command.deadline_epoch_ms <= 0
+                            else f"node exceeded execution deadline after {remaining_ms} ms"
+                        )
+                        return self._failure(
+                            command,
+                            started,
+                            "MODEL_TIMEOUT",
+                            timeout_message,
+                            self._metadata(invocations, manifests),
+                        )
+                    except Exception as exception:  # noqa: BLE001 - converted to runtime envelope.
+                        return self._failure(
+                            command,
+                            started,
+                            getattr(exception, "error_code", "HANDLER_ERROR"),
+                            str(exception),
+                            self._metadata(invocations, manifests),
+                        )
+                    usage = self._metadata(invocations, manifests)
 
         try:
             validated_output = registration.output_model.model_validate(raw_output)
@@ -331,6 +558,15 @@ class NodeExecutor:
             prompt_checksum=command.prompt_checksum or "",
             model_policy=dict(command.model_policy),
             deadline_epoch_ms=command.deadline_epoch_ms,
+            protocol_version=command.protocol_version,
+            node_id=command.node_id,
+            attempt=command.attempt,
+            contract_hash=command.contract_hash,
+            context_policy=dict(command.context_policy),
+            retry_policy=dict(command.retry_policy),
+            fallback_policy=dict(command.fallback),
+            schema_version=command.output_schema,
+            tool_policy=dict(command.tool_policy),
         )
 
     def _execution_metadata(
@@ -355,6 +591,11 @@ class NodeExecutor:
                 "output_schema_hash": command.output_schema_hash,
                 "fencing_token": command.fencing_token,
                 "worker_id": command.worker_id,
+                "budget_reservation_id": (
+                    command.budget_reservation.reservation_id
+                    if command.budget_reservation is not None
+                    else None
+                ),
             }
         )
         return metadata
@@ -377,6 +618,10 @@ def contract_fingerprint(command: NodeCommand) -> str:
         "retry_policy": command.retry_policy,
         "timeout_ms": command.timeout_ms,
     }
+    if command.protocol_version >= 2:
+        material["context_policy"] = command.context_policy
+        if command.tool_policy:
+            material["tool_policy"] = command.tool_policy
     canonical = json.dumps(
         material,
         ensure_ascii=False,

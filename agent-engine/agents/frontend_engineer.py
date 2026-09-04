@@ -22,6 +22,7 @@ class FrontendEngineerAgent:
         backend_design: BackendDesignArtifact | None = None,
         retrieved_sources: list[dict[str, Any]] | None = None,
         context_manifest: dict[str, Any] | None = None,
+        rework_directive: dict[str, Any] | None = None,
     ) -> FrontendSkeletonArtifact:
         input_payload: dict[str, Any] = {
             "requirement": requirement,
@@ -30,6 +31,8 @@ class FrontendEngineerAgent:
             "retrieved_sources": retrieved_sources or [],
             "context_manifest": context_manifest or {},
         }
+        if rework_directive is not None:
+            input_payload["rework_directive"] = rework_directive
         if backend_design is not None:
             input_payload["backend_design"] = backend_design.model_dump()
         if self.model_client is not None:

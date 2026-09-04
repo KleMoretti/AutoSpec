@@ -55,7 +55,7 @@ describe('WorkflowApprovalPanel', () => {
       />
     );
 
-    expect(html).toContain('Decision completed: APPROVE');
+    expect(html).toContain('Decision completed: Approve');
     expect(html).not.toContain('Submit decision');
     expect(html).not.toContain('Edit and approve');
   });

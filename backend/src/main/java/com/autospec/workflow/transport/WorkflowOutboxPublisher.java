@@ -23,6 +23,7 @@ public class WorkflowOutboxPublisher {
     private final WorkflowCommandPublisher commandPublisher;
     private final OutboxRetryPolicy retryPolicy;
     private final WorkflowTransportMetrics metrics;
+    private final ArtifactApprovalOutboxHandler artifactApprovalHandler;
     private final int maxAttempts;
 
     public WorkflowOutboxPublisher(
@@ -35,6 +36,7 @@ public class WorkflowOutboxPublisher {
                 commandPublisher,
                 retryPolicy,
                 WorkflowTransportMetrics.isolated(),
+                null,
                 DEFAULT_MAX_ATTEMPTS
         );
     }
@@ -45,7 +47,24 @@ public class WorkflowOutboxPublisher {
             OutboxRetryPolicy retryPolicy,
             WorkflowTransportMetrics metrics
     ) {
-        this(outboxMapper, commandPublisher, retryPolicy, metrics, DEFAULT_MAX_ATTEMPTS);
+        this(outboxMapper, commandPublisher, retryPolicy, metrics, null, DEFAULT_MAX_ATTEMPTS);
+    }
+
+    public WorkflowOutboxPublisher(
+            WorkflowOutboxMapper outboxMapper,
+            WorkflowCommandPublisher commandPublisher,
+            OutboxRetryPolicy retryPolicy,
+            WorkflowTransportMetrics metrics,
+            ArtifactApprovalOutboxHandler artifactApprovalHandler
+    ) {
+        this(
+                outboxMapper,
+                commandPublisher,
+                retryPolicy,
+                metrics,
+                artifactApprovalHandler,
+                DEFAULT_MAX_ATTEMPTS
+        );
     }
 
     @Autowired
@@ -54,6 +73,7 @@ public class WorkflowOutboxPublisher {
             WorkflowCommandPublisher commandPublisher,
             OutboxRetryPolicy retryPolicy,
             WorkflowTransportMetrics metrics,
+            ArtifactApprovalOutboxHandler artifactApprovalHandler,
             @Value("${autospec.workflow.outbox.retry.max-attempts:5}") int maxAttempts
     ) {
         if (maxAttempts < 1 || maxAttempts > 100) {
@@ -63,6 +83,7 @@ public class WorkflowOutboxPublisher {
         this.commandPublisher = commandPublisher;
         this.retryPolicy = retryPolicy;
         this.metrics = metrics;
+        this.artifactApprovalHandler = artifactApprovalHandler;
         this.maxAttempts = maxAttempts;
     }
 
@@ -83,11 +104,7 @@ public class WorkflowOutboxPublisher {
         for (WorkflowOutbox outbox : pending) {
             long publishStartedAt = System.nanoTime();
             try {
-                commandPublisher.publish(
-                        COMMAND_STREAM,
-                        outbox.getEventId(),
-                        outbox.getPayloadJson()
-                );
+                dispatch(outbox);
             } catch (RuntimeException exception) {
                 metrics.recordOutboxPublishFailure();
                 handlePublicationFailure(outbox, now, exception);
@@ -107,6 +124,23 @@ public class WorkflowOutboxPublisher {
             published += updated;
         }
         return published;
+    }
+
+    private void dispatch(WorkflowOutbox outbox) {
+        if ("EXECUTE_NODE".equals(outbox.getEventType())) {
+            commandPublisher.publish(
+                    COMMAND_STREAM,
+                    outbox.getEventId(),
+                    outbox.getPayloadJson()
+            );
+            return;
+        }
+        if ("ARTIFACT_APPROVED".equals(outbox.getEventType())
+                && artifactApprovalHandler != null) {
+            artifactApprovalHandler.handle(outbox);
+            return;
+        }
+        throw new IllegalArgumentException("Unsupported workflow outbox event: " + outbox.getEventType());
     }
 
     private void handlePublicationFailure(

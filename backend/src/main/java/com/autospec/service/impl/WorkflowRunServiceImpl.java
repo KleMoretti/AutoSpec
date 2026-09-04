@@ -79,6 +79,9 @@ public class WorkflowRunServiceImpl extends ServiceImpl<WorkflowRunMapper, Workf
                 .set(WorkflowRun::getStatus, "CANCELLED")
                 .set(WorkflowRun::getResponseStatus, "CANCELLED")
                 .set(WorkflowRun::getErrorMessage, "Cancelled by user request")
+                .set(WorkflowRun::getReservedTokens, 0L)
+                .set(WorkflowRun::getReservedCost, java.math.BigDecimal.ZERO)
+                .set(WorkflowRun::getReservedModelCalls, 0)
                 .set(WorkflowRun::getCompletedAt, now)
                 .set(WorkflowRun::getUpdatedAt, now);
         if (run.getLockVersion() == null) {
@@ -100,6 +103,8 @@ public class WorkflowRunServiceImpl extends ServiceImpl<WorkflowRunMapper, Workf
                 .set(WorkflowNodeRun::getFinishedAt, now)
                 .set(WorkflowNodeRun::getUpdatedAt, now));
 
+        releaseNodeReservations(runId, now);
+
         outboxMapper.update(null, new LambdaUpdateWrapper<WorkflowOutbox>()
                 .eq(WorkflowOutbox::getAggregateId, Long.toString(runId))
                 .eq(WorkflowOutbox::getStatus, "PENDING")
@@ -110,6 +115,9 @@ public class WorkflowRunServiceImpl extends ServiceImpl<WorkflowRunMapper, Workf
         run.setStatus("CANCELLED");
         run.setResponseStatus("CANCELLED");
         run.setErrorMessage("Cancelled by user request");
+        run.setReservedTokens(0L);
+        run.setReservedCost(java.math.BigDecimal.ZERO);
+        run.setReservedModelCalls(0);
         run.setCompletedAt(now);
         run.setUpdatedAt(now);
         run.setLockVersion(run.getLockVersion() == null ? 1 : run.getLockVersion() + 1);
@@ -126,10 +134,39 @@ public class WorkflowRunServiceImpl extends ServiceImpl<WorkflowRunMapper, Workf
         LocalDateTime now = LocalDateTime.now();
         for (WorkflowRun run : staleRuns) {
             run.setStatus("FAILED");
+            run.setResponseStatus("TIMEOUT");
             run.setErrorMessage("Timed out while running workflow run");
+            run.setReservedTokens(0L);
+            run.setReservedCost(java.math.BigDecimal.ZERO);
+            run.setReservedModelCalls(0);
             run.setCompletedAt(now);
             updateById(run);
+            nodeRunMapper.update(null, new LambdaUpdateWrapper<WorkflowNodeRun>()
+                    .eq(WorkflowNodeRun::getWorkflowRunId, run.getId())
+                    .notIn(WorkflowNodeRun::getStatus, TERMINAL_NODE_STATUSES)
+                    .set(WorkflowNodeRun::getStatus, "CANCELLED")
+                    .set(WorkflowNodeRun::getErrorCode, "RUN_TIMEOUT")
+                    .set(WorkflowNodeRun::getErrorMessage,
+                            "Parent workflow run exceeded its wall-time limit")
+                    .set(WorkflowNodeRun::getFinishedAt, now)
+                    .set(WorkflowNodeRun::getUpdatedAt, now));
+            releaseNodeReservations(run.getId(), now);
+            outboxMapper.update(null, new LambdaUpdateWrapper<WorkflowOutbox>()
+                    .eq(WorkflowOutbox::getAggregateId, Long.toString(run.getId()))
+                    .eq(WorkflowOutbox::getStatus, "PENDING")
+                    .set(WorkflowOutbox::getStatus, "CLOSED")
+                    .set(WorkflowOutbox::getClosedAt, now)
+                    .set(WorkflowOutbox::getUpdatedAt, now));
         }
         return staleRuns.size();
+    }
+
+    private void releaseNodeReservations(Long runId, LocalDateTime now) {
+        nodeRunMapper.update(null, new LambdaUpdateWrapper<WorkflowNodeRun>()
+                .eq(WorkflowNodeRun::getWorkflowRunId, runId)
+                .eq(WorkflowNodeRun::getBudgetStatus, "RESERVED")
+                .set(WorkflowNodeRun::getBudgetStatus, "RELEASED")
+                .set(WorkflowNodeRun::getBudgetSettledAt, now)
+                .set(WorkflowNodeRun::getUpdatedAt, now));
     }
 }

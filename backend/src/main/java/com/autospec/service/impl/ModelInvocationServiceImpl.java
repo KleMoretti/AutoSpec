@@ -45,4 +45,36 @@ public class ModelInvocationServiceImpl extends ServiceImpl<ModelInvocationMappe
                 .last("limit " + limit)
                 .list();
     }
+
+    @Override
+    public List<ModelInvocation> listByProjectAndNodeRunId(
+            Long projectId,
+            Long workflowNodeRunId,
+            int limit,
+            int offset
+    ) {
+        return lambdaQuery()
+                .eq(ModelInvocation::getProjectId, projectId)
+                .eq(ModelInvocation::getWorkflowNodeRunId, workflowNodeRunId)
+                .orderByAsc(ModelInvocation::getCallSequence)
+                .orderByAsc(ModelInvocation::getId)
+                .last("limit " + limit + " offset " + offset)
+                .list();
+    }
+
+    @Override
+    public List<ModelInvocation> listByProjectAndNodeRunIdAfterId(
+            Long projectId,
+            Long workflowNodeRunId,
+            Long afterId,
+            int limit
+    ) {
+        return lambdaQuery()
+                .eq(ModelInvocation::getProjectId, projectId)
+                .eq(ModelInvocation::getWorkflowNodeRunId, workflowNodeRunId)
+                .gt(afterId != null, ModelInvocation::getId, afterId)
+                .orderByAsc(ModelInvocation::getId)
+                .last("limit " + limit)
+                .list();
+    }
 }

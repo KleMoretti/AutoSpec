@@ -18,6 +18,7 @@ class ArchitectAgent:
         prd: PrdArtifact,
         retrieved_sources: list[dict[str, Any]] | None = None,
         context_manifest: dict[str, Any] | None = None,
+        rework_directive: dict[str, Any] | None = None,
     ) -> ArchitectureDesignArtifact:
         input_payload: Mapping[str, Any] = {
             "requirement": requirement,
@@ -25,6 +26,8 @@ class ArchitectAgent:
             "retrieved_sources": retrieved_sources or [],
             "context_manifest": context_manifest or {},
         }
+        if rework_directive is not None:
+            input_payload["rework_directive"] = rework_directive
         if self.model_client is not None:
             return ArchitectureDesignArtifact.model_validate(
                 self.model_client.generate_json(self.prompt_name, input_payload)

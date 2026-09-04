@@ -448,6 +448,25 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+  /api/workflow-runs/{runId}/trace:
+    get:
+      summary: Fetch redacted node trace, failure clusters, and offline failure cases.
+      parameters:
+      - $ref: '#/components/parameters/RunId'
+      - $ref: '#/components/parameters/SessionToken'
+      responses:
+        '200':
+          description: Redacted workflow trace.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowTraceResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /api/workflow-runs/{runId}/replay:
     post:
       summary: Create an immutable replay from the original or a selected workflow version.
@@ -598,6 +617,14 @@ paths:
       - $ref: '#/components/parameters/SessionToken'
       - $ref: '#/components/parameters/PaginationLimit'
       - $ref: '#/components/parameters/PaginationOffset'
+      - name: workflowNodeRunId
+        in: query
+        required: false
+        description: Filter to the physical calls belonging to one workflow node attempt.
+        schema:
+          type: integer
+          format: int64
+          minimum: 1
       responses:
         '200':
           description: Model invocation telemetry history.
@@ -622,6 +649,14 @@ paths:
       - $ref: '#/components/parameters/SessionToken'
       - $ref: '#/components/parameters/PaginationLimit'
       - $ref: '#/components/parameters/PaginationCursor'
+      - name: workflowNodeRunId
+        in: query
+        required: false
+        description: Filter to the physical calls belonging to one workflow node attempt.
+        schema:
+          type: integer
+          format: int64
+          minimum: 1
       responses:
         '200':
           description: Cursor page of model invocation telemetry.
@@ -641,6 +676,12 @@ paths:
       parameters:
       - $ref: '#/components/parameters/ProjectId'
       - $ref: '#/components/parameters/SessionToken'
+      - name: corpusType
+        in: query
+        required: false
+        schema:
+          type: string
+          enum: [RESUME, QUESTION, RUBRIC, PROJECT_ARTIFACT]
       responses:
         '200':
           description: Knowledge source list.
@@ -1438,17 +1479,24 @@ components:
     KnowledgeSourceResponse:
       type: object
       required:
+      - projectId
       - artifactId
       - artifactType
       - title
       - artifactVersion
       - content
       properties:
+        projectId:
+          type: integer
+          format: int64
         artifactId:
           type: integer
           format: int64
         artifactType:
           type: string
+        corpusType:
+          type: string
+          nullable: true
         title:
           type: string
         artifactVersion:
@@ -1467,6 +1515,20 @@ components:
           type: string
         retrievalStrategy:
           type: string
+          nullable: true
+        chunkerVersion:
+          type: string
+          nullable: true
+        embeddingModel:
+          type: string
+          nullable: true
+        artifactContentHash:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+          nullable: true
+        chunkContentHash:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
           nullable: true
         relevanceScore:
           type: number
@@ -1766,6 +1828,9 @@ components:
       - consumedTokens
       - consumedCost
       - modelCallCount
+      - reservedTokens
+      - reservedCost
+      - reservedModelCalls
       - status
       - startedAt
       properties:
@@ -1823,6 +1888,13 @@ components:
         consumedCost:
           type: number
         modelCallCount:
+          type: integer
+        reservedTokens:
+          type: integer
+          format: int64
+        reservedCost:
+          type: number
+        reservedModelCalls:
           type: integer
         status:
           type: string
@@ -1887,7 +1959,12 @@ components:
       - estimatedCost
       - modelCallCount
       - acceptedDuplicateEventCount
+      - reservedTokens
+      - reservedCost
+      - reservedModelCalls
       - modelUsage
+      - nodeMetrics
+      - versionSlices
       properties:
         workflowRunId:
           type: integer
@@ -1933,6 +2010,13 @@ components:
           type: integer
           format: int64
           nullable: true
+        reservedTokens:
+          type: integer
+          format: int64
+        reservedCost:
+          type: number
+        reservedModelCalls:
+          type: integer
         remainingTokens:
           type: integer
           format: int64
@@ -1947,6 +2031,313 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/ModelUsageResponse'
+        nodeMetrics:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowNodeMetricsResponse'
+        versionSlices:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowMetricSliceResponse'
+    WorkflowNodeMetricsResponse:
+      type: object
+      required:
+      - nodeId
+      - attemptCount
+      - successCount
+      - failureCount
+      - retryCount
+      - queueP50Ms
+      - queueP95Ms
+      - executionP50Ms
+      - executionP95Ms
+      - tokenCount
+      - estimatedCost
+      - modelCallCount
+      - toolCallCount
+      - routeDistribution
+      properties:
+        nodeId:
+          type: string
+        handlerKey:
+          type: string
+          nullable: true
+        handlerVersion:
+          type: string
+          nullable: true
+        attemptCount:
+          type: integer
+        successCount:
+          type: integer
+        failureCount:
+          type: integer
+        retryCount:
+          type: integer
+        queueP50Ms:
+          type: integer
+          format: int64
+        queueP95Ms:
+          type: integer
+          format: int64
+        executionP50Ms:
+          type: integer
+          format: int64
+        executionP95Ms:
+          type: integer
+          format: int64
+        tokenCount:
+          type: integer
+          format: int64
+        estimatedCost:
+          type: number
+        modelCallCount:
+          type: integer
+        toolCallCount:
+          type: integer
+        routeDistribution:
+          type: object
+          additionalProperties:
+            type: integer
+        latestStatus:
+          type: string
+          nullable: true
+    WorkflowMetricSliceResponse:
+      type: object
+      required:
+      - dimension
+      - key
+      - version
+      - invocationCount
+      - failureCount
+      - tokenCount
+      - estimatedCost
+      - p95DurationMs
+      properties:
+        dimension:
+          type: string
+        key:
+          type: string
+        version:
+          type: string
+        invocationCount:
+          type: integer
+        failureCount:
+          type: integer
+        tokenCount:
+          type: integer
+          format: int64
+        estimatedCost:
+          type: number
+        p95DurationMs:
+          type: integer
+          format: int64
+    WorkflowTraceResponse:
+      type: object
+      required:
+      - workflowRunId
+      - nodes
+      - failureClusters
+      - offlineCases
+      properties:
+        workflowRunId:
+          type: integer
+          format: int64
+        correlationId:
+          type: string
+          nullable: true
+        status:
+          type: string
+          nullable: true
+        nodes:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowTraceNodeResponse'
+        failureClusters:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowFailureClusterResponse'
+        offlineCases:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowFailureCaseResponse'
+    WorkflowTraceNodeResponse:
+      type: object
+      required:
+      - nodeRunId
+      - nodeId
+      - attempt
+      - status
+      - invocations
+      properties:
+        nodeRunId:
+          type: integer
+          format: int64
+        nodeId:
+          type: string
+        revision:
+          type: integer
+          nullable: true
+        attempt:
+          type: integer
+        executionId:
+          type: string
+          nullable: true
+        status:
+          type: string
+        handlerKey:
+          type: string
+          nullable: true
+        handlerVersion:
+          type: string
+          nullable: true
+        durationMs:
+          type: integer
+          nullable: true
+        queueTimeMs:
+          type: integer
+          format: int64
+        actualInputTokens:
+          type: integer
+          nullable: true
+        actualOutputTokens:
+          type: integer
+          nullable: true
+        actualCacheTokens:
+          type: integer
+          nullable: true
+        actualCost:
+          type: number
+          nullable: true
+        actualModelCalls:
+          type: integer
+          nullable: true
+        actualToolCalls:
+          type: integer
+          nullable: true
+        errorCode:
+          type: string
+          nullable: true
+        workerId:
+          type: string
+          nullable: true
+        invocations:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowTraceInvocationResponse'
+    WorkflowTraceInvocationResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          nullable: true
+        callType:
+          type: string
+          nullable: true
+        providerKey:
+          type: string
+          nullable: true
+        modelName:
+          type: string
+          nullable: true
+        promptKey:
+          type: string
+          nullable: true
+        promptVersion:
+          type: string
+          nullable: true
+        routeKey:
+          type: string
+          nullable: true
+        toolName:
+          type: string
+          nullable: true
+        toolVersion:
+          type: string
+          nullable: true
+        status:
+          type: string
+          nullable: true
+        durationMs:
+          type: integer
+          nullable: true
+        inputTokens:
+          type: integer
+          nullable: true
+        outputTokens:
+          type: integer
+          nullable: true
+        cacheTokens:
+          type: integer
+          nullable: true
+        estimatedCost:
+          type: number
+          nullable: true
+        errorCode:
+          type: string
+          nullable: true
+    WorkflowFailureClusterResponse:
+      type: object
+      required:
+      - dimension
+      - key
+      - count
+      - nodeRunIds
+      properties:
+        dimension:
+          type: string
+        key:
+          type: string
+        count:
+          type: integer
+        nodeRunIds:
+          type: array
+          items:
+            type: integer
+            format: int64
+    WorkflowFailureCaseResponse:
+      type: object
+      required:
+      - caseId
+      - workflowRunId
+      - nodeRunId
+      - nodeId
+      - errorCode
+      properties:
+        caseId:
+          type: string
+        workflowRunId:
+          type: integer
+          format: int64
+        nodeRunId:
+          type: integer
+          format: int64
+        nodeId:
+          type: string
+        handlerKey:
+          type: string
+          nullable: true
+        handlerVersion:
+          type: string
+          nullable: true
+        modelName:
+          type: string
+          nullable: true
+        promptKey:
+          type: string
+          nullable: true
+        promptVersion:
+          type: string
+          nullable: true
+        routeKey:
+          type: string
+          nullable: true
+        errorCode:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+          nullable: true
     WorkflowRunCursorPage:
       type: object
       required:
@@ -2015,6 +2406,48 @@ components:
           nullable: true
         durationMs:
           type: integer
+          nullable: true
+        budgetReservationId:
+          type: string
+          nullable: true
+        reservedInputTokens:
+          type: integer
+          format: int64
+          nullable: true
+        reservedOutputTokens:
+          type: integer
+          format: int64
+          nullable: true
+        reservedCost:
+          type: number
+          nullable: true
+        reservedModelCalls:
+          type: integer
+          nullable: true
+        actualInputTokens:
+          type: integer
+          nullable: true
+        actualOutputTokens:
+          type: integer
+          nullable: true
+        actualCacheTokens:
+          type: integer
+          nullable: true
+        actualCost:
+          type: number
+          nullable: true
+        actualModelCalls:
+          type: integer
+          nullable: true
+        actualToolCalls:
+          type: integer
+          nullable: true
+        budgetStatus:
+          type: string
+          nullable: true
+        budgetSettledAt:
+          type: string
+          format: date-time
           nullable: true
         inputJson:
           type: string
@@ -2110,6 +2543,21 @@ components:
           type: integer
           format: int64
           nullable: true
+        callId:
+          type: string
+          nullable: true
+        callType:
+          type: string
+          nullable: true
+        executionId:
+          type: string
+          nullable: true
+        callSequence:
+          type: integer
+          nullable: true
+        attempt:
+          type: integer
+          nullable: true
         correlationId:
           type: string
           nullable: true
@@ -2120,10 +2568,34 @@ components:
         promptKey:
           type: string
           nullable: true
+        promptVersion:
+          type: string
+          nullable: true
+        promptChecksum:
+          type: string
+          nullable: true
+        schemaVersion:
+          type: string
+          nullable: true
+        contractHash:
+          type: string
+          nullable: true
         providerKey:
           type: string
         modelName:
           type: string
+        routeKey:
+          type: string
+          nullable: true
+        routeReason:
+          type: string
+          nullable: true
+        fallbackUsed:
+          type: boolean
+          nullable: true
+        contextManifestJson:
+          type: string
+          nullable: true
         agentNode:
           type: string
         status:
@@ -2145,6 +2617,52 @@ components:
           nullable: true
         estimatedCost:
           type: number
+          nullable: true
+        reservedInputTokens:
+          type: integer
+          nullable: true
+        reservedOutputTokens:
+          type: integer
+          nullable: true
+        reservedCost:
+          type: number
+          nullable: true
+        settlementDeltaTokens:
+          type: integer
+          nullable: true
+        settlementDeltaCost:
+          type: number
+          nullable: true
+        normalizedParamsHash:
+          type: string
+          nullable: true
+        resultHash:
+          type: string
+          nullable: true
+        errorCode:
+          type: string
+          nullable: true
+        deadlineEpochMs:
+          type: integer
+          format: int64
+          nullable: true
+        idempotencyKey:
+          type: string
+          nullable: true
+        toolName:
+          type: string
+          nullable: true
+        toolVersion:
+          type: string
+          nullable: true
+        permissionPolicy:
+          type: string
+          nullable: true
+        referenceSourcesJson:
+          type: string
+          nullable: true
+        redactedParamsJson:
+          type: string
           nullable: true
         score:
           type: number

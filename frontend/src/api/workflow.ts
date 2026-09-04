@@ -70,6 +70,9 @@ export interface WorkflowRunResponse {
   consumedTokens?: number;
   consumedCost?: number;
   modelCallCount?: number;
+  reservedTokens?: number;
+  reservedCost?: number;
+  reservedModelCalls?: number;
   status: string;
   responseStatus?: string;
   responsePercent?: number;
@@ -90,6 +93,19 @@ export interface WorkflowNodeRunResponse {
   handlerVersion: string;
   timeoutMs?: number;
   durationMs?: number;
+  budgetReservationId?: string;
+  reservedInputTokens?: number;
+  reservedOutputTokens?: number;
+  reservedCost?: number;
+  reservedModelCalls?: number;
+  actualInputTokens?: number;
+  actualOutputTokens?: number;
+  actualCacheTokens?: number;
+  actualCost?: number;
+  actualModelCalls?: number;
+  actualToolCalls?: number;
+  budgetStatus?: string;
+  budgetSettledAt?: string;
   inputJson?: string;
   outputJson?: string;
   errorCode?: string;
@@ -118,6 +134,9 @@ export interface WorkflowRuntimeMetricsResponse {
   maxCost?: number;
   maxModelCalls?: number;
   maxWallTimeMs?: number;
+  reservedTokens?: number;
+  reservedCost?: number;
+  reservedModelCalls?: number;
   remainingTokens?: number;
   remainingCost?: number;
   remainingModelCalls?: number;
@@ -131,6 +150,111 @@ export interface WorkflowRuntimeMetricsResponse {
     cacheTokens: number;
     estimatedCost: number;
   }>;
+  nodeMetrics: WorkflowNodeMetricsResponse[];
+  versionSlices: WorkflowMetricSliceResponse[];
+}
+
+export interface WorkflowNodeMetricsResponse {
+  nodeId: string;
+  handlerKey?: string;
+  handlerVersion?: string;
+  attemptCount: number;
+  successCount: number;
+  failureCount: number;
+  retryCount: number;
+  queueP50Ms: number;
+  queueP95Ms: number;
+  executionP50Ms: number;
+  executionP95Ms: number;
+  tokenCount: number;
+  estimatedCost: number;
+  modelCallCount: number;
+  toolCallCount: number;
+  routeDistribution: Record<string, number>;
+  latestStatus?: string;
+}
+
+export interface WorkflowMetricSliceResponse {
+  dimension: string;
+  key: string;
+  version: string;
+  invocationCount: number;
+  failureCount: number;
+  tokenCount: number;
+  estimatedCost: number;
+  p95DurationMs: number;
+}
+
+export interface WorkflowTraceInvocationResponse {
+  id?: number;
+  callType?: string;
+  providerKey?: string;
+  modelName?: string;
+  promptKey?: string;
+  promptVersion?: string;
+  routeKey?: string;
+  toolName?: string;
+  toolVersion?: string;
+  status?: string;
+  durationMs?: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  cacheTokens?: number;
+  estimatedCost?: number;
+  errorCode?: string;
+}
+
+export interface WorkflowTraceNodeResponse {
+  nodeRunId: number;
+  nodeId: string;
+  revision?: number;
+  attempt: number;
+  executionId?: string;
+  status: string;
+  handlerKey?: string;
+  handlerVersion?: string;
+  durationMs?: number;
+  queueTimeMs: number;
+  actualInputTokens?: number;
+  actualOutputTokens?: number;
+  actualCacheTokens?: number;
+  actualCost?: number;
+  actualModelCalls?: number;
+  actualToolCalls?: number;
+  errorCode?: string;
+  workerId?: string;
+  invocations: WorkflowTraceInvocationResponse[];
+}
+
+export interface WorkflowFailureClusterResponse {
+  dimension: string;
+  key: string;
+  count: number;
+  nodeRunIds: number[];
+}
+
+export interface WorkflowFailureCaseResponse {
+  caseId: string;
+  workflowRunId: number;
+  nodeRunId: number;
+  nodeId: string;
+  handlerKey?: string;
+  handlerVersion?: string;
+  modelName?: string;
+  promptKey?: string;
+  promptVersion?: string;
+  routeKey?: string;
+  errorCode?: string;
+  createdAt?: string;
+}
+
+export interface WorkflowTraceResponse {
+  workflowRunId: number;
+  correlationId?: string;
+  status?: string;
+  nodes: WorkflowTraceNodeResponse[];
+  failureClusters: WorkflowFailureClusterResponse[];
+  offlineCases: WorkflowFailureCaseResponse[];
 }
 
 export interface WorkflowVersionResponse {
@@ -202,6 +326,10 @@ export async function getWorkflowRunMetrics(
   runId: number
 ): Promise<WorkflowRuntimeMetricsResponse> {
   return request(`/api/workflow-runs/${runId}/metrics`);
+}
+
+export async function getWorkflowRunTrace(runId: number): Promise<WorkflowTraceResponse> {
+  return request(`/api/workflow-runs/${runId}/trace`);
 }
 
 export async function getWorkflowVersions(workflowKey: string): Promise<WorkflowVersionResponse[]> {

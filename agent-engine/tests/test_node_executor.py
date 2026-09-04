@@ -252,6 +252,83 @@ def contracted_command(registry: HandlerRegistry, **overrides) -> NodeCommand:
     return provisional
 
 
+def contracted_v2_command(
+    registry: HandlerRegistry,
+    *,
+    max_calls: int = 2,
+    **overrides,
+) -> NodeCommand:
+    registration = registry.resolve("FixtureAgent", "v1")
+    context_policy = {
+        "version": "context-v2",
+        "tokenizer": "conservative-multilingual-v1",
+        "max_input_tokens": 512,
+        "prompt_token_reserve": 64,
+        "manifest_token_reserve": 64,
+        "field_priority": ["value"],
+        "required_paths": ["$.value"],
+        "compression_strategy": "schema-aware-v2",
+        "rag_token_budget": 0,
+        "long_text_token_budget": 128,
+        "max_single_source_ratio": 0.35,
+    }
+    model_policy = {
+        "route_key": "balanced",
+        "temperature": 0,
+        "context_window_tokens": 2048,
+        "max_output_tokens": 128,
+        "max_calls": max_calls,
+        "input_cost_per_million": 2,
+        "cached_input_cost_per_million": 5,
+        "output_cost_per_million": 10,
+        "required_capabilities": ["json_object", "usage", "idempotency"],
+    }
+    reservation_cost = max_calls * (512 * 5 + 128 * 10) / 1_000_000
+    payload = {
+        "event_id": "event-contract-v2",
+        "workflow_run_id": 7,
+        "node_run_id": 11,
+        "node_id": "fixture",
+        "revision": 1,
+        "attempt": 1,
+        "execution_id": "7:fixture:1:1",
+        "handler_key": "FixtureAgent",
+        "handler_version": "v1",
+        "timeout_ms": 1000,
+        "input_payload": {"value": 3},
+        "protocol_version": 2,
+        "contract_hash": "0" * 64,
+        "input_schema": registration.input_schema,
+        "input_schema_hash": registration.input_schema_hash,
+        "output_schema": registration.output_schema,
+        "output_schema_hash": registration.output_schema_hash,
+        "prompt_key": registration.prompt_key,
+        "prompt_version": registration.prompt_version,
+        "prompt_checksum": registration.prompt_checksum,
+        "context_policy": context_policy,
+        "model_policy": model_policy,
+        "retry_policy": {"max_attempts": 2},
+        "fallback": {},
+        "budget_reservation": {
+            "reservation_id": "7:fixture:1:1",
+            "input_tokens": 512 * max_calls,
+            "output_tokens": 128 * max_calls,
+            "model_calls": max_calls,
+            "estimated_cost": reservation_cost,
+        },
+        "deadline_epoch_ms": round(time.time() * 1000) + 5000,
+        "fencing_token": 9,
+        "worker_id": "worker-v2",
+    }
+    payload.update(overrides)
+    provisional = NodeCommand.model_validate(payload)
+    if "contract_hash" not in overrides:
+        provisional = provisional.model_copy(
+            update={"contract_hash": contract_fingerprint(provisional)}
+        )
+    return provisional
+
+
 @pytest.mark.asyncio
 async def test_executor_enforces_and_echoes_frozen_contract():
     registry = HandlerRegistry()
@@ -311,3 +388,97 @@ async def test_executor_rejects_contract_hash_mismatch_without_calling_handler()
     assert event.event_type == "NODE_FAILED"
     assert event.error_code == "CONTRACT_MISMATCH"
     assert called is False
+
+
+@pytest.mark.asyncio
+async def test_v2_executor_emits_one_detailed_row_per_physical_call() -> None:
+    def handler(value):
+        record_model_invocation(
+            ModelInvocationTelemetry(
+                provider_key="provider-a",
+                model_name="model-a",
+                prompt_key="fixture",
+                input_tokens=100,
+                output_tokens=20,
+                cache_tokens=40,
+                estimated_cost=0.0003,
+                normalized_params_hash="2" * 64,
+                result_hash="3" * 64,
+            )
+        )
+        return {"doubled": value.value * 2}
+
+    registry = HandlerRegistry()
+    registry.register(
+        "FixtureAgent",
+        "v1",
+        FixtureInput,
+        FixtureOutput,
+        handler,
+        input_schema="FixtureInput",
+        output_schema="FixtureOutput",
+        prompt_key="fixture",
+        prompt_version="v1",
+        prompt_checksum="1" * 64,
+    )
+
+    event = await NodeExecutor(registry).execute(contracted_v2_command(registry))
+
+    assert event.event_type == "NODE_SUCCEEDED"
+    assert event.protocol_version == 2
+    assert event.budget_reservation_id == event.execution_id
+    assert event.model_call_count == 1
+    assert len(event.call_records) == 1
+    call = event.call_records[0]
+    assert call.call_id == "7:fixture:1:1:model:1"
+    assert call.execution_id == event.execution_id
+    assert call.call_sequence == 1
+    assert call.prompt_version == "v1"
+    assert call.contract_hash == event.contract_hash
+    assert call.reserved_input_tokens == 512
+    assert call.reserved_output_tokens == 128
+    assert call.idempotency_key == call.call_id
+    assert call.normalized_params_hash == "2" * 64
+    assert call.result_hash == "3" * 64
+
+
+@pytest.mark.asyncio
+async def test_v2_call_limit_stops_second_call_before_provider_budget_is_exceeded() -> None:
+    def handler(_value):
+        for sequence in range(2):
+            record_model_invocation(
+                ModelInvocationTelemetry(
+                    provider_key="provider-a",
+                    model_name="model-a",
+                    prompt_key="fixture",
+                    input_tokens=10,
+                    output_tokens=2,
+                    estimated_cost=0.00001,
+                    normalized_params_hash=f"{sequence + 2}" * 64,
+                    result_hash=f"{sequence + 4}" * 64,
+                )
+            )
+        return {"doubled": 6}
+
+    registry = HandlerRegistry()
+    registry.register(
+        "FixtureAgent",
+        "v1",
+        FixtureInput,
+        FixtureOutput,
+        handler,
+        input_schema="FixtureInput",
+        output_schema="FixtureOutput",
+        prompt_key="fixture",
+        prompt_version="v1",
+        prompt_checksum="1" * 64,
+    )
+
+    event = await NodeExecutor(registry).execute(
+        contracted_v2_command(registry, max_calls=1)
+    )
+
+    assert event.event_type == "NODE_FAILED"
+    assert event.error_code == "MODEL_CALL_BUDGET_EXCEEDED"
+    assert event.model_call_count == 1
+    assert len(event.call_records) == 1

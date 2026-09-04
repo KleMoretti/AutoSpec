@@ -20,11 +20,29 @@ public class KnowledgeDocument {
 
     private String artifactType;
 
+    private String corpusType;
+
     private Integer artifactVersion;
 
     private String title;
 
     private String status;
 
+    private String contentHash;
+
+    private String chunkerVersion;
+
+    private String embeddingModel;
+
+    private String failureMessage;
+
     private LocalDateTime createdAt;
+
+    private LocalDateTime updatedAt;
+
+    private LocalDateTime activatedAt;
+
+    private LocalDateTime supersededAt;
+
+    private LocalDateTime expiresAt;
 }

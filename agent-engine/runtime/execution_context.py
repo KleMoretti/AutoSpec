@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Iterator
 
 
@@ -14,6 +14,15 @@ class ModelExecutionContract:
     prompt_checksum: str
     model_policy: dict[str, Any]
     deadline_epoch_ms: int
+    protocol_version: int = 0
+    node_id: str = "unknown"
+    attempt: int = 1
+    contract_hash: str | None = None
+    context_policy: dict[str, Any] = field(default_factory=dict)
+    retry_policy: dict[str, Any] = field(default_factory=dict)
+    fallback_policy: dict[str, Any] = field(default_factory=dict)
+    schema_version: str | None = None
+    tool_policy: dict[str, Any] = field(default_factory=dict)
 
 
 _CONTRACT: ContextVar[ModelExecutionContract | None] = ContextVar(

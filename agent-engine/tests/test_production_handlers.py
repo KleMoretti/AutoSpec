@@ -1,7 +1,11 @@
 import pytest
 
+from runtime.context_policy import ContextPolicyError
 from runtime.node_executor import NodeCommand, NodeExecutor
-from runtime.production_handlers import build_production_registry
+from runtime.production_handlers import (
+    _validate_artifact_context,
+    build_production_registry,
+)
 
 
 def command(handler_key: str, payload: dict, *, node_id: str) -> NodeCommand:
@@ -81,3 +85,107 @@ def _requirement_refs(value: object) -> set[str]:
     if isinstance(value, list):
         return set().union(*(_requirement_refs(child) for child in value))
     return set()
+
+
+def test_compacted_context_revalidates_cross_artifact_api_references() -> None:
+    payload = {
+        "prd": {
+            "project_name": "Orders",
+            "target_users": ["operator"],
+            "core_features": [
+                {
+                    "requirement_id": "REQ-ORDER",
+                    "name": "Orders",
+                    "description": "Manage orders",
+                    "priority": "MUST",
+                }
+            ],
+            "user_stories": [
+                {
+                    "story_id": "STORY-ORDER",
+                    "role": "operator",
+                    "goal": "manage orders",
+                    "benefit": "complete work",
+                    "requirement_refs": ["REQ-ORDER"],
+                    "acceptance_criteria": [
+                        {
+                            "acceptance_id": "AC-ORDER",
+                            "criterion": "order is persisted",
+                            "requirement_refs": ["REQ-ORDER"],
+                        }
+                    ],
+                }
+            ],
+        },
+        "backend_design": {
+            "tables": [
+                {
+                    "table_id": "TABLE-ORDER",
+                    "name": "orders",
+                    "description": "orders",
+                    "requirement_refs": ["REQ-ORDER"],
+                    "fields": [
+                        {
+                            "field_id": "FIELD-ORDER",
+                            "name": "id",
+                            "type": "string",
+                            "nullable": False,
+                            "description": "identifier",
+                            "requirement_refs": ["REQ-ORDER"],
+                        }
+                    ],
+                }
+            ],
+            "apis": [
+                {
+                    "api_id": "API-ORDER",
+                    "method": "GET",
+                    "path": "/orders",
+                    "description": "list orders",
+                    "auth_required": True,
+                    "required_roles": ["EDITOR"],
+                    "requirement_refs": ["REQ-ORDER"],
+                }
+            ],
+        },
+        "frontend_skeleton": {
+            "routes": [
+                {
+                    "route_id": "ROUTE-ORDER",
+                    "path": "/orders",
+                    "page": "Orders",
+                    "requirement_refs": ["REQ-ORDER"],
+                }
+            ],
+            "pages": [
+                {
+                    "page_id": "PAGE-ORDER",
+                    "name": "Orders",
+                    "purpose": "manage orders",
+                    "components": ["OrderTable"],
+                    "requirement_refs": ["REQ-ORDER"],
+                }
+            ],
+            "components": [
+                {
+                    "component_id": "COMP-ORDER",
+                    "name": "OrderTable",
+                    "type": "table",
+                    "requirement_refs": ["REQ-ORDER"],
+                }
+            ],
+            "api_bindings": [
+                {
+                    "binding_id": "BIND-ORDER",
+                    "method": "GET",
+                    "path": "/orders",
+                    "consumer": "OrderTable",
+                    "backend_api_id": "API-UNKNOWN",
+                    "requirement_refs": ["REQ-ORDER"],
+                }
+            ],
+        },
+    }
+
+    with pytest.raises(ContextPolicyError, match="unknown backend APIs"):
+        _validate_artifact_context(payload)

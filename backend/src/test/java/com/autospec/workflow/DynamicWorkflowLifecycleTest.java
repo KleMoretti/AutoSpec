@@ -24,8 +24,12 @@ import com.autospec.workflow.runtime.WorkflowApprovalCoordinator;
 import com.autospec.workflow.runtime.WorkflowArtifactProjector;
 import com.autospec.workflow.runtime.WorkflowFailureDecisionService;
 import com.autospec.workflow.runtime.WorkflowRunReconciliationService;
+import com.autospec.observability.WorkflowEventTracer;
+import com.autospec.workflow.transport.WorkflowCallRecord;
 import com.autospec.workflow.transport.WorkflowEventConsumer;
 import com.autospec.workflow.transport.WorkflowEventOutcome;
+import com.autospec.workflow.transport.WorkflowExecutionEvent;
+import com.autospec.workflow.transport.WorkflowUsageRecorder;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -36,6 +40,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 
@@ -81,6 +86,8 @@ class DynamicWorkflowLifecycleTest {
     private ReviewerReworkCoordinator reworkCoordinator;
     @Autowired
     private ObjectMapper objectMapper;
+    @Autowired
+    private WorkflowUsageRecorder usageRecorder;
 
     @Test
     void publishedV5RunProjectsArtifactsAssemblesInputsAndCompletesIdempotently() throws Exception {
@@ -215,7 +222,9 @@ class DynamicWorkflowLifecycleTest {
                 approvalCoordinator,
                 artifactProjector,
                 reworkCoordinator,
-                runMapper
+                runMapper,
+                WorkflowEventTracer.noop(),
+                usageRecorder
         );
     }
 
@@ -248,36 +257,92 @@ class DynamicWorkflowLifecycleTest {
                 .last("limit 1"));
     }
 
-    private String success(WorkflowNodeRun node, String outputJson) {
-        return """
-                {
-                  "event_id":"%s",
-                  "source_event_id":"command-%d",
-                  "event_type":"NODE_SUCCEEDED",
-                  "workflow_run_id":%d,
-                  "node_run_id":%d,
-                  "node_id":"%s",
-                  "revision":%d,
-                  "attempt":%d,
-                  "execution_id":"%s",
-                  "protocol_version":1,
-                  "contract_hash":"%s",
-                  "fencing_token":1,
-                  "worker_id":"lifecycle-test-worker",
-                  "duration_ms":12,
-                  "output_payload":%s
-                }
-                """.formatted(
-                UUID.randomUUID(),
-                node.getId(),
+    private String success(WorkflowNodeRun node, String outputJson) throws Exception {
+        String promptChecksum = "1".repeat(64);
+        String callId = node.getExecutionId() + ":model:1";
+        BigDecimal reservedCost = node.getReservedCost() == null
+                ? BigDecimal.ZERO
+                : node.getReservedCost();
+        WorkflowCallRecord call = new WorkflowCallRecord(
+                callId,
+                "MODEL",
+                node.getExecutionId(),
+                1,
+                node.getAttempt(),
+                "fixture",
+                "fixture-model",
+                node.getNodeId(),
+                "v1",
+                promptChecksum,
+                "fixture-output-v1",
+                node.getContractHash(),
+                0,
+                0,
+                0,
+                BigDecimal.ZERO,
+                Math.toIntExact(node.getReservedInputTokens()),
+                Math.toIntExact(node.getReservedOutputTokens()),
+                reservedCost,
+                "fixture",
+                "lifecycle-test",
+                false,
+                "2".repeat(64),
+                "3".repeat(64),
+                "SUCCEEDED",
+                null,
+                null,
+                12,
+                System.currentTimeMillis() + 60_000,
+                callId,
+                null,
+                null,
+                null,
+                List.of(),
+                null
+        );
+        WorkflowExecutionEvent event = new WorkflowExecutionEvent(
+                UUID.randomUUID().toString(),
+                "command-" + node.getId(),
+                "NODE_SUCCEEDED",
                 node.getWorkflowRunId(),
                 node.getId(),
                 node.getNodeId(),
                 node.getRevision(),
                 node.getAttempt(),
                 node.getExecutionId(),
+                12,
+                objectMapper.readTree(outputJson),
+                null,
+                null,
+                "fixture",
+                "fixture-model",
+                node.getNodeId(),
+                "fixture",
+                "lifecycle-test",
+                false,
+                null,
+                1,
+                0,
+                0,
+                0,
+                0,
+                BigDecimal.ZERO,
+                List.of(call),
+                node.getExecutionId(),
+                "lifecycle-test",
+                null,
+                null,
+                2,
                 node.getContractHash(),
-                outputJson
+                "fixture-input-v1",
+                "4".repeat(64),
+                "fixture-output-v1",
+                "5".repeat(64),
+                "v1",
+                promptChecksum,
+                node.getFencingToken() == null ? 1L : node.getFencingToken(),
+                "lifecycle-test-worker"
         );
+        return objectMapper.writeValueAsString(event);
     }
 }

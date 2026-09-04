@@ -17,6 +17,8 @@ public class WorkflowRun {
 
     private Long projectId;
 
+    private Long initiatedByUserId;
+
     private String operation;
 
     private String idempotencyKey;
@@ -50,6 +52,12 @@ public class WorkflowRun {
     private BigDecimal consumedCost;
 
     private Integer modelCallCount;
+
+    private Long reservedTokens;
+
+    private BigDecimal reservedCost;
+
+    private Integer reservedModelCalls;
 
     private Integer lockVersion;
 

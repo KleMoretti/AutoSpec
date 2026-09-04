@@ -31,6 +31,16 @@ class WorkflowExecutableContractTest {
         );
 
         assertThat(contract.contractHash())
-                .isEqualTo("c4dc9b91ea583c82a0227f2a18df123718a18b082f9e234570e55a29e4983405");
+                .isEqualTo("ba5c40bfc4c41edd4c4efa8695c8e676a0ba1ed57da68fa0b24f3bad58e7870f");
+        assertThat(contract.protocolVersion()).isEqualTo(2);
+        assertThat(contract.contextPolicy().path("version").asText()).isEqualTo("context-v2");
+        assertThat(contract.modelPolicy().path("max_output_tokens").asInt()).isEqualTo(4000);
+        WorkflowBudgetReservation reservation = WorkflowBudgetReservation.from(
+                "7:product_manager:1:1",
+                contract.contextPolicy(),
+                contract.modelPolicy()
+        );
+        assertThat(reservation.totalTokens()).isEqualTo(32000L);
+        assertThat(reservation.modelCalls()).isEqualTo(2);
     }
 }

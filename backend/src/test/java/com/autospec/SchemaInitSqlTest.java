@@ -60,7 +60,12 @@ class SchemaInitSqlTest {
                     .doesNotThrowAnyException();
             assertThatCode(() -> execute(connection, "select project_id, user_id, role from project_member where 1 = 0"))
                     .doesNotThrowAnyException();
-            assertThatCode(() -> execute(connection, "select artifact_id, artifact_type, artifact_version from knowledge_document where 1 = 0"))
+            assertThatCode(() -> execute(connection, """
+                    select artifact_id, artifact_type, artifact_version, status, content_hash,
+                           chunker_version, embedding_model, failure_message, updated_at,
+                           activated_at, superseded_at
+                    from knowledge_document where 1 = 0
+                    """))
                     .doesNotThrowAnyException();
             assertThatCode(() -> execute(connection, "select document_id, chunk_index, retrieval_terms from knowledge_chunk where 1 = 0"))
                     .doesNotThrowAnyException();
@@ -1053,6 +1058,69 @@ class SchemaInitSqlTest {
                     select route_key, route_reason, fallback_used, context_manifest_json
                     from model_invocation where 1 = 0
                     """)).doesNotThrowAnyException();
+        }
+    }
+
+    @Test
+    void flywayMigrationsCreateHarnessH1BudgetLedgerAndPublishProtocolV2() throws Exception {
+        JdbcDataSource dataSource = new JdbcDataSource();
+        dataSource.setURL("jdbc:h2:mem:harness_h1_schema;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1");
+        dataSource.setUser("sa");
+        dataSource.setPassword("");
+
+        Flyway.configure()
+                .dataSource(dataSource)
+                .locations("classpath:db/migration")
+                .load()
+                .migrate();
+
+        try (Connection connection = dataSource.getConnection()) {
+            assertThatCode(() -> execute(connection, """
+                    select reserved_tokens, reserved_cost, reserved_model_calls
+                    from workflow_run where 1 = 0
+                    """)).doesNotThrowAnyException();
+            assertThatCode(() -> execute(connection, """
+                    select budget_reservation_id, reserved_input_tokens,
+                           reserved_output_tokens, actual_input_tokens,
+                           actual_output_tokens, actual_cache_tokens,
+                           actual_model_calls, actual_tool_calls, budget_status
+                    from workflow_node_run where 1 = 0
+                    """)).doesNotThrowAnyException();
+            assertThatCode(() -> execute(connection, """
+                    select call_id, call_type, execution_id, call_sequence, attempt,
+                           normalized_params_hash, result_hash, deadline_epoch_ms,
+                           idempotency_key, tool_name, permission_policy
+                    from model_invocation where 1 = 0
+                    """)).doesNotThrowAnyException();
+        }
+        try (Connection connection = dataSource.getConnection();
+             Statement statement = connection.createStatement();
+             ResultSet resultSet = statement.executeQuery("""
+                     select v.spec_json
+                     from workflow_version v
+                     join workflow_definition d on d.id = v.definition_id
+                     where d.workflow_key = 'autospec-v5' and v.version = 'v5'
+                     """)) {
+            assertThat(resultSet.next()).isTrue();
+            String spec = resultSet.getString("spec_json");
+            assertThat(spec).contains("\"protocol_version\":2");
+            assertThat(spec).contains("\"context_policy\"");
+            assertThat(spec).contains("\"max_output_tokens\"");
+            assertThat(spec).contains("\"cached_input_cost_per_million\"");
+        }
+        try (Connection connection = dataSource.getConnection();
+             Statement statement = connection.createStatement();
+             ResultSet resultSet = statement.executeQuery("""
+                     select count(*) as index_count
+                     from information_schema.indexes
+                     where index_name in (
+                         'uk_model_invocation_call_id',
+                         'idx_model_invocation_execution_sequence',
+                         'idx_workflow_node_run_budget_reservation'
+                     )
+                     """)) {
+            assertThat(resultSet.next()).isTrue();
+            assertThat(resultSet.getInt("index_count")).isEqualTo(3);
         }
     }
 

@@ -9,7 +9,15 @@ public interface WorkflowReplayService {
     record ReplayCommand(
             String mode,
             Long selectedWorkflowVersionId,
-            String idempotencyKey
+            String idempotencyKey,
+            Long actorUserId
     ) {
+        public ReplayCommand(
+                String mode,
+                Long selectedWorkflowVersionId,
+                String idempotencyKey
+        ) {
+            this(mode, selectedWorkflowVersionId, idempotencyKey, null);
+        }
     }
 }

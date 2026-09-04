@@ -1,6 +1,7 @@
 import { DownloadOutlined, FilePdfOutlined, ReloadOutlined } from '@ant-design/icons';
 import { Alert, Button, Descriptions, Result, Space, Spin, Steps, Tag, Typography, message } from 'antd';
 import { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useParams } from 'react-router-dom';
 import {
   exportMarkdown,
@@ -27,8 +28,10 @@ import ReviewIssueTable from '../components/ReviewIssueTable';
 import WorkflowApprovalPanel from '../components/WorkflowApprovalPanel';
 import WorkflowReplayPanel from '../components/WorkflowReplayPanel';
 import { useProjectDetailData } from '../hooks/useProjectDetailData';
+import { translateEnum } from '../i18n/formatters';
 
 function ProjectDetailPage() {
+  const { t } = useTranslation();
   const params = useParams();
   const projectId = useMemo(() => Number(params.projectId), [params.projectId]);
   const {
@@ -65,11 +68,11 @@ function ProjectDetailPage() {
   async function handleApprovalDecision(approvalId: number, payload: ApprovalDecisionPayload) {
     try {
       await decideWorkflowApproval(approvalId, payload);
-      message.success('Workflow decision applied');
+      message.success(t('projectDetail.workflowDecisionApplied'));
       await loadProject();
     } catch (decisionError) {
       await loadProject().catch(() => undefined);
-      message.error(decisionError instanceof Error ? decisionError.message : 'Decision failed');
+      message.error(decisionError instanceof Error ? decisionError.message : t('projectDetail.decisionFailed'));
       throw decisionError;
     }
   }
@@ -77,11 +80,11 @@ function ProjectDetailPage() {
   async function handleReplay(runId: number, payload: WorkflowReplayPayload): Promise<WorkflowRunResponse> {
     try {
       const replay = await replayWorkflowRun(runId, payload);
-      message.success(`Replay #${replay.id} started`);
+      message.success(t('projectDetail.replayStarted', { id: replay.id }));
       await loadProject();
       return replay;
     } catch (replayError) {
-      message.error(replayError instanceof Error ? replayError.message : 'Replay failed');
+      message.error(replayError instanceof Error ? replayError.message : t('projectDetail.replayFailed'));
       throw replayError;
     }
   }
@@ -89,11 +92,11 @@ function ProjectDetailPage() {
   async function handleCancelRun(runId: number): Promise<WorkflowRunResponse> {
     try {
       const cancelled = await cancelWorkflowRun(projectId, runId);
-      message.success(`Workflow run #${runId} cancelled`);
+      message.success(t('projectDetail.runCancelled', { id: runId }));
       await loadProject();
       return cancelled;
     } catch (cancelError) {
-      message.error(cancelError instanceof Error ? cancelError.message : 'Cancellation failed');
+      message.error(cancelError instanceof Error ? cancelError.message : t('projectDetail.cancellationFailed'));
       throw cancelError;
     }
   }
@@ -101,11 +104,11 @@ function ProjectDetailPage() {
   async function handleStartWorkflow(payload: WorkflowRunStartPayload): Promise<WorkflowRunResponse> {
     try {
       const run = await startWorkflowRun(payload);
-      message.success(`Workflow run #${run.id} started`);
+      message.success(t('projectDetail.runStarted', { id: run.id }));
       await loadProject();
       return run;
     } catch (startError) {
-      message.error(startError instanceof Error ? startError.message : 'Workflow start failed');
+      message.error(startError instanceof Error ? startError.message : t('projectDetail.startFailed'));
       throw startError;
     }
   }
@@ -124,7 +127,7 @@ function ProjectDetailPage() {
       const markdown = await exportMarkdown(projectId);
       downloadBlob(markdown, `autospec-project-${projectId}.md`, 'text/markdown;charset=utf-8');
     } catch (exportError) {
-      message.error(exportError instanceof Error ? exportError.message : 'Export failed');
+      message.error(exportError instanceof Error ? exportError.message : t('projectDetail.exportFailed'));
     } finally {
       setDownloadingMarkdown(false);
     }
@@ -137,7 +140,7 @@ function ProjectDetailPage() {
       const bytes = Uint8Array.from(atob(pdf.content), (char) => char.charCodeAt(0));
       downloadBlob(bytes, pdf.fileName, pdf.mediaType);
     } catch (exportError) {
-      message.error(exportError instanceof Error ? exportError.message : 'PDF export failed');
+      message.error(exportError instanceof Error ? exportError.message : t('projectDetail.pdfExportFailed'));
     } finally {
       setDownloadingPdf(false);
     }
@@ -159,8 +162,8 @@ function ProjectDetailPage() {
           title={error}
           extra={(
             <Space>
-              <Button icon={<ReloadOutlined />} onClick={() => void loadProject()}>Retry</Button>
-              <Button href="/">Back</Button>
+              <Button icon={<ReloadOutlined />} onClick={() => void loadProject()}>{t('common.retry')}</Button>
+              <Button href="/">{t('common.back')}</Button>
             </Space>
           )}
         />
@@ -174,29 +177,29 @@ function ProjectDetailPage() {
         <Alert
           type="error"
           showIcon
-          message="Some core project data could not be refreshed"
+          message={t('projectDetail.refreshCoreFailed')}
           description={error}
-          action={<Button size="small" onClick={() => void loadProject()}>Retry</Button>}
+          action={<Button size="small" onClick={() => void loadProject()}>{t('common.retry')}</Button>}
         />
       ) : null}
       {Object.keys(resourceErrors).length > 0 ? (
         <Alert
           type="warning"
           showIcon
-          message="Some project data is temporarily unavailable"
+          message={t('projectDetail.partialDataTitle')}
           description={Object.entries(resourceErrors)
-            .map(([name, reason]) => `${name}: ${reason}`)
+            .map(([name, reason]) => `${t(`resource.${name}`, { defaultValue: name })}: ${reason}`)
             .join(' · ')}
-          action={<Button size="small" onClick={() => void loadProject()}>Retry all</Button>}
+          action={<Button size="small" onClick={() => void loadProject()}>{t('common.retryAll')}</Button>}
         />
       ) : null}
       <section className="page-toolbar">
         <div>
-          <Typography.Title level={1}>{project?.name ?? `Project #${projectId}`}</Typography.Title>
+          <Typography.Title level={1}>{project?.name ?? t('projectDetail.fallbackTitle', { id: projectId })}</Typography.Title>
           <Space wrap>
-            <Tag color={workflowStatus === 'COMPLETED' ? 'green' : 'blue'}>{workflowStatus}</Tag>
-            {latestRun?.qualityProfile ? <Tag>{latestRun.qualityProfile}</Tag> : null}
-            <Typography.Text className="muted">V5 canonical workflow</Typography.Text>
+            <Tag color={workflowStatus === 'COMPLETED' ? 'green' : 'blue'}>{translateEnum(t, 'status', workflowStatus)}</Tag>
+            {latestRun?.qualityProfile ? <Tag>{translateEnum(t, 'qualityProfile', latestRun.qualityProfile)}</Tag> : null}
+            <Typography.Text className="muted">{t('projectDetail.canonicalWorkflow')}</Typography.Text>
           </Space>
         </div>
         <Space wrap>
@@ -206,7 +209,7 @@ function ProjectDetailPage() {
             onClick={handleExportMarkdown}
             disabled={!deliverable}
           >
-            Export Markdown
+            {t('projectDetail.exportMarkdown')}
           </Button>
           <Button
             type="primary"
@@ -215,43 +218,51 @@ function ProjectDetailPage() {
             onClick={handleExportPdf}
             disabled={!deliverable}
           >
-            Export PDF
+            {t('projectDetail.exportPdf')}
           </Button>
         </Space>
       </section>
 
-      <section className="panel stage-navigation" aria-label="Project stages">
+      <section className="panel stage-navigation" aria-label={t('projectDetail.stagesLabel')}>
         <Steps
           current={activeStage}
           onChange={setSelectedStage}
           responsive
           items={[
-            { title: 'Intake', description: 'Requirement baseline' },
-            { title: 'Generate', description: 'Agents and approvals' },
-            { title: 'Review & fix', description: 'Quality decisions' },
-            { title: 'Deliver', description: 'Approved outputs' }
+            { title: t('projectDetail.stages.intake'), description: t('projectDetail.stages.intakeDescription') },
+            { title: t('projectDetail.stages.generate'), description: t('projectDetail.stages.generateDescription') },
+            { title: t('projectDetail.stages.review'), description: t('projectDetail.stages.reviewDescription') },
+            { title: t('projectDetail.stages.deliver'), description: t('projectDetail.stages.deliverDescription') }
           ]}
         />
       </section>
 
       {activeStage === 0 ? (
         <section className="panel intake-stage" aria-labelledby="intake-title">
-          <Typography.Title level={2} id="intake-title">Requirement baseline</Typography.Title>
+          <Typography.Title level={2} id="intake-title">{t('projectDetail.intake.title')}</Typography.Title>
           <Alert
             type="info"
             showIcon
-            message="This requirement is frozen into every workflow run"
-            description="Use a new run or immutable replay for changes; previous outputs stay available."
+            message={t('projectDetail.intake.frozenTitle')}
+            description={t('projectDetail.intake.frozenDescription')}
           />
           <Typography.Paragraph className="requirement-baseline">
             {project?.originalRequirement}
           </Typography.Paragraph>
           <Descriptions size="small" column={{ xs: 1, md: 3 }}>
-            <Descriptions.Item label="Project status">{project?.status}</Descriptions.Item>
-            <Descriptions.Item label="Latest workflow">{latestRun ? `#${latestRun.id}` : 'Not started'}</Descriptions.Item>
-            <Descriptions.Item label="Quality profile">{latestRun?.qualityProfile ?? 'Choose at generation'}</Descriptions.Item>
+            <Descriptions.Item label={t('projectDetail.intake.projectStatus')}>
+              {translateEnum(t, 'status', project?.status)}
+            </Descriptions.Item>
+            <Descriptions.Item label={t('projectDetail.intake.latestWorkflow')}>
+              {latestRun ? `#${latestRun.id}` : t('common.notStarted')}
+            </Descriptions.Item>
+            <Descriptions.Item label={t('projectDetail.intake.qualityProfile')}>
+              {latestRun?.qualityProfile
+                ? translateEnum(t, 'qualityProfile', latestRun.qualityProfile)
+                : t('common.chooseAtGeneration')}
+            </Descriptions.Item>
           </Descriptions>
-          <Button type="primary" onClick={() => setSelectedStage(1)}>Continue to generation</Button>
+          <Button type="primary" onClick={() => setSelectedStage(1)}>{t('projectDetail.intake.continue')}</Button>
         </section>
       ) : null}
 
@@ -289,10 +300,12 @@ function ProjectDetailPage() {
             <Alert
               type={specificationReady ? 'info' : 'warning'}
               showIcon
-              message={specificationReady ? 'Build verification is required' : 'Specification gate is blocked'}
+              message={specificationReady
+                ? t('projectDetail.delivery.buildRequired')
+                : t('projectDetail.delivery.specificationBlocked')}
               description={deliveryReadiness?.blockers.join(' · ')
                 ?? resourceErrors.readiness
-                ?? 'Complete the workflow, approvals, and blocking review findings.'}
+                ?? t('projectDetail.delivery.defaultBlockers')}
             />
           ) : null}
           {specificationReady ? (

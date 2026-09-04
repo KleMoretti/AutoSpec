@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import i18n from '../i18n';
 import {
   type ArtifactResponse,
   type ProjectResponse,
@@ -43,6 +44,20 @@ export interface ProjectDetailLoadResults {
   readiness: PromiseSettledResult<DeliveryReadinessResponse>;
 }
 
+interface ProjectDetailLoadCopy {
+  project: string;
+  artifacts: string;
+  requestFailed: string;
+  refreshFailed: (details: string) => string;
+}
+
+const DEFAULT_LOAD_COPY: ProjectDetailLoadCopy = {
+  project: 'project',
+  artifacts: 'artifacts',
+  requestFailed: 'Request failed',
+  refreshFailed: (details) => `Could not refresh ${details}`
+};
+
 export function createProjectDetailDataState(): ProjectDetailDataState {
   return {
     project: null,
@@ -60,33 +75,34 @@ export function createProjectDetailDataState(): ProjectDetailDataState {
 
 export function applyProjectDetailLoad(
   previous: ProjectDetailDataState,
-  results: ProjectDetailLoadResults
+  results: ProjectDetailLoadResults,
+  copy: ProjectDetailLoadCopy = DEFAULT_LOAD_COPY
 ): ProjectDetailDataState {
   const next = { ...previous, loading: false };
   const coreErrors: string[] = [];
   const resourceErrors: Partial<Record<AuxiliaryResource, string>> = {};
 
   if (results.project.status === 'fulfilled') next.project = results.project.value;
-  else coreErrors.push(`project: ${errorMessage(results.project.reason)}`);
+  else coreErrors.push(`${copy.project}: ${errorMessage(results.project.reason, copy.requestFailed)}`);
   if (results.artifacts.status === 'fulfilled') next.artifacts = results.artifacts.value;
-  else coreErrors.push(`artifacts: ${errorMessage(results.artifacts.reason)}`);
+  else coreErrors.push(`${copy.artifacts}: ${errorMessage(results.artifacts.reason, copy.requestFailed)}`);
 
   if (results.review.status === 'fulfilled') next.review = results.review.value;
-  else resourceErrors.review = errorMessage(results.review.reason);
+  else resourceErrors.review = errorMessage(results.review.reason, copy.requestFailed);
   if (results.approvals.status === 'fulfilled') next.approvals = results.approvals.value;
-  else resourceErrors.approvals = errorMessage(results.approvals.reason);
+  else resourceErrors.approvals = errorMessage(results.approvals.reason, copy.requestFailed);
   if (results.runs.status === 'fulfilled') next.workflowRuns = results.runs.value;
-  else resourceErrors.runs = errorMessage(results.runs.reason);
+  else resourceErrors.runs = errorMessage(results.runs.reason, copy.requestFailed);
   if (results.versions.status === 'fulfilled') next.workflowVersions = results.versions.value;
-  else resourceErrors.versions = errorMessage(results.versions.reason);
+  else resourceErrors.versions = errorMessage(results.versions.reason, copy.requestFailed);
   if (results.readiness.status === 'fulfilled') next.deliveryReadiness = results.readiness.value;
   else {
     next.deliveryReadiness = null;
-    resourceErrors.readiness = errorMessage(results.readiness.reason);
+    resourceErrors.readiness = errorMessage(results.readiness.reason, copy.requestFailed);
   }
 
   next.resourceErrors = resourceErrors;
-  next.error = coreErrors.length > 0 ? `Could not refresh ${coreErrors.join('; ')}` : null;
+  next.error = coreErrors.length > 0 ? copy.refreshFailed(coreErrors.join('; ')) : null;
   return next;
 }
 
@@ -116,7 +132,11 @@ export function useProjectDetailData(projectId: number) {
 
   const reload = useCallback((): Promise<void> => {
     if (!Number.isFinite(projectId)) {
-      setState((current) => ({ ...current, error: 'Invalid project id', loading: false }));
+      setState((current) => ({
+        ...current,
+        error: i18n.t('projectDetail.invalidProjectId'),
+        loading: false
+      }));
       return Promise.resolve();
     }
     if (loadInFlight.current?.projectId === projectId) {
@@ -126,7 +146,7 @@ export function useProjectDetailData(projectId: number) {
     const requestedProjectId = projectId;
     const request = loadProjectDetailResources(projectId).then((results) => {
       if (activeProjectId.current === requestedProjectId) {
-        setState((current) => applyProjectDetailLoad(current, results));
+        setState((current) => applyProjectDetailLoad(current, results, localizedLoadCopy()));
       }
     });
     const tracked = request.finally(() => {
@@ -149,6 +169,15 @@ export function useProjectDetailData(projectId: number) {
   return { ...state, latestRun, reload };
 }
 
-function errorMessage(value: unknown): string {
-  return value instanceof Error ? value.message : 'Request failed';
+function localizedLoadCopy(): ProjectDetailLoadCopy {
+  return {
+    project: i18n.t('resource.project'),
+    artifacts: i18n.t('resource.artifacts'),
+    requestFailed: i18n.t('common.requestFailed'),
+    refreshFailed: (details) => i18n.t('projectDetail.dataRefreshFailed', { details })
+  };
+}
+
+function errorMessage(value: unknown, fallback: string): string {
+  return value instanceof Error ? value.message : fallback;
 }

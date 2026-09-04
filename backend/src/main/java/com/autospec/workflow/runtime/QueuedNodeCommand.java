@@ -35,18 +35,23 @@ public record QueuedNodeCommand(
         @JsonProperty("prompt_key") String promptKey,
         @JsonProperty("prompt_version") String promptVersion,
         @JsonProperty("prompt_checksum") String promptChecksum,
+        @JsonProperty("context_policy") JsonNode contextPolicy,
         @JsonProperty("model_policy") JsonNode modelPolicy,
         @JsonProperty("retry_policy") JsonNode retryPolicy,
         @JsonProperty("fallback") JsonNode fallback,
+        @JsonProperty("tool_policy") JsonNode toolPolicy,
+        @JsonProperty("budget_reservation") WorkflowBudgetReservation budgetReservation,
         @JsonProperty("deadline_epoch_ms") long deadlineEpochMs
 ) {
     private static final Pattern SHA256 = Pattern.compile("^[0-9a-f]{64}$");
 
     public QueuedNodeCommand {
         inputPayload = inputPayload == null ? JsonNodeFactory.instance.objectNode() : inputPayload;
+        contextPolicy = objectOrEmpty(contextPolicy, "contextPolicy");
         modelPolicy = objectOrEmpty(modelPolicy, "modelPolicy");
         retryPolicy = objectOrEmpty(retryPolicy, "retryPolicy");
         fallback = objectOrEmpty(fallback, "fallback");
+        toolPolicy = objectOrEmpty(toolPolicy, "toolPolicy");
         if (!inputPayload.isObject()) {
             throw new IllegalArgumentException("inputPayload must be a JSON object");
         }
@@ -65,8 +70,8 @@ public record QueuedNodeCommand(
             throw new IllegalArgumentException("tracestate must not exceed 512 characters");
         }
         if (contractHash != null) {
-            if (protocolVersion != 1) {
-                throw new IllegalArgumentException("contractHash requires protocolVersion 1");
+            if (protocolVersion < 1 || protocolVersion > 2) {
+                throw new IllegalArgumentException("contractHash requires protocolVersion 1 or 2");
             }
             requireHash(contractHash, "contractHash");
             requireHash(inputSchemaHash, "inputSchemaHash");
@@ -79,7 +84,24 @@ public record QueuedNodeCommand(
             if (deadlineEpochMs < 1) {
                 throw new IllegalArgumentException("deadlineEpochMs must be positive");
             }
-        } else if (protocolVersion < 0 || protocolVersion > 1) {
+            if (protocolVersion >= 2) {
+                if (contextPolicy.isEmpty() || budgetReservation == null) {
+                    throw new IllegalArgumentException(
+                            "protocolVersion 2 requires contextPolicy and budgetReservation"
+                    );
+                }
+                WorkflowBudgetReservation expected = WorkflowBudgetReservation.from(
+                        executionId,
+                        contextPolicy,
+                        modelPolicy
+                );
+                if (!expected.equals(budgetReservation)) {
+                    throw new IllegalArgumentException(
+                            "budgetReservation does not match the frozen execution policy"
+                    );
+                }
+            }
+        } else if (protocolVersion < 0 || protocolVersion > 2) {
             throw new IllegalArgumentException("unsupported protocolVersion: " + protocolVersion);
         }
     }
@@ -113,6 +135,9 @@ public record QueuedNodeCommand(
                 null,
                 null,
                 0,
+                null,
+                null,
+                null,
                 null,
                 null,
                 null,
@@ -171,7 +196,75 @@ public record QueuedNodeCommand(
                 null,
                 null,
                 null,
+                null,
+                null,
+                null,
                 0
+        );
+    }
+
+    public QueuedNodeCommand(
+            String eventId,
+            long workflowRunId,
+            long nodeRunId,
+            String nodeId,
+            int revision,
+            int attempt,
+            String executionId,
+            String handlerKey,
+            String handlerVersion,
+            int timeoutMs,
+            JsonNode inputPayload,
+            String correlationId,
+            String traceparent,
+            String tracestate,
+            int protocolVersion,
+            String contractHash,
+            String inputSchema,
+            String inputSchemaHash,
+            String outputSchema,
+            String outputSchemaHash,
+            String promptKey,
+            String promptVersion,
+            String promptChecksum,
+            JsonNode contextPolicy,
+            JsonNode modelPolicy,
+            JsonNode retryPolicy,
+            JsonNode fallback,
+            WorkflowBudgetReservation budgetReservation,
+            long deadlineEpochMs
+    ) {
+        this(
+                eventId,
+                workflowRunId,
+                nodeRunId,
+                nodeId,
+                revision,
+                attempt,
+                executionId,
+                handlerKey,
+                handlerVersion,
+                timeoutMs,
+                inputPayload,
+                correlationId,
+                traceparent,
+                tracestate,
+                protocolVersion,
+                contractHash,
+                inputSchema,
+                inputSchemaHash,
+                outputSchema,
+                outputSchemaHash,
+                promptKey,
+                promptVersion,
+                promptChecksum,
+                contextPolicy,
+                modelPolicy,
+                retryPolicy,
+                fallback,
+                null,
+                budgetReservation,
+                deadlineEpochMs
         );
     }
 
@@ -223,6 +316,9 @@ public record QueuedNodeCommand(
                     null,
                     null,
                     null,
+                    null,
+                    null,
+                    null,
                     0
             );
         } catch (JsonProcessingException exception) {
@@ -255,6 +351,14 @@ public record QueuedNodeCommand(
                     ? 0
                     : System.currentTimeMillis()
                     + (nodeRun.getTimeoutMs() == null ? 30000 : nodeRun.getTimeoutMs());
+            WorkflowBudgetReservation reservation = contract != null
+                    && contract.protocolVersion() >= 2
+                    ? WorkflowBudgetReservation.from(
+                            executionId,
+                            contract.contextPolicy(),
+                            contract.modelPolicy()
+                    )
+                    : null;
             return new QueuedNodeCommand(
                     eventId,
                     nodeRun.getWorkflowRunId(),
@@ -279,9 +383,12 @@ public record QueuedNodeCommand(
                     contract == null ? null : contract.promptKey(),
                     contract == null ? null : contract.promptVersion(),
                     contract == null ? null : contract.promptChecksum(),
+                    contract == null ? null : contract.contextPolicy(),
                     contract == null ? null : contract.modelPolicy(),
                     contract == null ? null : contract.retryPolicy(),
                     contract == null ? null : contract.fallback(),
+                    contract == null ? null : contract.toolPolicy(),
+                    reservation,
                     deadline
             );
         } catch (JsonProcessingException exception) {

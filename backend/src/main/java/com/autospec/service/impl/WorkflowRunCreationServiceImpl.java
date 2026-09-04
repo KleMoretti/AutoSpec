@@ -80,7 +80,7 @@ public class WorkflowRunCreationServiceImpl implements WorkflowRunCreationServic
         if (duplicate != null) {
             return duplicate;
         }
-        admissionGuard.admit();
+        admissionGuard.admit(command.actorUserId());
         WorkflowVersion version = versionMapper.selectById(command.workflowVersionId());
         if (version == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Workflow version not found");
@@ -105,10 +105,12 @@ public class WorkflowRunCreationServiceImpl implements WorkflowRunCreationServic
                 command.maxWallTimeMs()
         );
         String resolvedInputJson = withExecutionPolicy(command.inputJson(), executionPolicy);
+        resolvedInputJson = withActorMetadata(resolvedInputJson, command.actorUserId());
 
         LocalDateTime now = LocalDateTime.now();
         WorkflowRun run = new WorkflowRun();
         run.setProjectId(command.projectId());
+        run.setInitiatedByUserId(command.actorUserId());
         run.setOperation("GENERATE_V5");
         run.setIdempotencyKey(idempotencyKey);
         run.setCorrelationId(UUID.randomUUID().toString());
@@ -124,6 +126,9 @@ public class WorkflowRunCreationServiceImpl implements WorkflowRunCreationServic
         run.setConsumedTokens(0L);
         run.setConsumedCost(java.math.BigDecimal.ZERO);
         run.setModelCallCount(0);
+        run.setReservedTokens(0L);
+        run.setReservedCost(java.math.BigDecimal.ZERO);
+        run.setReservedModelCalls(0);
         run.setLockVersion(0);
         run.setLastHeartbeatAt(now);
         run.setStatus("RUNNING");
@@ -202,6 +207,20 @@ public class WorkflowRunCreationServiceImpl implements WorkflowRunCreationServic
                     "max_model_calls", executionPolicy.maxModelCalls(),
                     "max_wall_time_ms", executionPolicy.maxWallTimeMs()
             )));
+            return objectMapper.writeValueAsString(root);
+        } catch (JsonProcessingException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid workflow input", exception);
+        }
+    }
+
+    private String withActorMetadata(String inputJson, Long actorUserId) {
+        if (actorUserId == null) {
+            return inputJson;
+        }
+        try {
+            com.fasterxml.jackson.databind.node.ObjectNode root =
+                    (com.fasterxml.jackson.databind.node.ObjectNode) objectMapper.readTree(inputJson);
+            root.put("_autospec_actor_user_id", actorUserId.toString());
             return objectMapper.writeValueAsString(root);
         } catch (JsonProcessingException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid workflow input", exception);

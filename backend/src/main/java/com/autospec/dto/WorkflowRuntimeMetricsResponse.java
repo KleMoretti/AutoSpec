@@ -20,9 +20,14 @@ public record WorkflowRuntimeMetricsResponse(
         BigDecimal maxCost,
         Integer maxModelCalls,
         Long maxWallTimeMs,
+        Long reservedTokens,
+        BigDecimal reservedCost,
+        Integer reservedModelCalls,
         Long remainingTokens,
         BigDecimal remainingCost,
         Integer remainingModelCalls,
-        List<ModelUsageResponse> modelUsage
+        List<ModelUsageResponse> modelUsage,
+        List<WorkflowNodeMetricsResponse> nodeMetrics,
+        List<WorkflowMetricSliceResponse> versionSlices
 ) {
 }

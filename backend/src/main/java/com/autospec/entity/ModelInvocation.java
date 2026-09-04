@@ -23,6 +23,16 @@ public class ModelInvocation {
 
     private Long workflowNodeRunId;
 
+    private String callId;
+
+    private String callType;
+
+    private String executionId;
+
+    private Integer callSequence;
+
+    private Integer attempt;
+
     private String correlationId;
 
     private String providerKey;
@@ -51,6 +61,8 @@ public class ModelInvocation {
 
     private String contractHash;
 
+    private String schemaVersion;
+
     private String routeKey;
 
     private String routeReason;
@@ -60,6 +72,36 @@ public class ModelInvocation {
     private String contextManifestJson;
 
     private Integer callCount;
+
+    private Integer reservedInputTokens;
+
+    private Integer reservedOutputTokens;
+
+    private BigDecimal reservedCost;
+
+    private Integer settlementDeltaTokens;
+
+    private BigDecimal settlementDeltaCost;
+
+    private String normalizedParamsHash;
+
+    private String resultHash;
+
+    private String errorCode;
+
+    private Long deadlineEpochMs;
+
+    private String idempotencyKey;
+
+    private String toolName;
+
+    private String toolVersion;
+
+    private String permissionPolicy;
+
+    private String referenceSourcesJson;
+
+    private String redactedParamsJson;
 
     private BigDecimal estimatedCost;
 

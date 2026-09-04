@@ -4,6 +4,7 @@ import com.autospec.entity.KnowledgeDocument;
 import com.autospec.entity.KnowledgeChunk;
 
 public record KnowledgeSourceResponse(
+        Long projectId,
         Long artifactId,
         String artifactType,
         String title,
@@ -13,8 +14,50 @@ public record KnowledgeSourceResponse(
         String citationLocation,
         String content,
         String retrievalStrategy,
-        Double relevanceScore
+        String chunkerVersion,
+        String embeddingModel,
+        String artifactContentHash,
+        String chunkContentHash,
+        Double relevanceScore,
+        String corpusType
 ) {
+
+    public KnowledgeSourceResponse(
+            Long projectId,
+            Long artifactId,
+            String artifactType,
+            String title,
+            Integer artifactVersion,
+            Long chunkId,
+            Integer chunkIndex,
+            String citationLocation,
+            String content,
+            String retrievalStrategy,
+            String chunkerVersion,
+            String embeddingModel,
+            String artifactContentHash,
+            String chunkContentHash,
+            Double relevanceScore
+    ) {
+        this(
+                projectId,
+                artifactId,
+                artifactType,
+                title,
+                artifactVersion,
+                chunkId,
+                chunkIndex,
+                citationLocation,
+                content,
+                retrievalStrategy,
+                chunkerVersion,
+                embeddingModel,
+                artifactContentHash,
+                chunkContentHash,
+                relevanceScore,
+                null
+        );
+    }
 
     public KnowledgeSourceResponse(
             Long artifactId,
@@ -24,6 +67,7 @@ public record KnowledgeSourceResponse(
             String content
     ) {
         this(
+                null,
                 artifactId,
                 artifactType,
                 title,
@@ -33,17 +77,65 @@ public record KnowledgeSourceResponse(
                 null,
                 content,
                 null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+        );
+    }
+
+    public KnowledgeSourceResponse(
+            Long artifactId,
+            String artifactType,
+            String title,
+            Integer artifactVersion,
+            Long chunkId,
+            Integer chunkIndex,
+            String citationLocation,
+            String content,
+            String retrievalStrategy,
+            Double relevanceScore
+    ) {
+        this(
+                null,
+                artifactId,
+                artifactType,
+                title,
+                artifactVersion,
+                chunkId,
+                chunkIndex,
+                citationLocation,
+                content,
+                retrievalStrategy,
+                null,
+                null,
+                null,
+                null,
+                relevanceScore,
                 null
         );
     }
 
     public static KnowledgeSourceResponse from(KnowledgeDocument document, String content) {
         return new KnowledgeSourceResponse(
+                document.getProjectId(),
                 document.getArtifactId(),
                 document.getArtifactType(),
                 document.getTitle(),
                 document.getArtifactVersion(),
-                content
+                null,
+                null,
+                null,
+                content,
+                null,
+                document.getChunkerVersion(),
+                document.getEmbeddingModel(),
+                document.getContentHash(),
+                null,
+                null,
+                document.getCorpusType()
         );
     }
 
@@ -54,6 +146,7 @@ public record KnowledgeSourceResponse(
             double relevanceScore
     ) {
         return new KnowledgeSourceResponse(
+                document.getProjectId(),
                 document.getArtifactId(),
                 document.getArtifactType(),
                 document.getTitle(),
@@ -63,7 +156,12 @@ public record KnowledgeSourceResponse(
                 "chunk[" + chunk.getChunkIndex() + "]",
                 chunk.getContent(),
                 retrievalStrategy,
-                relevanceScore
+                document.getChunkerVersion(),
+                document.getEmbeddingModel(),
+                document.getContentHash(),
+                chunk.getContentHash(),
+                relevanceScore,
+                document.getCorpusType()
         );
     }
 }

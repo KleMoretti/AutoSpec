@@ -18,17 +18,21 @@ public record WorkflowNodeDocument(
         String promptKey,
         String promptVersion,
         String promptChecksum,
+        JsonNode contextPolicy,
         JsonNode modelPolicy,
         JsonNode retryPolicy,
         JsonNode fallback,
+        JsonNode toolPolicy,
         int timeoutMs
 ) {
     public WorkflowNodeDocument {
         dependsOn = dependsOn == null ? List.of() : List.copyOf(dependsOn);
         approval = approval == null ? WorkflowApprovalDocument.none() : approval;
+        contextPolicy = objectOrEmpty(contextPolicy, "context_policy");
         modelPolicy = objectOrEmpty(modelPolicy, "model_policy");
         retryPolicy = objectOrEmpty(retryPolicy, "retry_policy");
         fallback = objectOrEmpty(fallback, "fallback");
+        toolPolicy = objectOrEmpty(toolPolicy, "tool_policy");
     }
 
     public WorkflowNodeDocument(
@@ -49,6 +53,8 @@ public record WorkflowNodeDocument(
                 null,
                 null,
                 artifactType,
+                null,
+                null,
                 null,
                 null,
                 null,

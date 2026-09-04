@@ -10,6 +10,8 @@ import com.autospec.mapper.WorkflowRunMapper;
 import com.autospec.service.ProjectService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.assertj.core.groups.Tuple;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -44,6 +46,9 @@ class ReworkPlanExecutionServiceTest {
 
     @Autowired
     private WorkflowOutboxMapper outboxMapper;
+
+    @Autowired
+    private ObjectMapper objectMapper;
 
     @Test
     void atomicallyInvalidatesAffectedRevisionsCreatesNewOnesAndQueuesTarget() {
@@ -101,6 +106,67 @@ class ReworkPlanExecutionServiceTest {
                     assertThat(outbox.getPayloadJson()).contains("\"node_id\":\"backend\"");
                     assertThat(outbox.getPayloadJson()).contains("\"revision\":2");
                 });
+    }
+
+    @Test
+    void freezesRouteSpecificReviewerFeedbackInOnlyTheTargetRevision() throws Exception {
+        WorkflowRun run = persistCompletedWorkflow(false, 0, 2);
+        JsonNode reviewerOutput = objectMapper.readTree("""
+                {
+                  "decision":"REWORK",
+                  "issues":[{
+                    "issue_id":"ISS-API-AUTH",
+                    "severity":"HIGH",
+                    "artifact_path":"backend.apis[0].roles",
+                    "description":"The API has no project role guard",
+                    "suggestion":"Add explicit project roles",
+                    "evidence":["REQ-AUTH requires project isolation"]
+                  }],
+                  "routes":[{
+                    "target_node":"backend",
+                    "issue_ids":["ISS-API-AUTH"],
+                    "required_changes":["Add OWNER and EDITOR roles without changing API IDs"],
+                    "invalidate_downstream":true
+                  }]
+                }
+                """);
+
+        service.execute(run.getId(), "reviewer", List.of("backend"), reviewerOutput);
+
+        WorkflowNodeRun backendRevision = latest(run.getId(), "backend");
+        JsonNode input = objectMapper.readTree(backendRevision.getInputJson());
+        JsonNode directive = input.path("rework_directive");
+        assertThat(backendRevision.getRevision()).isEqualTo(2);
+        assertThat(directive.path("review_round").asInt()).isEqualTo(1);
+        assertThat(directive.path("target_node").asText()).isEqualTo("backend");
+        assertThat(directive.path("reviewer_node_run_id").asLong()).isPositive();
+        assertThat(directive.path("reviewer_output_hash").asText()).hasSize(64);
+        assertThat(directive.path("directive_hash").asText()).hasSize(64);
+        assertThat(directive.path("issue_ids").get(0).asText()).isEqualTo("ISS-API-AUTH");
+        assertThat(directive.path("required_changes").get(0).asText())
+                .contains("OWNER", "EDITOR");
+        assertThat(directive.path("evidence_paths").get(0).asText())
+                .isEqualTo("backend.apis[0].roles");
+        assertThat(directive.path("allowed_change_scope").path("mode").asText())
+                .isEqualTo("ISSUE_SCOPED");
+        assertThat(directive.path("preservation_policy").path("preserved_node_ids"))
+                .anySatisfy(value -> assertThat(value.asText()).isEqualTo("architect"))
+                .anySatisfy(value -> assertThat(value.asText()).isEqualTo("frontend"));
+        assertThat(directive.path("invalidated_downstream_node_ids"))
+                .anySatisfy(value -> assertThat(value.asText()).isEqualTo("reviewer"))
+                .anySatisfy(value -> assertThat(value.asText()).isEqualTo("evaluator"));
+        assertThat(directive.path("previous_artifact").path("content_hash").asText())
+                .hasSize(64);
+
+        assertThat(objectMapper.readTree(latest(run.getId(), "reviewer").getInputJson())
+                .has("rework_directive")).isFalse();
+        assertThat(objectMapper.readTree(latest(run.getId(), "evaluator").getInputJson())
+                .has("rework_directive")).isFalse();
+        assertThat(outboxMapper.selectList(new QueryWrapper<WorkflowOutbox>()
+                .eq("aggregate_id", run.getId().toString())))
+                .singleElement()
+                .satisfies(outbox -> assertThat(outbox.getPayloadJson())
+                        .contains("rework_directive", "ISS-API-AUTH"));
     }
 
     @Test
@@ -209,6 +275,14 @@ class ReworkPlanExecutionServiceTest {
             nodeRunMapper.insert(nodeRun);
         }
         return workflowRun;
+    }
+
+    private WorkflowNodeRun latest(Long runId, String nodeId) {
+        return nodeRunMapper.selectOne(new LambdaQueryWrapper<WorkflowNodeRun>()
+                .eq(WorkflowNodeRun::getWorkflowRunId, runId)
+                .eq(WorkflowNodeRun::getNodeId, nodeId)
+                .orderByDesc(WorkflowNodeRun::getRevision)
+                .last("limit 1"));
     }
 
     private String snapshot() {

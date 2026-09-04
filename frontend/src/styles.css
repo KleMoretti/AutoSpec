@@ -39,6 +39,25 @@ body {
   border-bottom: 1px solid var(--autospec-border);
 }
 
+.header-actions {
+  flex-shrink: 0;
+}
+
+.language-switcher {
+  width: 116px;
+  min-height: 44px;
+}
+
+.language-switcher .ant-select-selector {
+  min-height: 44px;
+  align-items: center;
+}
+
+.app-header .ant-btn:not(.ant-btn-sm) {
+  min-width: 44px;
+  min-height: 44px;
+}
+
 .brand {
   display: inline-flex;
   align-items: center;
@@ -420,6 +439,14 @@ label:has(.replay-select) {
 }
 
 @media (max-width: 720px) {
+  .app-header {
+    padding: 0 12px;
+  }
+
+  .header-projects-label {
+    display: none;
+  }
+
   .workspace {
     width: min(100% - 24px, 1120px);
     padding-top: 20px;

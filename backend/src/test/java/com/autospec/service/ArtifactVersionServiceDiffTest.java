@@ -19,7 +19,7 @@ class ArtifactVersionServiceDiffTest {
     @Mock
     private ProjectService projectService;
     @Mock
-    private KnowledgeIndexService knowledgeIndexService;
+    private ArtifactApprovalOutboxService approvalOutboxService;
 
     private ArtifactVersionService versionService;
 
@@ -28,7 +28,7 @@ class ArtifactVersionServiceDiffTest {
         versionService = new ArtifactVersionService(
                 artifactService,
                 projectService,
-                knowledgeIndexService,
+                approvalOutboxService,
                 new ObjectMapper()
         );
     }

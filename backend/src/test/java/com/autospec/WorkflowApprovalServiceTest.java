@@ -174,6 +174,36 @@ class WorkflowApprovalServiceTest {
         WorkflowNodeRun storedNode = nodeRunMapper.selectById(fixture.approvalNode().getId());
         assertThat(storedNode.getStatus()).isEqualTo("SUCCEEDED");
         assertThat(storedNode.getOutputJson()).isEqualTo(edited);
+        assertThat(artifactOutboxes(revised.getId()))
+                .singleElement()
+                .satisfies(outbox -> {
+                    assertThat(outbox.getEventType()).isEqualTo("ARTIFACT_APPROVED");
+                    assertThat(outbox.getPayloadJson())
+                            .contains("\"artifact_id\":" + revised.getId())
+                            .contains("structured-text-900-120-v1");
+                });
+    }
+
+    @Test
+    void approvePublishesTheSameArtifactApprovalOutboxEvent() {
+        Fixture fixture = fixture("AFTER_NODE", "WAITING_APPROVAL", true);
+
+        approvalService.decide(
+                fixture.approval().getId(),
+                0,
+                decision("APPROVE", "approve-artifact-" + UUID.randomUUID(), null, null)
+        );
+
+        Artifact approved = artifactMapper.selectById(fixture.candidateArtifact().getId());
+        assertThat(approved.getStatus()).isEqualTo("APPROVED");
+        assertThat(artifactOutboxes(approved.getId()))
+                .singleElement()
+                .satisfies(outbox -> {
+                    assertThat(outbox.getEventType()).isEqualTo("ARTIFACT_APPROVED");
+                    assertThat(outbox.getStatus()).isEqualTo("PENDING");
+                    assertThat(outbox.getPayloadJson())
+                            .contains("\"artifact_id\":" + approved.getId());
+                });
     }
 
     @Test
@@ -383,6 +413,12 @@ class WorkflowApprovalServiceTest {
     private List<WorkflowOutbox> outboxes(long runId) {
         return outboxMapper.selectList(new QueryWrapper<WorkflowOutbox>()
                 .eq("aggregate_id", Long.toString(runId)));
+    }
+
+    private List<WorkflowOutbox> artifactOutboxes(long artifactId) {
+        return outboxMapper.selectList(new QueryWrapper<WorkflowOutbox>()
+                .eq("aggregate_id", "artifact:" + artifactId)
+                .eq("event_type", "ARTIFACT_APPROVED"));
     }
 
     private WorkflowApprovalService.ApprovalDecision decision(

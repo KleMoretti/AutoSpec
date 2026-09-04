@@ -1,12 +1,14 @@
 import { CheckCircleOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
 import { Alert, Button, Card, Input, Popconfirm, Space, Tag, Typography } from 'antd';
 import { useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { ArtifactResponse } from '../api/projects';
 import type {
   ApprovalDecisionPayload,
   WorkflowApprovalDecision,
   WorkflowApprovalResponse
 } from '../api/workflow';
+import { translateEnum } from '../i18n/formatters';
 
 interface WorkflowApprovalPanelProps {
   approvals: WorkflowApprovalResponse[];
@@ -20,15 +22,8 @@ interface ApprovalCardProps {
   onDecide: WorkflowApprovalPanelProps['onDecide'];
 }
 
-const actionLabels: Record<WorkflowApprovalDecision, string> = {
-  APPROVE: 'Approve',
-  REJECT: 'Reject',
-  EDIT_AND_APPROVE: 'Edit and approve',
-  ROLLBACK_TO_NODE: 'Rollback to node',
-  CANCEL_WORKFLOW: 'Cancel workflow'
-};
-
 function WorkflowApprovalPanel({ approvals, artifacts, onDecide }: WorkflowApprovalPanelProps) {
+  const { t } = useTranslation();
   const artifactContents = useMemo(
     () => new Map(artifacts.map((artifact) => [artifact.id, artifact.content])),
     [artifacts]
@@ -44,7 +39,7 @@ function WorkflowApprovalPanel({ approvals, artifacts, onDecide }: WorkflowAppro
         <Space>
           <SafetyCertificateOutlined />
           <Typography.Title level={3} id="workflow-approvals-title">
-            Workflow approvals
+            {t('approval.title')}
           </Typography.Title>
         </Space>
         {approvals.map((approval) => (
@@ -61,6 +56,7 @@ function WorkflowApprovalPanel({ approvals, artifacts, onDecide }: WorkflowAppro
 }
 
 function ApprovalCard({ approval, candidateContent, onDecide }: ApprovalCardProps) {
+  const { t } = useTranslation();
   const [selectedAction, setSelectedAction] = useState<WorkflowApprovalDecision | null>(null);
   const [reason, setReason] = useState('');
   const [editedContent, setEditedContent] = useState(candidateContent);
@@ -97,8 +93,8 @@ function ApprovalCard({ approval, candidateContent, onDecide }: ApprovalCardProp
       title={
         <Space wrap>
           <Typography.Text strong>{approval.nodeId}</Typography.Text>
-          <Tag>{approval.mode}</Tag>
-          <Tag color={completed ? 'green' : 'gold'}>{approval.status}</Tag>
+          <Tag>{translateEnum(t, 'approvalMode', approval.mode)}</Tag>
+          <Tag color={completed ? 'green' : 'gold'}>{translateEnum(t, 'status', approval.status)}</Tag>
         </Space>
       }
     >
@@ -107,15 +103,17 @@ function ApprovalCard({ approval, candidateContent, onDecide }: ApprovalCardProp
           type="success"
           showIcon
           icon={<CheckCircleOutlined />}
-          message={`Decision completed: ${approval.decision ?? 'UNKNOWN'}`}
+          message={t('approval.completed', {
+            decision: translateEnum(t, 'approvalAction', approval.decision, t('common.unknown'))
+          })}
           description={approval.decisionReason}
         />
       ) : (
         <Space direction="vertical" size={12} className="full-width">
           <Typography.Text className="muted">
-            Choose one of the actions permitted by this workflow version.
+            {t('approval.instruction')}
           </Typography.Text>
-          <Space wrap aria-label={`Allowed actions for ${approval.nodeId}`}>
+          <Space wrap aria-label={t('approval.allowedActionsLabel', { node: approval.nodeId })}>
             {approval.allowedActions.map((action) => (
               <Button
                 key={action}
@@ -124,13 +122,13 @@ function ApprovalCard({ approval, candidateContent, onDecide }: ApprovalCardProp
                 disabled={submitting}
                 onClick={() => setSelectedAction(action)}
               >
-                {actionLabels[action]}
+                {translateEnum(t, 'approvalAction', action)}
               </Button>
             ))}
           </Space>
           {selectedAction === 'EDIT_AND_APPROVE' ? (
             <Input.TextArea
-              aria-label="Edited artifact JSON"
+              aria-label={t('approval.editedArtifactLabel')}
               className="json-editor"
               value={editedContent}
               autoSize={{ minRows: 8, maxRows: 18 }}
@@ -139,16 +137,16 @@ function ApprovalCard({ approval, candidateContent, onDecide }: ApprovalCardProp
           ) : null}
           {selectedAction === 'ROLLBACK_TO_NODE' ? (
             <Input
-              aria-label="Rollback node id"
-              placeholder="Target node id"
+              aria-label={t('approval.rollbackNodeLabel')}
+              placeholder={t('approval.rollbackNodePlaceholder')}
               value={rollbackNodeId}
               onChange={(event) => setRollbackNodeId(event.target.value)}
             />
           ) : null}
           {selectedAction ? (
             <Input.TextArea
-              aria-label="Decision reason"
-              placeholder="Reason (optional)"
+              aria-label={t('approval.reasonLabel')}
+              placeholder={t('approval.reasonPlaceholder')}
               value={reason}
               autoSize={{ minRows: 2, maxRows: 5 }}
               onChange={(event) => setReason(event.target.value)}
@@ -156,13 +154,13 @@ function ApprovalCard({ approval, candidateContent, onDecide }: ApprovalCardProp
           ) : null}
           {selectedAction === 'CANCEL_WORKFLOW' ? (
             <Popconfirm
-              title="Cancel this workflow run?"
-              description="Queued and pending nodes will no longer be scheduled."
-              okText="Cancel workflow"
+              title={t('approval.cancelTitle')}
+              description={t('approval.cancelDescription')}
+              okText={t('approval.cancelConfirm')}
               okButtonProps={{ danger: true }}
               onConfirm={() => void submit()}
             >
-              <Button danger loading={submitting}>Confirm cancellation</Button>
+              <Button danger loading={submitting}>{t('approval.confirmCancellation')}</Button>
             </Popconfirm>
           ) : selectedAction ? (
             <Button
@@ -171,7 +169,7 @@ function ApprovalCard({ approval, candidateContent, onDecide }: ApprovalCardProp
               disabled={selectedAction === 'ROLLBACK_TO_NODE' && !rollbackNodeId.trim()}
               onClick={() => void submit()}
             >
-              Submit decision
+              {t('approval.submit')}
             </Button>
           ) : null}
         </Space>

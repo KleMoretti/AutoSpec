@@ -17,7 +17,7 @@ CONTRACT_MIGRATION = (
     / "resources"
     / "db"
     / "migration"
-    / "V82__refresh_autospec_v5_executable_contract.sql"
+    / "V86__publish_autospec_v5_harness_h1_contract.sql"
 )
 
 
@@ -31,7 +31,7 @@ def main() -> int:
         re.DOTALL,
     )
     if match is None:
-        print("Unable to locate the autospec-v5 JSON update in V82", file=sys.stderr)
+        print("Unable to locate the autospec-v5 JSON update in V86", file=sys.stderr)
         return 1
     seeded = json.loads(match.group(1))
     if seeded != canonical:

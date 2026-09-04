@@ -75,17 +75,44 @@ public class WorkflowRunReconciliationService implements WorkflowRunReconciliati
             return node != null && ("SUCCEEDED".equals(node.getStatus()) || "SKIPPED".equals(node.getStatus()));
         });
         boolean failed = latest.values().stream().anyMatch(node -> "FAILED".equals(node.getStatus()));
+        boolean active = latest.values().stream().anyMatch(node -> java.util.Set.of(
+                "QUEUED", "RUNNING", "RETRY_WAIT", "FALLBACK_READY", "ORPHANED"
+        ).contains(node.getStatus()));
+        if (failed && active) {
+            return;
+        }
         if (!complete && !failed) {
             return;
         }
         java.time.LocalDateTime now = java.time.LocalDateTime.now();
+        String responseStatus = complete
+                ? "COMPLETED"
+                : latest.values().stream().anyMatch(node ->
+                "BUDGET_PREAUTH_FAILED".equals(node.getErrorCode()))
+                ? "BUDGET_EXCEEDED"
+                : "FAILED";
         workflowRunMapper.update(null, new LambdaUpdateWrapper<WorkflowRun>()
                 .eq(WorkflowRun::getId, run.getId())
                 .eq(WorkflowRun::getStatus, "RUNNING")
                 .set(WorkflowRun::getStatus, complete ? "COMPLETED" : "FAILED")
-                .set(WorkflowRun::getResponseStatus, complete ? "COMPLETED" : "FAILED")
+                .set(WorkflowRun::getResponseStatus, responseStatus)
+                .set(!complete, WorkflowRun::getReservedTokens, 0L)
+                .set(!complete, WorkflowRun::getReservedCost, java.math.BigDecimal.ZERO)
+                .set(!complete, WorkflowRun::getReservedModelCalls, 0)
                 .set(complete, WorkflowRun::getResponsePercent, 100)
                 .set(WorkflowRun::getCompletedAt, now)
                 .set(WorkflowRun::getUpdatedAt, now));
+        if (failed) {
+            nodeRunMapper.update(null, new LambdaUpdateWrapper<WorkflowNodeRun>()
+                    .eq(WorkflowNodeRun::getWorkflowRunId, run.getId())
+                    .in(WorkflowNodeRun::getStatus,
+                            "PENDING", "READY", "WAITING_APPROVAL", "STALE")
+                    .set(WorkflowNodeRun::getStatus, "CANCELLED")
+                    .set(WorkflowNodeRun::getErrorCode, responseStatus)
+                    .set(WorkflowNodeRun::getErrorMessage,
+                            "Parent workflow run reached a terminal failure")
+                    .set(WorkflowNodeRun::getFinishedAt, now)
+                    .set(WorkflowNodeRun::getUpdatedAt, now));
+        }
     }
 }

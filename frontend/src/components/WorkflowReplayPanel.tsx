@@ -1,6 +1,7 @@
 import { BranchesOutlined, HistoryOutlined, PlayCircleOutlined, StopOutlined } from '@ant-design/icons';
 import { Alert, Button, Card, Collapse, Descriptions, Progress, Select, Space, Tag, Timeline, Typography } from 'antd';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import type {
   WorkflowNodeRunResponse,
   WorkflowReplayPayload,
@@ -9,6 +10,7 @@ import type {
   WorkflowRuntimeMetricsResponse,
   WorkflowVersionResponse
 } from '../api/workflow';
+import { formatDateTime, formatNumber, formatUsd, translateEnum } from '../i18n/formatters';
 
 interface WorkflowReplayPanelProps {
   projectId: number;
@@ -43,6 +45,7 @@ function WorkflowReplayPanel({
   onLoadTimeline,
   onLoadMetrics
 }: WorkflowReplayPanelProps) {
+  const { t, i18n } = useTranslation();
   const [startVersionId, setStartVersionId] = useState<number | undefined>();
   const [qualityProfile, setQualityProfile] = useState<'FAST' | 'BALANCED' | 'DEEP'>('BALANCED');
   const [sourceRunId, setSourceRunId] = useState<number | undefined>(runs.at(-1)?.id);
@@ -140,8 +143,18 @@ function WorkflowReplayPanel({
     ]);
     if (requestId !== timelineRequest.current) return;
     const errors: string[] = [];
-    if (nodeResult.status === 'rejected') errors.push(`nodes: ${errorMessage(nodeResult.reason)}`);
-    if (metricsResult.status === 'rejected') errors.push(`metrics: ${errorMessage(metricsResult.reason)}`);
+    if (nodeResult.status === 'rejected') {
+      errors.push(t('workflow.runtimeErrorPart', {
+        resource: t('workflow.nodesResource'),
+        reason: errorMessage(nodeResult.reason, t('common.requestFailed'))
+      }));
+    }
+    if (metricsResult.status === 'rejected') {
+      errors.push(t('workflow.runtimeErrorPart', {
+        resource: t('workflow.metricsResource'),
+        reason: errorMessage(metricsResult.reason, t('common.requestFailed'))
+      }));
+    }
     setTimeline({
       runId,
       nodes: nodeResult.status === 'fulfilled' ? nodeResult.value : [],
@@ -149,7 +162,7 @@ function WorkflowReplayPanel({
       loading: false,
       error: errors.length > 0 ? errors.join(' · ') : null
     });
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     if (!timeline.runId || !selectedTimelineRun || !isActive(selectedTimelineRun.status)) {
@@ -174,18 +187,18 @@ function WorkflowReplayPanel({
       <Space direction="vertical" size={16} className="full-width">
         <Space>
           <HistoryOutlined />
-          <Typography.Title level={3} id="workflow-replay-title">Generate, review, and replay</Typography.Title>
+          <Typography.Title level={3} id="workflow-replay-title">{t('workflow.title')}</Typography.Title>
         </Space>
-        <Card size="small" title="Start from a published workflow">
+        <Card size="small" title={t('workflow.startCardTitle')}>
           <Space wrap align="end">
             <label>
-              <Typography.Text strong>Published version</Typography.Text>
+              <Typography.Text strong>{t('workflow.publishedVersion')}</Typography.Text>
               <Select
-                aria-label="Start workflow version"
+                aria-label={t('workflow.startVersionLabel')}
                 className="replay-select"
                 value={startVersionId}
                 onChange={setStartVersionId}
-                placeholder="Choose version"
+                placeholder={t('workflow.chooseVersion')}
                 options={publishedVersions.map((version) => ({
                   value: version.id,
                   label: `${version.version} · #${version.id}`
@@ -193,16 +206,16 @@ function WorkflowReplayPanel({
               />
             </label>
             <label>
-              <Typography.Text strong>Quality profile</Typography.Text>
+              <Typography.Text strong>{t('workflow.qualityProfile')}</Typography.Text>
               <Select
-                aria-label="Workflow quality profile"
+                aria-label={t('workflow.qualityProfileLabel')}
                 className="replay-select"
                 value={qualityProfile}
                 onChange={setQualityProfile}
                 options={[
-                  { value: 'FAST', label: 'Fast · 5 min / 50k tokens' },
-                  { value: 'BALANCED', label: 'Balanced · 15 min / 150k tokens' },
-                  { value: 'DEEP', label: 'Deep · 45 min / 500k tokens' }
+                  { value: 'FAST', label: t('workflow.fastOption') },
+                  { value: 'BALANCED', label: t('workflow.balancedOption') },
+                  { value: 'DEEP', label: t('workflow.deepOption') }
                 ]}
               />
             </label>
@@ -213,54 +226,54 @@ function WorkflowReplayPanel({
               disabled={!startVersionId || !requirement.trim()}
               onClick={() => void submitStart()}
             >
-              Generate specification
+              {t('workflow.generate')}
             </Button>
           </Space>
           {publishedVersions.length === 0 ? (
-            <Alert type="warning" showIcon message="No published autospec-v5 version is available." />
+            <Alert type="warning" showIcon message={t('workflow.noPublishedVersion')} />
           ) : null}
         </Card>
         {startResult ? (
-          <Alert type="success" showIcon message={`Workflow run #${startResult.id} started`} />
+          <Alert type="success" showIcon message={t('workflow.runStarted', { id: startResult.id })} />
         ) : null}
         {runs.length > 0 ? (
-          <Card size="small" title="Create an immutable replay">
+          <Card size="small" title={t('workflow.replayCardTitle')}>
             <Space wrap align="end">
             <label>
-              <Typography.Text strong>Source run</Typography.Text>
+              <Typography.Text strong>{t('workflow.sourceRun')}</Typography.Text>
               <Select
-                aria-label="Source workflow run"
+                aria-label={t('workflow.sourceRunLabel')}
                 className="replay-select"
                 value={sourceRunId}
                 onChange={setSourceRunId}
                 options={runs.map((run) => ({
                   value: run.id,
-                  label: `#${run.id} · ${run.status}${run.replayOfRunId ? ` · replay of #${run.replayOfRunId}` : ''}`
+                  label: `#${run.id} · ${translateEnum(t, 'status', run.status)}${run.replayOfRunId ? ` · ${t('workflow.replayOf', { id: run.replayOfRunId })}` : ''}`
                 }))}
               />
             </label>
             <label>
-              <Typography.Text strong>Replay mode</Typography.Text>
+              <Typography.Text strong>{t('workflow.replayMode')}</Typography.Text>
               <Select
-                aria-label="Replay mode"
+                aria-label={t('workflow.replayModeLabel')}
                 className="replay-select"
                 value={mode}
                 onChange={setMode}
                 options={[
-                  { value: 'ORIGINAL_SNAPSHOT', label: 'Original snapshot' },
-                  { value: 'SELECTED_VERSION', label: 'Selected version' }
+                  { value: 'ORIGINAL_SNAPSHOT', label: translateEnum(t, 'replayMode', 'ORIGINAL_SNAPSHOT') },
+                  { value: 'SELECTED_VERSION', label: translateEnum(t, 'replayMode', 'SELECTED_VERSION') }
                 ]}
               />
             </label>
             {mode === 'SELECTED_VERSION' ? (
               <label>
-                <Typography.Text strong>Published version</Typography.Text>
+                <Typography.Text strong>{t('workflow.publishedVersion')}</Typography.Text>
                 <Select
-                  aria-label="Published workflow version"
+                  aria-label={t('workflow.publishedVersionLabel')}
                   className="replay-select"
                   value={selectedVersionId}
                   onChange={setSelectedVersionId}
-                  placeholder="Choose version"
+                  placeholder={t('workflow.chooseVersion')}
                   options={publishedVersions.map((version) => ({
                     value: version.id,
                     label: `${version.version} · #${version.id}`
@@ -275,14 +288,14 @@ function WorkflowReplayPanel({
               disabled={!sourceRunId || (mode === 'SELECTED_VERSION' && !selectedVersionId)}
               onClick={() => void submitReplay()}
             >
-              Start replay
+              {t('workflow.startReplay')}
             </Button>
             <Button
               icon={<HistoryOutlined />}
               disabled={!sourceRunId}
               onClick={() => sourceRunId && void loadTimeline(sourceRunId)}
             >
-              View timeline
+              {t('workflow.viewTimeline')}
             </Button>
             </Space>
           </Card>
@@ -291,10 +304,10 @@ function WorkflowReplayPanel({
           <Alert
             type="success"
             showIcon
-            message={`Replay #${result.id} created from run #${result.replayOfRunId}`}
+            message={t('workflow.replayCreated', { id: result.id, sourceId: result.replayOfRunId })}
             description={
               <Button type="link" className="inline-link" onClick={() => void loadTimeline(result.id)}>
-                Open new run timeline
+                {t('workflow.openNewTimeline')}
               </Button>
             }
           />
@@ -303,7 +316,7 @@ function WorkflowReplayPanel({
           defaultActiveKey={['runtime-details']}
           items={[{
             key: 'runtime-details',
-            label: 'Runtime details and recovery',
+            label: t('workflow.runtimeDetails'),
             children: (
               <Space direction="vertical" size={16} className="full-width">
                 <div className="workflow-run-grid">
@@ -311,25 +324,28 @@ function WorkflowReplayPanel({
                     <Card size="small" key={run.id}>
                       <Space direction="vertical" size={8} className="full-width">
                         <Space wrap>
-                          <Typography.Text strong>Run #{run.id}</Typography.Text>
-                          <Tag color={statusColor(run.status)}>{run.status}</Tag>
-                          {run.qualityProfile ? <Tag>{run.qualityProfile}</Tag> : null}
-                          {run.replayOfRunId ? <Tag icon={<BranchesOutlined />}>from #{run.replayOfRunId}</Tag> : null}
+                          <Typography.Text strong>{t('workflow.run', { id: run.id })}</Typography.Text>
+                          <Tag color={statusColor(run.status)}>{translateEnum(t, 'status', run.status)}</Tag>
+                          {run.qualityProfile ? <Tag>{translateEnum(t, 'qualityProfile', run.qualityProfile)}</Tag> : null}
+                          {run.replayOfRunId ? <Tag icon={<BranchesOutlined />}>{t('workflow.fromRun', { id: run.replayOfRunId })}</Tag> : null}
                         </Space>
                         <Typography.Text className="muted">
-                          {run.operation} · version #{run.workflowVersionId ?? 'snapshot'}
+                          {t('workflow.operationVersion', {
+                            operation: run.operation,
+                            version: run.workflowVersionId ?? t('common.snapshot')
+                          })}
                         </Typography.Text>
                         {run.errorMessage ? (
                           <Alert
                             type="error"
                             showIcon
-                            message="Run failed"
+                            message={t('workflow.runFailed')}
                             description={run.errorMessage}
                           />
                         ) : null}
                         <Space wrap>
                           <Button type="link" className="inline-link" onClick={() => void loadTimeline(run.id)}>
-                            View timeline and usage
+                            {t('workflow.viewTimelineUsage')}
                           </Button>
                           {run.status === 'RUNNING' ? (
                             <Button
@@ -338,7 +354,7 @@ function WorkflowReplayPanel({
                               loading={cancellingRunId === run.id}
                               onClick={() => void cancelRun(run.id)}
                             >
-                              Cancel run
+                              {t('workflow.cancelRun')}
                             </Button>
                           ) : null}
                         </Space>
@@ -347,14 +363,19 @@ function WorkflowReplayPanel({
                   ))}
                 </div>
                 {timeline.runId ? (
-                  <Card id="workflow-run-timeline" size="small" title={`Run #${timeline.runId} timeline`} loading={timeline.loading}>
+                  <Card
+                    id="workflow-run-timeline"
+                    size="small"
+                    title={t('workflow.timelineTitle', { id: timeline.runId })}
+                    loading={timeline.loading}
+                  >
                     {timeline.error ? (
                       <Alert
                         type="error"
                         showIcon
-                        message="Runtime details could not be loaded completely"
+                        message={t('workflow.runtimeLoadFailed')}
                         description={timeline.error}
-                        action={<Button size="small" onClick={() => void loadTimeline(timeline.runId as number)}>Retry</Button>}
+                        action={<Button size="small" onClick={() => void loadTimeline(timeline.runId as number)}>{t('common.retry')}</Button>}
                       />
                     ) : null}
                     {selectedTimelineRun?.errorMessage ? (
@@ -368,21 +389,21 @@ function WorkflowReplayPanel({
                     {timeline.metrics ? (
                       <>
                         <Descriptions size="small" column={{ xs: 1, sm: 2, md: 4 }} className="workflow-metrics">
-                          <Descriptions.Item label="Queue time">{timeline.metrics.queueTimeMs} ms</Descriptions.Item>
-                          <Descriptions.Item label="Execution">{timeline.metrics.executionDurationMs} ms</Descriptions.Item>
-                          <Descriptions.Item label="Retries / recoveries">{timeline.metrics.retryCount} / {timeline.metrics.recoveryCount}</Descriptions.Item>
-                          <Descriptions.Item label="Tokens / cache">{timeline.metrics.tokenCount} / {timeline.metrics.cacheTokenCount}</Descriptions.Item>
-                          <Descriptions.Item label="Model calls">{timeline.metrics.modelCallCount}</Descriptions.Item>
-                          <Descriptions.Item label="Estimated cost">${Number(timeline.metrics.estimatedCost).toFixed(6)}</Descriptions.Item>
-                          <Descriptions.Item label="Duplicate events">{timeline.metrics.acceptedDuplicateEventCount}</Descriptions.Item>
-                          <Descriptions.Item label="Profile">{timeline.metrics.qualityProfile ?? '--'}</Descriptions.Item>
+                          <Descriptions.Item label={t('workflow.metrics.queueTime')}>{formatNumber(timeline.metrics.queueTimeMs, i18n.resolvedLanguage)} ms</Descriptions.Item>
+                          <Descriptions.Item label={t('workflow.metrics.execution')}>{formatNumber(timeline.metrics.executionDurationMs, i18n.resolvedLanguage)} ms</Descriptions.Item>
+                          <Descriptions.Item label={t('workflow.metrics.retriesRecoveries')}>{formatNumber(timeline.metrics.retryCount, i18n.resolvedLanguage)} / {formatNumber(timeline.metrics.recoveryCount, i18n.resolvedLanguage)}</Descriptions.Item>
+                          <Descriptions.Item label={t('workflow.metrics.tokensCache')}>{formatNumber(timeline.metrics.tokenCount, i18n.resolvedLanguage)} / {formatNumber(timeline.metrics.cacheTokenCount, i18n.resolvedLanguage)}</Descriptions.Item>
+                          <Descriptions.Item label={t('workflow.metrics.modelCalls')}>{formatNumber(timeline.metrics.modelCallCount, i18n.resolvedLanguage)}</Descriptions.Item>
+                          <Descriptions.Item label={t('workflow.metrics.estimatedCost')}>{formatUsd(Number(timeline.metrics.estimatedCost), i18n.resolvedLanguage, 6)}</Descriptions.Item>
+                          <Descriptions.Item label={t('workflow.metrics.duplicateEvents')}>{formatNumber(timeline.metrics.acceptedDuplicateEventCount, i18n.resolvedLanguage)}</Descriptions.Item>
+                          <Descriptions.Item label={t('workflow.metrics.profile')}>{translateEnum(t, 'qualityProfile', timeline.metrics.qualityProfile)}</Descriptions.Item>
                         </Descriptions>
                         {timeline.metrics.maxTokens ? (
                           <div className="budget-progress">
-                            <Typography.Text>Token budget</Typography.Text>
+                            <Typography.Text>{t('workflow.metrics.tokenBudget')}</Typography.Text>
                             <Progress
                               percent={Math.min(100, Math.round(timeline.metrics.tokenCount / timeline.metrics.maxTokens * 100))}
-                              format={() => `${timeline.metrics?.tokenCount.toLocaleString()} / ${timeline.metrics?.maxTokens?.toLocaleString()}`}
+                              format={() => `${formatNumber(timeline.metrics?.tokenCount ?? 0, i18n.resolvedLanguage)} / ${formatNumber(timeline.metrics?.maxTokens ?? 0, i18n.resolvedLanguage)}`}
                             />
                           </div>
                         ) : null}
@@ -392,28 +413,60 @@ function WorkflowReplayPanel({
                             type="info"
                             showIcon
                             message={`${usage.providerKey} / ${usage.modelName}`}
-                            description={`${usage.modelCallCount} calls · ${usage.inputTokens + usage.outputTokens} tokens · $${Number(usage.estimatedCost).toFixed(6)}`}
+                            description={t('workflow.metrics.usage', {
+                              calls: formatNumber(usage.modelCallCount, i18n.resolvedLanguage),
+                              tokens: formatNumber(usage.inputTokens + usage.outputTokens, i18n.resolvedLanguage),
+                              cost: formatUsd(Number(usage.estimatedCost), i18n.resolvedLanguage, 6)
+                            })}
                           />
                         ))}
+                        {timeline.metrics.nodeMetrics?.length ? (
+                          <Card size="small" title={t('workflow.metrics.nodeBreakdown')}>
+                            <Space direction="vertical" size={8} className="full-width">
+                              {timeline.metrics.nodeMetrics.map((node) => (
+                                <Descriptions key={node.nodeId} size="small" column={{ xs: 1, sm: 2, md: 4 }}>
+                                  <Descriptions.Item label={t('workflow.node.node')}>{node.nodeId}</Descriptions.Item>
+                                  <Descriptions.Item label={t('workflow.metrics.queueP95')}>{formatNumber(node.queueP95Ms, i18n.resolvedLanguage)} ms</Descriptions.Item>
+                                  <Descriptions.Item label={t('workflow.metrics.executionP95')}>{formatNumber(node.executionP95Ms, i18n.resolvedLanguage)} ms</Descriptions.Item>
+                                  <Descriptions.Item label={t('workflow.metrics.retries')}>{formatNumber(node.retryCount, i18n.resolvedLanguage)}</Descriptions.Item>
+                                  <Descriptions.Item label={t('workflow.metrics.tokens')}>{formatNumber(node.tokenCount, i18n.resolvedLanguage)}</Descriptions.Item>
+                                  <Descriptions.Item label={t('workflow.metrics.cost')}>{formatUsd(Number(node.estimatedCost), i18n.resolvedLanguage, 6)}</Descriptions.Item>
+                                  <Descriptions.Item label={t('workflow.node.status')}>{node.latestStatus ? translateEnum(t, 'status', node.latestStatus) : '—'}</Descriptions.Item>
+                                </Descriptions>
+                              ))}
+                            </Space>
+                          </Card>
+                        ) : null}
+                        {timeline.metrics.versionSlices?.length ? (
+                          <Card size="small" title={t('workflow.metrics.versionSlices')}>
+                            <Space wrap>
+                              {timeline.metrics.versionSlices.map((slice) => (
+                                <Tag key={`${slice.dimension}-${slice.key}-${slice.version}`}>
+                                  {slice.dimension} · {slice.key} · {slice.version} · {formatNumber(slice.invocationCount, i18n.resolvedLanguage)} · P95 {formatNumber(slice.p95DurationMs, i18n.resolvedLanguage)} ms
+                                </Tag>
+                              ))}
+                            </Space>
+                          </Card>
+                        ) : null}
                       </>
                     ) : null}
                     {timeline.nodes.length === 0 && !timeline.loading && !timeline.error ? (
-                      <Typography.Text className="muted">No node attempts recorded.</Typography.Text>
+                      <Typography.Text className="muted">{t('workflow.noNodeAttempts')}</Typography.Text>
                     ) : (
                       <Timeline
                         items={timeline.nodes.map((node) => ({
                           color: statusColor(node.status),
                           children: (
                             <Descriptions size="small" column={{ xs: 1, sm: 2, md: 3 }}>
-                              <Descriptions.Item label="Node">{node.nodeId}</Descriptions.Item>
-                              <Descriptions.Item label="Status"><Tag>{node.status}</Tag></Descriptions.Item>
-                              <Descriptions.Item label="Revision / attempt">{node.revision} / {node.attempt}</Descriptions.Item>
-                              <Descriptions.Item label="Handler">{node.handlerKey}:{node.handlerVersion}</Descriptions.Item>
-                              <Descriptions.Item label="Worker">{node.workerId ?? 'unassigned'}</Descriptions.Item>
-                              <Descriptions.Item label="Duration">{formatDuration(node.startedAt, node.finishedAt)}</Descriptions.Item>
-                              <Descriptions.Item label="Last heartbeat">{node.heartbeatAt ?? '—'}</Descriptions.Item>
-                              {node.errorCode ? <Descriptions.Item label="Error code">{node.errorCode}</Descriptions.Item> : null}
-                              {node.errorMessage ? <Descriptions.Item label="Failure" span={3}>{node.errorMessage}</Descriptions.Item> : null}
+                              <Descriptions.Item label={t('workflow.node.node')}>{node.nodeId}</Descriptions.Item>
+                              <Descriptions.Item label={t('workflow.node.status')}><Tag>{translateEnum(t, 'status', node.status)}</Tag></Descriptions.Item>
+                              <Descriptions.Item label={t('workflow.node.revisionAttempt')}>{formatNumber(node.revision, i18n.resolvedLanguage)} / {formatNumber(node.attempt, i18n.resolvedLanguage)}</Descriptions.Item>
+                              <Descriptions.Item label={t('workflow.node.handler')}>{node.handlerKey}:{node.handlerVersion}</Descriptions.Item>
+                              <Descriptions.Item label={t('workflow.node.worker')}>{node.workerId ?? t('common.unassigned')}</Descriptions.Item>
+                              <Descriptions.Item label={t('workflow.node.duration')}>{formatDuration(node.startedAt, node.finishedAt)}</Descriptions.Item>
+                              <Descriptions.Item label={t('workflow.node.lastHeartbeat')}>{node.heartbeatAt ? formatDateTime(node.heartbeatAt, i18n.resolvedLanguage) : '—'}</Descriptions.Item>
+                              {node.errorCode ? <Descriptions.Item label={t('workflow.node.errorCode')}>{node.errorCode}</Descriptions.Item> : null}
+                              {node.errorMessage ? <Descriptions.Item label={t('workflow.node.failure')} span={3}>{node.errorMessage}</Descriptions.Item> : null}
                             </Descriptions>
                           )
                         }))}
@@ -477,8 +530,8 @@ function isActive(status: string): boolean {
   return status === 'RUNNING' || status === 'PENDING' || status === 'QUEUED';
 }
 
-function errorMessage(value: unknown): string {
-  return value instanceof Error ? value.message : 'Request failed';
+function errorMessage(value: unknown, fallback: string): string {
+  return value instanceof Error ? value.message : fallback;
 }
 
 function createReplayKey(): string {
