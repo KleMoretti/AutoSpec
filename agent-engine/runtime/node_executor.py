@@ -12,6 +12,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, ValidationError, field_validator, model_validator
 
 from runtime.handler_registry import HandlerRegistry, UnknownHandlerError
+from runtime.concurrency import ConcurrencyController
 from runtime.execution_context import (
     ModelExecutionContract,
     bind_model_execution_contract,
@@ -21,7 +22,19 @@ from runtime.model_telemetry import (
     capture_model_invocations,
     summarize_model_invocations,
 )
-from schemas.workflow_spec import ContextPolicy, FallbackPolicy, ModelPolicy, RetryPolicy
+from runtime.tool_harness import (
+    ToolHarness,
+    ToolRegistry,
+    ToolRuntimeContext,
+    bind_tool_runtime_context,
+)
+from schemas.workflow_spec import (
+    ContextPolicy,
+    FallbackPolicy,
+    ModelPolicy,
+    RetryPolicy,
+    ToolPolicy,
+)
 
 
 TRACEPARENT_PATTERN = re.compile(
@@ -162,6 +175,7 @@ class NodeCommand(TraceContextEnvelope):
     model_policy: dict[str, Any] = Field(default_factory=dict)
     retry_policy: dict[str, Any] = Field(default_factory=dict)
     fallback: dict[str, Any] = Field(default_factory=dict)
+    tool_policy: dict[str, Any] = Field(default_factory=dict)
     budget_reservation: BudgetReservation | None = None
     deadline_epoch_ms: int = Field(default=0, ge=0)
     fencing_token: int = Field(default=0, ge=0)
@@ -169,6 +183,8 @@ class NodeCommand(TraceContextEnvelope):
 
     @model_validator(mode="after")
     def validate_contract_envelope(self) -> "NodeCommand":
+        if self.tool_policy:
+            ToolPolicy.model_validate(self.tool_policy)
         if self.protocol_version == 0:
             if self.contract_hash is not None:
                 raise ValueError("contract_hash requires protocol_version 1")
@@ -311,8 +327,15 @@ class NodeExecutionEvent(TraceContextEnvelope):
 
 
 class NodeExecutor:
-    def __init__(self, registry: HandlerRegistry) -> None:
+    def __init__(
+        self,
+        registry: HandlerRegistry,
+        tool_harness: ToolHarness | None = None,
+        concurrency: ConcurrencyController | None = None,
+    ) -> None:
         self._registry = registry
+        self._tool_harness = tool_harness or ToolHarness(ToolRegistry())
+        self._concurrency = concurrency
 
     async def execute(self, command: NodeCommand) -> NodeExecutionEvent:
         started = perf_counter()
@@ -336,52 +359,79 @@ class NodeExecutor:
                 "node command deadline elapsed before execution",
             )
 
+        execution_payload = dict(command.input_payload)
+        raw_user_key = execution_payload.pop("_autospec_actor_user_id", None)
+        user_key = None if raw_user_key is None else str(raw_user_key)
         try:
-            validated_input = registration.input_model.model_validate(command.input_payload)
+            validated_input = registration.input_model.model_validate(execution_payload)
         except ValidationError as exception:
             return self._failure(command, started, "VALIDATION_ERROR", str(exception))
 
         execution_contract = self._model_execution_contract(command)
+        tool_policy = ToolPolicy.model_validate(command.tool_policy or {})
+        tool_context = ToolRuntimeContext(
+            execution_id=command.execution_id,
+            node_id=command.node_id,
+            attempt=command.attempt,
+            policy=tool_policy,
+            deadline_epoch_ms=(
+                command.deadline_epoch_ms if command.deadline_epoch_ms > 0 else None
+            ),
+            contract_hash=command.contract_hash,
+            schema_version=command.output_schema,
+            harness=self._tool_harness,
+        )
         with bind_model_execution_contract(execution_contract):
-            with capture_model_invocations(
-                execution_id=command.execution_id,
-                attempt=command.attempt,
-                max_model_calls=(
-                    int(command.model_policy.get("max_calls", 1))
-                    if command.protocol_version >= 2
-                    else None
-                ),
-                deadline_epoch_ms=(
-                    command.deadline_epoch_ms if command.deadline_epoch_ms > 0 else None
-                ),
-            ) as invocations, capture_context_manifests() as manifests:
-                try:
-                    raw_output = await asyncio.wait_for(
-                        self._invoke(registration.handler, validated_input),
-                        timeout=remaining_ms / 1000,
-                    )
-                except asyncio.TimeoutError:
-                    timeout_message = (
-                        f"node exceeded timeout of {command.timeout_ms} ms"
-                        if command.deadline_epoch_ms <= 0
-                        else f"node exceeded execution deadline after {remaining_ms} ms"
-                    )
-                    return self._failure(
-                        command,
-                        started,
-                        "MODEL_TIMEOUT",
-                        timeout_message,
-                        self._metadata(invocations, manifests),
-                    )
-                except Exception as exception:  # noqa: BLE001 - converted to runtime envelope.
-                    return self._failure(
-                        command,
-                        started,
-                        getattr(exception, "error_code", "HANDLER_ERROR"),
-                        str(exception),
-                        self._metadata(invocations, manifests),
-                    )
-                usage = self._metadata(invocations, manifests)
+            with bind_tool_runtime_context(tool_context):
+                with capture_model_invocations(
+                    execution_id=command.execution_id,
+                    attempt=command.attempt,
+                    max_model_calls=(
+                        int(command.model_policy.get("max_calls", 1))
+                        if command.protocol_version >= 2
+                        else None
+                    ),
+                    deadline_epoch_ms=(
+                        command.deadline_epoch_ms if command.deadline_epoch_ms > 0 else None
+                    ),
+                ) as invocations, capture_context_manifests() as manifests:
+                    try:
+                        if self._concurrency is None:
+                            raw_output = await asyncio.wait_for(
+                                self._invoke(registration.handler, validated_input),
+                                timeout=remaining_ms / 1000,
+                            )
+                        else:
+                            async with self._concurrency.hold(
+                                user_key=user_key,
+                                requires_model=bool(command.model_policy),
+                            ):
+                                raw_output = await asyncio.wait_for(
+                                    self._invoke(registration.handler, validated_input),
+                                    timeout=remaining_ms / 1000,
+                                )
+                    except asyncio.TimeoutError:
+                        timeout_message = (
+                            f"node exceeded timeout of {command.timeout_ms} ms"
+                            if command.deadline_epoch_ms <= 0
+                            else f"node exceeded execution deadline after {remaining_ms} ms"
+                        )
+                        return self._failure(
+                            command,
+                            started,
+                            "MODEL_TIMEOUT",
+                            timeout_message,
+                            self._metadata(invocations, manifests),
+                        )
+                    except Exception as exception:  # noqa: BLE001 - converted to runtime envelope.
+                        return self._failure(
+                            command,
+                            started,
+                            getattr(exception, "error_code", "HANDLER_ERROR"),
+                            str(exception),
+                            self._metadata(invocations, manifests),
+                        )
+                    usage = self._metadata(invocations, manifests)
 
         try:
             validated_output = registration.output_model.model_validate(raw_output)
@@ -516,6 +566,7 @@ class NodeExecutor:
             retry_policy=dict(command.retry_policy),
             fallback_policy=dict(command.fallback),
             schema_version=command.output_schema,
+            tool_policy=dict(command.tool_policy),
         )
 
     def _execution_metadata(
@@ -569,6 +620,8 @@ def contract_fingerprint(command: NodeCommand) -> str:
     }
     if command.protocol_version >= 2:
         material["context_policy"] = command.context_policy
+        if command.tool_policy:
+            material["tool_policy"] = command.tool_policy
     canonical = json.dumps(
         material,
         ensure_ascii=False,

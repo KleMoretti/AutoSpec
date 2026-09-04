@@ -22,6 +22,7 @@ class ModelExecutionContract:
     retry_policy: dict[str, Any] = field(default_factory=dict)
     fallback_policy: dict[str, Any] = field(default_factory=dict)
     schema_version: str | None = None
+    tool_policy: dict[str, Any] = field(default_factory=dict)
 
 
 _CONTRACT: ContextVar[ModelExecutionContract | None] = ContextVar(

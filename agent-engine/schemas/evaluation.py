@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -18,15 +18,28 @@ EvaluationDimension = Literal[
 ]
 
 
-class EvaluationCase(BaseModel):
+class EvalCase(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     case_id: str = Field(min_length=1)
     title: str = Field(min_length=1)
     requirement: str = Field(min_length=1)
+    dataset_version: str = Field(default="autospec-v5-eval-v1", min_length=1)
+    resume_profile: dict[str, Any] = Field(default_factory=dict)
+    target_position: str | None = Field(default=None, min_length=1)
     expected_capabilities: list[str] = Field(default_factory=list)
+    expected_question_type: list[str] = Field(default_factory=list)
+    gold_rubric: dict[str, float] = Field(default_factory=dict)
+    bad_question_cases: list[str] = Field(default_factory=list)
+    expected_tools: list[str] = Field(default_factory=list)
+    expected_routes: list[str] = Field(default_factory=list)
+    expected_stop_condition: str | None = Field(default=None, min_length=1)
     required_artifact_types: list[str] = Field(default_factory=list)
     scoring_dimensions: list[EvaluationDimension] = Field(default_factory=list)
+
+
+# Keep the existing public name used by the V5 evaluator and catalog.
+EvaluationCase = EvalCase
 
 
 class EvaluationIssue(BaseModel):
@@ -139,3 +152,43 @@ class ExperimentComparisonReport(BaseModel):
     rankings: list[ExperimentRun] = Field(min_length=1)
     comparisons: list[ExperimentComparison] = Field(default_factory=list)
     issues: list[EvaluationIssue] = Field(default_factory=list)
+
+
+class MetricSnapshot(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    agent: dict[str, float | None] = Field(default_factory=dict)
+    business: dict[str, float | None] = Field(default_factory=dict)
+    rag: dict[str, float | None] = Field(default_factory=dict)
+    engineering: dict[str, float | None] = Field(default_factory=dict)
+
+
+class EvalCaseResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    case_id: str = Field(min_length=1)
+    status: Literal["SUCCEEDED", "PARTIAL", "FAILED"]
+    overall_score: float = Field(ge=0, le=100)
+    completed_nodes: int = Field(default=0, ge=0)
+    failed_nodes: int = Field(default=0, ge=0)
+    skill_coverage: float = Field(default=0.0, ge=0, le=1)
+    trace_id: str = Field(min_length=1)
+    trace: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class EvalRun(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: str = Field(min_length=1)
+    dataset_version: str = Field(min_length=1)
+    workflow_key: str = Field(min_length=1)
+    workflow_version: str = Field(min_length=1)
+    baseline_run_id: str | None = Field(default=None, min_length=1)
+    code_version: str = Field(min_length=1)
+    model_versions: dict[str, str] = Field(default_factory=dict)
+    prompt_versions: dict[str, str] = Field(default_factory=dict)
+    started_at_epoch_ms: int = Field(ge=0)
+    duration_ms: int = Field(ge=0)
+    status: Literal["SUCCEEDED", "PARTIAL", "FAILED"]
+    metrics: MetricSnapshot
+    case_results: list[EvalCaseResult] = Field(default_factory=list)

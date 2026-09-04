@@ -349,7 +349,11 @@ def _rag_citation_score(
     issues: list[EvaluationIssue],
 ) -> EvaluationDimensionScore:
     text = f"{requirement} {_prd_text(prd)}".lower()
-    needs_sources = any(term in text for term in ["history", "historical", "rag", "reuse"])
+    needs_sources = (
+        any(term in text for term in ["history", "historical", "rag", "reuse"])
+        or bool(retrieved_sources)
+        or bool(prd.source_citations)
+    )
     if needs_sources and not _has_valid_retrieved_source(retrieved_sources):
         issues.append(
             EvaluationIssue(

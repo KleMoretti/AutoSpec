@@ -3,9 +3,11 @@ package com.autospec.workflow.runtime;
 import com.autospec.entity.Artifact;
 import com.autospec.entity.WorkflowNodeRun;
 import com.autospec.entity.WorkflowRun;
+import com.autospec.entity.WorkflowTransition;
 import com.autospec.mapper.ArtifactMapper;
 import com.autospec.mapper.WorkflowNodeRunMapper;
 import com.autospec.mapper.WorkflowRunMapper;
+import com.autospec.mapper.WorkflowTransitionMapper;
 import com.autospec.util.ContentHash;
 import com.autospec.workflow.transport.WorkflowRunReconciliationTrigger;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
@@ -15,6 +17,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,6 +40,32 @@ public class ReworkPlanExecutionService {
     private final WorkflowSchedulingGateway schedulingGateway;
     private final WorkflowRunReconciliationTrigger reconciliationTrigger;
     private final ObjectMapper objectMapper;
+    private final WorkflowTransitionMapper transitionMapper;
+
+    @Autowired
+    public ReworkPlanExecutionService(
+            WorkflowRunMapper workflowRunMapper,
+            WorkflowNodeRunMapper nodeRunMapper,
+            ArtifactMapper artifactMapper,
+            WorkflowSnapshotParser snapshotParser,
+            DagCompiler dagCompiler,
+            ReworkPlanner reworkPlanner,
+            WorkflowSchedulingGateway schedulingGateway,
+            WorkflowRunReconciliationTrigger reconciliationTrigger,
+            ObjectMapper objectMapper,
+            WorkflowTransitionMapper transitionMapper
+    ) {
+        this.workflowRunMapper = workflowRunMapper;
+        this.nodeRunMapper = nodeRunMapper;
+        this.artifactMapper = artifactMapper;
+        this.snapshotParser = snapshotParser;
+        this.dagCompiler = dagCompiler;
+        this.reworkPlanner = reworkPlanner;
+        this.schedulingGateway = schedulingGateway;
+        this.reconciliationTrigger = reconciliationTrigger;
+        this.objectMapper = objectMapper;
+        this.transitionMapper = transitionMapper;
+    }
 
     public ReworkPlanExecutionService(
             WorkflowRunMapper workflowRunMapper,
@@ -49,15 +78,18 @@ public class ReworkPlanExecutionService {
             WorkflowRunReconciliationTrigger reconciliationTrigger,
             ObjectMapper objectMapper
     ) {
-        this.workflowRunMapper = workflowRunMapper;
-        this.nodeRunMapper = nodeRunMapper;
-        this.artifactMapper = artifactMapper;
-        this.snapshotParser = snapshotParser;
-        this.dagCompiler = dagCompiler;
-        this.reworkPlanner = reworkPlanner;
-        this.schedulingGateway = schedulingGateway;
-        this.reconciliationTrigger = reconciliationTrigger;
-        this.objectMapper = objectMapper;
+        this(
+                workflowRunMapper,
+                nodeRunMapper,
+                artifactMapper,
+                snapshotParser,
+                dagCompiler,
+                reworkPlanner,
+                schedulingGateway,
+                reconciliationTrigger,
+                objectMapper,
+                null
+        );
     }
 
     @Transactional
@@ -94,6 +126,12 @@ public class ReworkPlanExecutionService {
                 reviewRound,
                 maxReviewRounds
         );
+        recordRouteDecision(
+                workflowRun,
+                latestRuns.get(reviewerNodeId),
+                triggerPayload,
+                plan
+        );
 
         if (plan.action() == ReworkPlanner.Action.MANUAL_INTERVENTION) {
             moveToManualIntervention(workflowRun);
@@ -123,6 +161,60 @@ public class ReworkPlanExecutionService {
 
         reconciliationTrigger.reconcile(workflowRunId);
         return plan;
+    }
+
+    private void recordRouteDecision(
+            WorkflowRun workflowRun,
+            WorkflowNodeRun reviewerRun,
+            JsonNode triggerPayload,
+            ReworkPlanner.ReworkPlan plan
+    ) {
+        if (transitionMapper == null || triggerPayload == null
+                || !triggerPayload.path("routes").isArray()) {
+            return;
+        }
+        ObjectNode metadata = objectMapper.createObjectNode();
+        metadata.put("route_action", plan.action().name());
+        metadata.put("reviewer_output_hash", ContentHash.sha256(triggerPayload.toString()));
+        ArrayNode routes = metadata.putArray("routes");
+        triggerPayload.path("routes").forEach(route -> {
+            ObjectNode decision = routes.addObject();
+            decision.put("target_node", route.path("target_node").asText());
+            ArrayNode issueIds = decision.putArray("issue_ids");
+            route.path("issue_ids").forEach(issue -> issueIds.add(issue.asText()));
+            ArrayNode requiredChanges = decision.putArray("required_changes");
+            route.path("required_changes").forEach(change -> requiredChanges.add(change.asText()));
+            decision.put("reason", routeReason(route));
+        });
+        WorkflowTransition transition = new WorkflowTransition();
+        transition.setWorkflowRunId(workflowRun.getId());
+        transition.setNodeRunId(reviewerRun == null ? null : reviewerRun.getId());
+        transition.setFromStatus(workflowRun.getStatus());
+        transition.setToStatus(plan.action() == ReworkPlanner.Action.MANUAL_INTERVENTION
+                ? "MANUAL_INTERVENTION"
+                : "REWORK_PLAN_APPLIED");
+        transition.setEventType("AGENT_ROUTE_DECIDED");
+        transition.setEventId(UUID.randomUUID().toString());
+        try {
+            transition.setMetadataJson(objectMapper.writeValueAsString(metadata));
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Unable to serialize agent route decision", exception);
+        }
+        transition.setCreatedAt(LocalDateTime.now());
+        transitionMapper.insert(transition);
+    }
+
+    private List<String> iterableStrings(JsonNode values) {
+        List<String> result = new java.util.ArrayList<>();
+        values.forEach(value -> result.add(value.asText()));
+        return result;
+    }
+
+    private String routeReason(JsonNode route) {
+        String reason = "Issue-scoped rework for " + route.path("target_node").asText()
+                + "; required changes: "
+                + String.join(", ", iterableStrings(route.path("required_changes")));
+        return reason.length() > 1000 ? reason.substring(0, 1000) : reason;
     }
 
     private void validateReworkConditions(

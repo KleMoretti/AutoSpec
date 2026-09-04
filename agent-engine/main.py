@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from evaluation.case_catalog import list_evaluation_cases
+from evaluation.retrieval import fixture_retrieval_evaluation
 from review.experiments import compare_experiment_runs
 from schemas.evaluation import ExperimentRun
 
@@ -42,6 +43,12 @@ def health() -> dict[str, str]:
 @app.get("/evaluation/cases")
 def evaluation_cases() -> list[dict]:
     return [case.model_dump() for case in list_evaluation_cases()]
+
+
+@app.get("/evaluation/retrieval")
+def retrieval_evaluation() -> dict:
+    """Return the independent deterministic hybrid-retrieval baseline."""
+    return fixture_retrieval_evaluation().model_dump(mode="json")
 
 
 @app.post("/experiments/compare")

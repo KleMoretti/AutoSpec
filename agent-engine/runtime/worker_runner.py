@@ -27,6 +27,7 @@ class WorkflowWorkerRunner:
         batch_size: int = 1,
         dead_letter_stream: str = COMMAND_DLQ_STREAM,
         metrics: WorkerMetricsRecorder = NO_OP_WORKER_METRICS,
+        max_concurrency: int = 1,
     ) -> None:
         self._client = client
         self._worker = worker
@@ -37,6 +38,7 @@ class WorkflowWorkerRunner:
         self._claim_idle_ms = claim_idle_ms
         self._read_block_ms = read_block_ms
         self._batch_size = batch_size
+        self._max_concurrency = max(1, min(max_concurrency, 100))
         self._metrics = metrics
 
     async def run_once(self) -> int:
@@ -60,30 +62,48 @@ class WorkflowWorkerRunner:
                 self._batch_size,
             )
         messages = [*reclaimed, *fresh]
-        for message in messages:
-            started_at = self._metrics.command_started()
-            outcome = "failed"
-            try:
-                await self._worker.process(message)
-            except InvalidWorkflowCommandError as error:
-                await self._client.publish_dead_letter(
-                    self._dead_letter_stream,
-                    self._command_stream,
-                    message,
-                    error,
-                )
-                await self._client.acknowledge(
-                    self._command_stream,
-                    self._consumer_group,
-                    message.message_id,
-                )
-                self._metrics.record_dead_letter()
-                outcome = "dead_lettered"
-            else:
-                outcome = "processed"
-            finally:
-                self._metrics.command_finished(started_at, outcome)
+        if self._max_concurrency == 1 or len(messages) < 2:
+            for message in messages:
+                await self._process_message(message)
+        else:
+            limiter = asyncio.Semaphore(self._max_concurrency)
+
+            async def bounded(message):
+                async with limiter:
+                    await self._process_message(message)
+
+            outcomes = await asyncio.gather(
+                *(bounded(message) for message in messages),
+                return_exceptions=True,
+            )
+            for outcome in outcomes:
+                if isinstance(outcome, BaseException):
+                    raise outcome
         return len(messages)
+
+    async def _process_message(self, message) -> None:
+        started_at = self._metrics.command_started()
+        outcome = "failed"
+        try:
+            await self._worker.process(message)
+        except InvalidWorkflowCommandError as error:
+            await self._client.publish_dead_letter(
+                self._dead_letter_stream,
+                self._command_stream,
+                message,
+                error,
+            )
+            await self._client.acknowledge(
+                self._command_stream,
+                self._consumer_group,
+                message.message_id,
+            )
+            self._metrics.record_dead_letter()
+            outcome = "dead_lettered"
+        else:
+            outcome = "processed"
+        finally:
+            self._metrics.command_finished(started_at, outcome)
 
     async def run_forever(self, retry_delay_seconds: float = 1.0) -> None:
         self._metrics.worker_started()

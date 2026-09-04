@@ -9,6 +9,7 @@ from uuid import uuid4
 from prometheus_client import start_http_server
 
 from model_gateway import build_model_client
+from runtime.concurrency import ConcurrencyController
 from runtime.node_executor import NodeExecutor
 from runtime.production_handlers import build_production_registry
 from runtime.redis_stream_client import (
@@ -48,7 +49,13 @@ def build_runner(
     )
     worker = WorkflowStreamWorker(
         client,
-        NodeExecutor(build_production_registry(build_model_client())),
+        NodeExecutor(
+            build_production_registry(build_model_client()),
+            concurrency=ConcurrencyController(
+                global_llm_limit=int(os.getenv("WORKER_GLOBAL_LLM_CONCURRENCY", "2")),
+                per_user_limit=int(os.getenv("WORKER_PER_USER_CONCURRENCY", "1")),
+            ),
+        ),
         heartbeat_interval_seconds=float(os.getenv("WORKER_HEARTBEAT_SECONDS", "10")),
         consumer_name=consumer_name,
         metrics=metrics,
@@ -61,7 +68,8 @@ def build_runner(
         dead_letter_stream=os.getenv("WORKER_DLQ_STREAM", COMMAND_DLQ_STREAM),
         claim_idle_ms=int(os.getenv("WORKER_CLAIM_IDLE_MS", "120000")),
         read_block_ms=int(os.getenv("WORKER_READ_BLOCK_MS", "5000")),
-        batch_size=int(os.getenv("WORKER_BATCH_SIZE", "1")),
+        batch_size=int(os.getenv("WORKER_BATCH_SIZE", "2")),
+        max_concurrency=int(os.getenv("WORKER_MAX_CONCURRENCY", "2")),
         metrics=metrics,
     ), client
 

@@ -78,6 +78,45 @@ class RetryPolicy(BaseModel):
     retryable_errors: list[str] = Field(default_factory=list)
 
 
+class ToolRef(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1)
+    version: str = Field(min_length=1)
+
+
+class ToolPolicy(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    version: str = Field(default="tools-v1", min_length=1)
+    enabled: bool = False
+    allowed_tools: list[ToolRef] = Field(default_factory=list)
+    max_calls: int = Field(default=0, ge=0, le=32)
+    per_call_timeout_ms: int = Field(default=5_000, ge=100, le=600_000)
+    total_timeout_ms: int = Field(default=30_000, ge=100, le=900_000)
+    max_result_bytes: int = Field(default=32_000, ge=256, le=1_000_000)
+    allowed_side_effects: list[str] = Field(
+        default_factory=lambda: ["READ_ONLY", "DETERMINISTIC"]
+    )
+    permission_policy: str = Field(default="workflow", min_length=1)
+    retry_policy: RetryPolicy = Field(default_factory=RetryPolicy)
+
+    @model_validator(mode="after")
+    def validate_policy(self) -> "ToolPolicy":
+        keys = [(tool.name, tool.version) for tool in self.allowed_tools]
+        if len(keys) != len(set(keys)):
+            raise ValueError("allowed_tools must not contain duplicate name/version pairs")
+        if self.enabled and (not self.allowed_tools or self.max_calls < 1):
+            raise ValueError("enabled tool policy requires an allowlist and max_calls")
+        if self.total_timeout_ms < self.per_call_timeout_ms:
+            raise ValueError("total_timeout_ms must cover one tool call")
+        if not set(self.allowed_side_effects).issubset(
+            {"READ_ONLY", "DETERMINISTIC", "WRITE"}
+        ):
+            raise ValueError("unsupported tool side effect level")
+        return self
+
+
 class WorkflowRuntimePolicy(BaseModel):
     model_config = ConfigDict(extra="forbid")
     max_parallel_nodes: int = Field(default=1, ge=1, le=32)
@@ -157,6 +196,7 @@ class WorkflowNodeSpec(BaseModel):
     model_policy: ModelPolicy
     retry_policy: RetryPolicy
     timeout_ms: int = Field(default=30000, ge=1000)
+    tool_policy: ToolPolicy = Field(default_factory=ToolPolicy)
     requires_human_approval: bool = False
     depends_on: list[str] = Field(default_factory=list)
     approval: ApprovalPolicy = Field(default_factory=ApprovalPolicy)
@@ -214,6 +254,10 @@ class WorkflowSpec(BaseModel):
 
         if self.protocol_version in {1, 2}:
             for node in self.nodes:
+                if self.protocol_version < 2 and node.tool_policy.model_dump(exclude_defaults=True):
+                    raise ValueError(
+                        f"node {node.node_id} tool_policy requires protocol_version 2"
+                    )
                 missing = [
                     name
                     for name, value in {

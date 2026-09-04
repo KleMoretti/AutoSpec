@@ -22,6 +22,7 @@ public record WorkflowNodeDocument(
         JsonNode modelPolicy,
         JsonNode retryPolicy,
         JsonNode fallback,
+        JsonNode toolPolicy,
         int timeoutMs
 ) {
     public WorkflowNodeDocument {
@@ -31,6 +32,7 @@ public record WorkflowNodeDocument(
         modelPolicy = objectOrEmpty(modelPolicy, "model_policy");
         retryPolicy = objectOrEmpty(retryPolicy, "retry_policy");
         fallback = objectOrEmpty(fallback, "fallback");
+        toolPolicy = objectOrEmpty(toolPolicy, "tool_policy");
     }
 
     public WorkflowNodeDocument(
@@ -51,6 +53,7 @@ public record WorkflowNodeDocument(
                 null,
                 null,
                 artifactType,
+                null,
                 null,
                 null,
                 null,

@@ -39,6 +39,7 @@ public record QueuedNodeCommand(
         @JsonProperty("model_policy") JsonNode modelPolicy,
         @JsonProperty("retry_policy") JsonNode retryPolicy,
         @JsonProperty("fallback") JsonNode fallback,
+        @JsonProperty("tool_policy") JsonNode toolPolicy,
         @JsonProperty("budget_reservation") WorkflowBudgetReservation budgetReservation,
         @JsonProperty("deadline_epoch_ms") long deadlineEpochMs
 ) {
@@ -50,6 +51,7 @@ public record QueuedNodeCommand(
         modelPolicy = objectOrEmpty(modelPolicy, "modelPolicy");
         retryPolicy = objectOrEmpty(retryPolicy, "retryPolicy");
         fallback = objectOrEmpty(fallback, "fallback");
+        toolPolicy = objectOrEmpty(toolPolicy, "toolPolicy");
         if (!inputPayload.isObject()) {
             throw new IllegalArgumentException("inputPayload must be a JSON object");
         }
@@ -146,6 +148,7 @@ public record QueuedNodeCommand(
                 null,
                 null,
                 null,
+                null,
                 0
         );
     }
@@ -195,7 +198,73 @@ public record QueuedNodeCommand(
                 null,
                 null,
                 null,
+                null,
                 0
+        );
+    }
+
+    public QueuedNodeCommand(
+            String eventId,
+            long workflowRunId,
+            long nodeRunId,
+            String nodeId,
+            int revision,
+            int attempt,
+            String executionId,
+            String handlerKey,
+            String handlerVersion,
+            int timeoutMs,
+            JsonNode inputPayload,
+            String correlationId,
+            String traceparent,
+            String tracestate,
+            int protocolVersion,
+            String contractHash,
+            String inputSchema,
+            String inputSchemaHash,
+            String outputSchema,
+            String outputSchemaHash,
+            String promptKey,
+            String promptVersion,
+            String promptChecksum,
+            JsonNode contextPolicy,
+            JsonNode modelPolicy,
+            JsonNode retryPolicy,
+            JsonNode fallback,
+            WorkflowBudgetReservation budgetReservation,
+            long deadlineEpochMs
+    ) {
+        this(
+                eventId,
+                workflowRunId,
+                nodeRunId,
+                nodeId,
+                revision,
+                attempt,
+                executionId,
+                handlerKey,
+                handlerVersion,
+                timeoutMs,
+                inputPayload,
+                correlationId,
+                traceparent,
+                tracestate,
+                protocolVersion,
+                contractHash,
+                inputSchema,
+                inputSchemaHash,
+                outputSchema,
+                outputSchemaHash,
+                promptKey,
+                promptVersion,
+                promptChecksum,
+                contextPolicy,
+                modelPolicy,
+                retryPolicy,
+                fallback,
+                null,
+                budgetReservation,
+                deadlineEpochMs
         );
     }
 
@@ -236,6 +305,7 @@ public record QueuedNodeCommand(
                     traceContext == null ? null : traceContext.traceparent(),
                     traceContext == null ? null : traceContext.tracestate(),
                     0,
+                    null,
                     null,
                     null,
                     null,
@@ -317,6 +387,7 @@ public record QueuedNodeCommand(
                     contract == null ? null : contract.modelPolicy(),
                     contract == null ? null : contract.retryPolicy(),
                     contract == null ? null : contract.fallback(),
+                    contract == null ? null : contract.toolPolicy(),
                     reservation,
                     deadline
             );

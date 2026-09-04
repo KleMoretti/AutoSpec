@@ -96,6 +96,7 @@ public class WorkflowSnapshotParser {
                                 "model_policy",
                                 "retry_policy",
                                 "fallback",
+                                "tool_policy",
                                 "timeout_ms",
                                 "requires_human_approval",
                                 "depends_on",
@@ -125,6 +126,7 @@ public class WorkflowSnapshotParser {
                     optionalObject(node, "model_policy"),
                     optionalObject(node, "retry_policy"),
                     optionalObject(node, "fallback"),
+                    optionalObject(node, "tool_policy"),
                     timeoutMs
             ));
         });
