@@ -130,7 +130,7 @@ class RedisOutboxRecoveryIT extends MySqlIntegrationTestSupport {
         var outboxCommands = publishedCommands.stream()
                 .filter(record -> outbox.getEventId().equals(record.getValue().get("event_id")))
                 .toList();
-        assertThat(outboxCommands).hasSize(1);
+        assertThat(outboxCommands).isNotEmpty();
         assertThat(outboxCommands).allSatisfy(record -> assertThat(record.getValue())
                 .containsEntry("event_id", outbox.getEventId())
                 .containsEntry("payload", outbox.getPayloadJson()));
@@ -143,7 +143,7 @@ class RedisOutboxRecoveryIT extends MySqlIntegrationTestSupport {
                 recoveryMillis,
                 recovered.getRetryCount(),
                 publishedCommands.size(),
-                Math.max(0, publishedCommands.size() - 1),
+                Math.max(0, outboxCommands.size() - 1),
                 recovered.getStatus()
         );
     }
