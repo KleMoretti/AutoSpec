@@ -127,4 +127,3 @@ def rebuild_summary(
             round(time.time() * 1000) if now_epoch_ms is None else now_epoch_ms
         ),
     )
-

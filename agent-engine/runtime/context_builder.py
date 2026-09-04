@@ -47,4 +47,3 @@ class ContextBuilder:
             "long_term_memory": memory,
         }
         return apply_context_policy("agent_context", payload, "BALANCED", policy)
-

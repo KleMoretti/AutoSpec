@@ -36,4 +36,3 @@ class MemoryRecord(BaseModel):
     created_at_epoch_ms: int = Field(ge=0)
     expires_at_epoch_ms: int | None = Field(default=None, ge=0)
     version: int = Field(default=1, ge=1)
-
