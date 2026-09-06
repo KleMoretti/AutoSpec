@@ -55,6 +55,7 @@ public class MybatisWorkflowSchedulingGateway implements WorkflowSchedulingGatew
                 .set(WorkflowNodeRun::getStatus, WorkflowNodeStatus.QUEUED.name())
                 .set(WorkflowNodeRun::getExecutionId, command.executionId())
                 .set(WorkflowNodeRun::getContractHash, command.contractHash())
+                .set(WorkflowNodeRun::getExecutionBundleHash, command.executionBundleHash())
                 .set(reservation != null, WorkflowNodeRun::getBudgetReservationId,
                         reservation == null ? null : reservation.reservationId())
                 .set(reservation != null, WorkflowNodeRun::getReservedInputTokens,

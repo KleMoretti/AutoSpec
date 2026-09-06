@@ -31,7 +31,7 @@ class WorkflowExecutableContractTest {
         );
 
         assertThat(contract.contractHash())
-                .isEqualTo("ba5c40bfc4c41edd4c4efa8695c8e676a0ba1ed57da68fa0b24f3bad58e7870f");
+                .isEqualTo("827a6eb93885f2022adff04592a139312a66cf800bb6afd71ecd18e95330c622");
         assertThat(contract.protocolVersion()).isEqualTo(2);
         assertThat(contract.contextPolicy().path("version").asText()).isEqualTo("context-v2");
         assertThat(contract.modelPolicy().path("max_output_tokens").asInt()).isEqualTo(4000);

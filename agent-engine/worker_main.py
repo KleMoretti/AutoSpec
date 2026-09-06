@@ -22,6 +22,8 @@ from runtime.worker_metrics import WorkerMetrics
 from runtime.worker_runner import WorkflowWorkerRunner
 from runtime.workflow_log_context import install_workflow_log_filter
 from runtime.worker_tracing import configure_worker_tracer
+from runtime.tool_gateway import HttpToolGatewayClient, register_controlled_gateway_tools
+from runtime.tool_harness import ToolHarness, ToolRegistry
 
 
 def build_runner(
@@ -47,10 +49,19 @@ def build_runner(
             )
         ),
     )
+    tool_registry = ToolRegistry()
+    gateway_url = os.getenv("AUTOSPEC_TOOL_GATEWAY_URL", "http://backend:8080")
+    service_token = os.getenv("AGENT_ENGINE_SERVICE_TOKEN", "").strip()
+    if service_token:
+        register_controlled_gateway_tools(
+            tool_registry,
+            HttpToolGatewayClient(gateway_url, service_token),
+        )
     worker = WorkflowStreamWorker(
         client,
         NodeExecutor(
             build_production_registry(build_model_client()),
+            tool_harness=ToolHarness(tool_registry),
             concurrency=ConcurrencyController(
                 global_llm_limit=int(os.getenv("WORKER_GLOBAL_LLM_CONCURRENCY", "2")),
                 per_user_limit=int(os.getenv("WORKER_PER_USER_CONCURRENCY", "1")),

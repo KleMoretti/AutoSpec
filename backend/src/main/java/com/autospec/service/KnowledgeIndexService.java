@@ -50,6 +50,7 @@ public class KnowledgeIndexService {
     private final ObjectMapper objectMapper;
     private final ProjectMapper projectMapper;
     private final KnowledgeQueryRewriter queryRewriter;
+    private final KnowledgeCorpusEpochService corpusEpochService;
 
     public KnowledgeIndexService(
             KnowledgeDocumentService knowledgeDocumentService,
@@ -58,7 +59,8 @@ public class KnowledgeIndexService {
             KnowledgeEmbeddingService embeddingService,
             ObjectMapper objectMapper,
             ProjectMapper projectMapper,
-            KnowledgeQueryRewriter queryRewriter
+            KnowledgeQueryRewriter queryRewriter,
+            KnowledgeCorpusEpochService corpusEpochService
     ) {
         this.knowledgeDocumentService = knowledgeDocumentService;
         this.knowledgeChunkService = knowledgeChunkService;
@@ -67,6 +69,49 @@ public class KnowledgeIndexService {
         this.objectMapper = objectMapper;
         this.projectMapper = projectMapper;
         this.queryRewriter = queryRewriter;
+        this.corpusEpochService = corpusEpochService;
+    }
+
+    public long currentCorpusEpoch(Long projectId) {
+        return corpusEpochService.current(projectId);
+    }
+
+    public String actorScopeHash(Long projectId, Long userId) {
+        if (projectId == null || userId == null) {
+            return null;
+        }
+        ProjectMember member = projectMemberService.lambdaQuery()
+                .eq(ProjectMember::getProjectId, projectId)
+                .eq(ProjectMember::getUserId, userId)
+                .last("limit 1")
+                .oneOpt()
+                .orElse(null);
+        if (member == null || member.getRole() == null || member.getRole().isBlank()) {
+            return null;
+        }
+        return ContentHash.sha256(
+                projectId + "|" + userId + "|" + member.getRole().trim().toUpperCase(Locale.ROOT)
+                        + "|" + KnowledgeCorpusEpochService.ACCESS_POLICY_VERSION
+        );
+    }
+
+    public String retrievalCacheKey(String query, int limit, Long projectId, Long userId) {
+        String scopeHash = actorScopeHash(projectId, userId);
+        if (scopeHash == null) {
+            return null;
+        }
+        long epoch = currentCorpusEpoch(projectId);
+        String queryHash = ContentHash.sha256(query == null ? "" : query.trim());
+        String policyHash = ContentHash.sha256(
+                RETRIEVAL_STRATEGY + "|" + KnowledgeQueryRewriter.VERSION + "|"
+                        + KnowledgeEmbeddingService.MODEL_VERSION + "|" + RERANKER_VERSION + "|"
+                        + ACCESS_POLICY_VERSION + "|ALL_PROJECT_CORPORA"
+        );
+        int safeLimit = Math.max(1, Math.min(limit, 50));
+        return "autospec-cache:rag_query:v1:" + ContentHash.sha256(
+                projectId + "|" + scopeHash + "|" + epoch + "|" + queryHash + "|"
+                        + policyHash + "|" + safeLimit
+        );
     }
 
     @Transactional
@@ -150,7 +195,7 @@ public class KnowledgeIndexService {
             return;
         }
 
-        knowledgeDocumentService.lambdaUpdate()
+        boolean activated = knowledgeDocumentService.lambdaUpdate()
                 .eq(KnowledgeDocument::getProjectId, artifact.getProjectId())
                 .eq(KnowledgeDocument::getArtifactType, artifact.getType())
                 .eq(KnowledgeDocument::getStatus, STATUS_ACTIVE)
@@ -168,6 +213,9 @@ public class KnowledgeIndexService {
                 .set(KnowledgeDocument::getSupersededAt, null)
                 .set(KnowledgeDocument::getUpdatedAt, now)
                 .update();
+        if (activated) {
+            corpusEpochService.bump(artifact.getProjectId(), "INDEX_REBUILD_COMPLETED");
+        }
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -199,7 +247,7 @@ public class KnowledgeIndexService {
         if (document == null) {
             throw new IllegalStateException("Unable to persist failed knowledge index state");
         }
-        knowledgeDocumentService.lambdaUpdate()
+        boolean failed = knowledgeDocumentService.lambdaUpdate()
                 .eq(KnowledgeDocument::getId, document.getId())
                 .set(KnowledgeDocument::getStatus, STATUS_FAILED)
                 .set(KnowledgeDocument::getContentHash, contentHash)
@@ -210,6 +258,9 @@ public class KnowledgeIndexService {
                 .set(KnowledgeDocument::getFailureMessage, failureMessage(failure))
                 .set(KnowledgeDocument::getUpdatedAt, now)
                 .update();
+        if (failed) {
+            corpusEpochService.bump(artifact.getProjectId(), "INDEX_FAILURE_INVALIDATED");
+        }
     }
 
     public List<KnowledgeSourceResponse> sources(Long projectId) {

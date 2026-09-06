@@ -7,11 +7,13 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.annotation.Transactional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest
 @ActiveProfiles("test")
+@Transactional
 class PromptRegistryServiceTest {
 
     @Autowired
@@ -34,11 +36,11 @@ class PromptRegistryServiceTest {
 
     @Test
     void returnsActivePromptByKey() {
-        promptRegistryService.registerActive("ArchitectAgent", "v1", "architecture prompt");
+        promptRegistryService.registerActive("ArchitectAgent", "test-v1", "architecture prompt");
 
         PromptVersion active = promptRegistryService.activePrompt("ArchitectAgent");
 
-        assertThat(active.getVersion()).isEqualTo("v1");
+        assertThat(active.getVersion()).isEqualTo("test-v1");
         assertThat(active.getContent()).isEqualTo("architecture prompt");
     }
 

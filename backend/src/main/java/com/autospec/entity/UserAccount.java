@@ -22,6 +22,8 @@ public class UserAccount {
 
     private Boolean enabled;
 
+    private String platformRole;
+
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;

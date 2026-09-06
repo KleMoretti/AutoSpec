@@ -59,6 +59,8 @@ export interface WorkflowRunResponse {
   idempotencyKey: string;
   correlationId?: string;
   workflowVersionId?: number;
+  executionBundleId?: number;
+  executionBundleHash?: string;
   replayOfRunId?: number;
   reviewRound?: number;
   maxReviewRounds?: number;
@@ -88,6 +90,9 @@ export interface WorkflowNodeRunResponse {
   revision: number;
   attempt: number;
   executionId: string;
+  contractHash?: string;
+  executionBundleHash?: string;
+  fencingToken?: number;
   status: string;
   handlerKey: string;
   handlerVersion: string;
@@ -210,6 +215,9 @@ export interface WorkflowTraceNodeResponse {
   revision?: number;
   attempt: number;
   executionId?: string;
+  contractHash?: string;
+  executionBundleHash?: string;
+  fencingToken?: number;
   status: string;
   handlerKey?: string;
   handlerVersion?: string;
@@ -252,6 +260,8 @@ export interface WorkflowTraceResponse {
   workflowRunId: number;
   correlationId?: string;
   status?: string;
+  executionBundleId?: number;
+  executionBundleHash?: string;
   nodes: WorkflowTraceNodeResponse[];
   failureClusters: WorkflowFailureClusterResponse[];
   offlineCases: WorkflowFailureCaseResponse[];

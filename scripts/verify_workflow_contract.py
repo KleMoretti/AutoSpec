@@ -9,34 +9,47 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 AGENT_ENGINE = ROOT / "agent-engine"
 CONTRACT = ROOT / "agent-engine" / "contracts" / "autospec-v5.workflow.json"
-CONTRACT_MIGRATION = (
-    ROOT
-    / "backend"
-    / "src"
-    / "main"
-    / "resources"
-    / "db"
-    / "migration"
-    / "V86__publish_autospec_v5_harness_h1_contract.sql"
-)
+MIGRATION_DIR = ROOT / "backend" / "src" / "main" / "resources" / "db" / "migration"
+MIGRATION_PATTERN = re.compile(r"^V(?P<version>\d+)_.*\.sql$")
+
+
+def latest_seeded_contract() -> tuple[Path, dict] | None:
+    candidates: list[tuple[int, Path, dict]] = []
+    for migration in MIGRATION_DIR.glob("V*.sql"):
+        version_match = MIGRATION_PATTERN.match(migration.name)
+        if version_match is None:
+            continue
+        sql = migration.read_text(encoding="utf-8")
+        for match in re.finditer(
+            r"spec_json\s*=\s*'(\{\s*\"workflow_key\"\s*:\s*\"autospec-v5\".*?\})'"
+            r"\s*,\s*content_hash",
+            sql,
+            re.DOTALL,
+        ):
+            candidates.append(
+                (
+                    int(version_match.group("version")),
+                    migration,
+                    json.loads(match.group(1)),
+                )
+            )
+    if not candidates:
+        return None
+    _, migration, seeded = max(candidates, key=lambda item: item[0])
+    return migration, seeded
 
 
 def main() -> int:
     canonical = json.loads(CONTRACT.read_text(encoding="utf-8"))
-    sql = CONTRACT_MIGRATION.read_text(encoding="utf-8")
-    match = re.search(
-        r"spec_json\s*=\s*'(\{\s*\"workflow_key\"\s*:\s*\"autospec-v5\".*?\})'"
-        r"\s*,\s*content_hash",
-        sql,
-        re.DOTALL,
-    )
-    if match is None:
-        print("Unable to locate the autospec-v5 JSON update in V86", file=sys.stderr)
+    seeded_contract = latest_seeded_contract()
+    if seeded_contract is None:
+        print("Unable to locate a seeded autospec-v5 workflow contract", file=sys.stderr)
         return 1
-    seeded = json.loads(match.group(1))
+    migration, seeded = seeded_contract
     if seeded != canonical:
         print(
-            "autospec-v5 contract drift: update the canonical contract and create a new migration together",
+            "autospec-v5 contract drift: update the canonical contract and create a new migration together "
+            f"(latest seeded migration: {migration.name})",
             file=sys.stderr,
         )
         return 1

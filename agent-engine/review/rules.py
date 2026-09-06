@@ -5,6 +5,7 @@ from schemas.prd import PrdArtifact
 from schemas.architecture_design import ArchitectureDesignArtifact
 from schemas.frontend_skeleton import FrontendSkeletonArtifact
 from schemas.review import ReviewIssue
+from review.citation_gate import validate_citations
 
 
 FEATURE_API_RULES = [
@@ -79,7 +80,9 @@ def run_current_rule_checks(
     issues.extend(
         _run_delivery_checks(
             prd,
+            architecture_design,
             backend_design,
+            frontend_skeleton,
             retrieved_sources,
             generated_files,
         )
@@ -135,7 +138,9 @@ def _run_cross_artifact_checks(
 
 def _run_delivery_checks(
     prd: PrdArtifact,
+    architecture_design: ArchitectureDesignArtifact,
     backend_design: BackendDesignArtifact,
+    frontend_skeleton: FrontendSkeletonArtifact,
     retrieved_sources: list[dict[str, Any]] | None,
     generated_files: list[dict[str, Any] | str] | None,
 ) -> list[ReviewIssue]:
@@ -169,6 +174,26 @@ def _run_delivery_checks(
                 description="Generated code skeleton contains secret-like configuration.",
                 suggestion="Use placeholder variables and .env.example only.",
             )
+        )
+
+    for artifact_name, artifact in (
+        ("prd", prd),
+        ("architecture", architecture_design),
+        ("backend", backend_design),
+        ("frontend", frontend_skeleton),
+    ):
+        citation_failures = validate_citations(
+            artifact.source_citations,
+            retrieved_sources or [],
+        )
+        issues.extend(
+            _issue(
+                severity="HIGH",
+                issue_type="CITATION_INVALID",
+                description=f"{artifact_name} citation failed deterministic validation: {failure}.",
+                suggestion="Use a server-issued citation id, matching source metadata, and an exact excerpt.",
+            )
+            for failure in citation_failures
         )
 
     return issues

@@ -22,15 +22,18 @@ public class ArtifactApprovalOutboxService {
     private final WorkflowOutboxMapper outboxMapper;
     private final ObjectMapper objectMapper;
     private final KnowledgeDocumentService knowledgeDocumentService;
+    private final KnowledgeCorpusEpochService corpusEpochService;
 
     public ArtifactApprovalOutboxService(
             WorkflowOutboxMapper outboxMapper,
             ObjectMapper objectMapper,
-            KnowledgeDocumentService knowledgeDocumentService
+            KnowledgeDocumentService knowledgeDocumentService,
+            KnowledgeCorpusEpochService corpusEpochService
     ) {
         this.outboxMapper = outboxMapper;
         this.objectMapper = objectMapper;
         this.knowledgeDocumentService = knowledgeDocumentService;
+        this.corpusEpochService = corpusEpochService;
     }
 
     @Transactional
@@ -67,6 +70,7 @@ public class ArtifactApprovalOutboxService {
         outbox.setCreatedAt(now);
         outbox.setUpdatedAt(now);
         outboxMapper.insert(outbox);
+        corpusEpochService.bump(artifact.getProjectId(), "ARTIFACT_APPROVED");
         return outbox;
     }
 
@@ -98,6 +102,7 @@ public class ArtifactApprovalOutboxService {
         if (claimed == 0) {
             return false;
         }
+        corpusEpochService.bump(artifact.getProjectId(), "INDEX_REBUILD_INVALIDATED");
 
         String contentHash = artifact.getContentHash() == null
                 || artifact.getContentHash().isBlank()

@@ -1,5 +1,6 @@
 import { BranchesOutlined, HistoryOutlined, PlayCircleOutlined, StopOutlined } from '@ant-design/icons';
 import { Alert, Button, Card, Collapse, Descriptions, Progress, Select, Space, Tag, Timeline, Typography } from 'antd';
+import type { TFunction } from 'i18next';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type {
@@ -8,6 +9,7 @@ import type {
   WorkflowRunResponse,
   WorkflowRunStartPayload,
   WorkflowRuntimeMetricsResponse,
+  WorkflowTraceResponse,
   WorkflowVersionResponse
 } from '../api/workflow';
 import { formatDateTime, formatNumber, formatUsd, translateEnum } from '../i18n/formatters';
@@ -22,6 +24,7 @@ interface WorkflowReplayPanelProps {
   onCancel: (runId: number) => Promise<WorkflowRunResponse>;
   onLoadTimeline: (runId: number) => Promise<WorkflowNodeRunResponse[]>;
   onLoadMetrics: (runId: number) => Promise<WorkflowRuntimeMetricsResponse>;
+  onLoadTrace: (runId: number) => Promise<WorkflowTraceResponse>;
 }
 
 type ReplayMode = WorkflowReplayPayload['mode'];
@@ -30,6 +33,7 @@ interface TimelineViewState {
   runId: number | null;
   nodes: WorkflowNodeRunResponse[];
   metrics: WorkflowRuntimeMetricsResponse | null;
+  trace: WorkflowTraceResponse | null;
   loading: boolean;
   error: string | null;
 }
@@ -43,7 +47,8 @@ function WorkflowReplayPanel({
   onReplay,
   onCancel,
   onLoadTimeline,
-  onLoadMetrics
+  onLoadMetrics,
+  onLoadTrace
 }: WorkflowReplayPanelProps) {
   const { t, i18n } = useTranslation();
   const [startVersionId, setStartVersionId] = useState<number | undefined>();
@@ -60,12 +65,13 @@ function WorkflowReplayPanel({
     runId: null,
     nodes: [],
     metrics: null,
+    trace: null,
     loading: false,
     error: null
   });
   const timelineRequest = useRef(0);
-  const timelineLoaders = useRef({ onLoadTimeline, onLoadMetrics });
-  timelineLoaders.current = { onLoadTimeline, onLoadMetrics };
+  const timelineLoaders = useRef({ onLoadTimeline, onLoadMetrics, onLoadTrace });
+  timelineLoaders.current = { onLoadTimeline, onLoadMetrics, onLoadTrace };
   const idempotencyKey = useRef(createReplayKey());
   const startIdempotencyKey = useRef(createStartKey());
   const publishedVersions = useMemo(
@@ -136,10 +142,11 @@ function WorkflowReplayPanel({
 
   const loadTimeline = useCallback(async (runId: number) => {
     const requestId = ++timelineRequest.current;
-    setTimeline({ runId, nodes: [], metrics: null, loading: true, error: null });
-    const [nodeResult, metricsResult] = await Promise.allSettled([
+    setTimeline({ runId, nodes: [], metrics: null, trace: null, loading: true, error: null });
+    const [nodeResult, metricsResult, traceResult] = await Promise.allSettled([
       timelineLoaders.current.onLoadTimeline(runId),
-      timelineLoaders.current.onLoadMetrics(runId)
+      timelineLoaders.current.onLoadMetrics(runId),
+      timelineLoaders.current.onLoadTrace(runId)
     ]);
     if (requestId !== timelineRequest.current) return;
     const errors: string[] = [];
@@ -155,10 +162,17 @@ function WorkflowReplayPanel({
         reason: errorMessage(metricsResult.reason, t('common.requestFailed'))
       }));
     }
+    if (traceResult.status === 'rejected') {
+      errors.push(t('workflow.runtimeErrorPart', {
+        resource: t('workflow.traceResource'),
+        reason: errorMessage(traceResult.reason, t('common.requestFailed'))
+      }));
+    }
     setTimeline({
       runId,
       nodes: nodeResult.status === 'fulfilled' ? nodeResult.value : [],
       metrics: metricsResult.status === 'fulfilled' ? metricsResult.value : null,
+      trace: traceResult.status === 'fulfilled' ? traceResult.value : null,
       loading: false,
       error: errors.length > 0 ? errors.join(' · ') : null
     });
@@ -328,6 +342,12 @@ function WorkflowReplayPanel({
                           <Tag color={statusColor(run.status)}>{translateEnum(t, 'status', run.status)}</Tag>
                           {run.qualityProfile ? <Tag>{translateEnum(t, 'qualityProfile', run.qualityProfile)}</Tag> : null}
                           {run.replayOfRunId ? <Tag icon={<BranchesOutlined />}>{t('workflow.fromRun', { id: run.replayOfRunId })}</Tag> : null}
+                          {run.executionBundleId ? <Tag>{t('workflow.bundle', { id: run.executionBundleId })}</Tag> : null}
+                          {run.executionBundleHash ? (
+                            <Tag title={run.executionBundleHash}>
+                              {t('workflow.bundleHash', { hash: shortHash(run.executionBundleHash) })}
+                            </Tag>
+                          ) : null}
                         </Space>
                         <Typography.Text className="muted">
                           {t('workflow.operationVersion', {
@@ -385,6 +405,21 @@ function WorkflowReplayPanel({
                         message={selectedTimelineRun.responseStatus ?? selectedTimelineRun.status}
                         description={selectedTimelineRun.errorMessage}
                       />
+                    ) : null}
+                    {selectedTimelineRun ? (
+                      <Descriptions size="small" column={{ xs: 1, sm: 2, md: 4 }}>
+                        <Descriptions.Item label={t('workflow.bundle')}>
+                          {selectedTimelineRun.executionBundleId ?? t('common.none')}
+                        </Descriptions.Item>
+                        <Descriptions.Item label={t('workflow.bundleHash')}>
+                          {selectedTimelineRun.executionBundleHash
+                            ? shortHash(selectedTimelineRun.executionBundleHash)
+                            : t('common.none')}
+                        </Descriptions.Item>
+                        <Descriptions.Item label={t('workflow.node.replaySource')}>
+                          {selectedTimelineRun.replayOfRunId ?? t('common.none')}
+                        </Descriptions.Item>
+                      </Descriptions>
                     ) : null}
                     {timeline.metrics ? (
                       <>
@@ -450,6 +485,29 @@ function WorkflowReplayPanel({
                         ) : null}
                       </>
                     ) : null}
+                    {timeline.trace ? (
+                      <Card size="small" title={t('workflow.trace.title')}>
+                        <Space direction="vertical" size={8} className="full-width">
+                          {timeline.trace.nodes.map((traceNode) => {
+                            const toolCalls = traceNode.invocations.filter((call) => call.callType === 'TOOL');
+                            return (
+                              <Descriptions key={traceNode.nodeRunId} size="small" column={{ xs: 1, sm: 2, md: 4 }}>
+                                <Descriptions.Item label={t('workflow.node.node')}>{traceNode.nodeId}</Descriptions.Item>
+                                <Descriptions.Item label={t('workflow.node.toolCalls')}>{toolCalls.length}</Descriptions.Item>
+                                <Descriptions.Item label={t('workflow.node.modelCalls')}>
+                                  {traceNode.invocations.length - toolCalls.length}
+                                </Descriptions.Item>
+                                <Descriptions.Item label={t('workflow.node.tools')}>
+                                  {toolCalls.length > 0
+                                    ? <Space wrap>{toolCalls.map((call, index) => <Tag key={`${call.id ?? index}-${call.toolName ?? 'tool'}`}>{call.toolName ?? call.callType}</Tag>)}</Space>
+                                    : t('common.none')}
+                                </Descriptions.Item>
+                              </Descriptions>
+                            );
+                          })}
+                        </Space>
+                      </Card>
+                    ) : null}
                     {timeline.nodes.length === 0 && !timeline.loading && !timeline.error ? (
                       <Typography.Text className="muted">{t('workflow.noNodeAttempts')}</Typography.Text>
                     ) : (
@@ -462,9 +520,18 @@ function WorkflowReplayPanel({
                               <Descriptions.Item label={t('workflow.node.status')}><Tag>{translateEnum(t, 'status', node.status)}</Tag></Descriptions.Item>
                               <Descriptions.Item label={t('workflow.node.revisionAttempt')}>{formatNumber(node.revision, i18n.resolvedLanguage)} / {formatNumber(node.attempt, i18n.resolvedLanguage)}</Descriptions.Item>
                               <Descriptions.Item label={t('workflow.node.handler')}>{node.handlerKey}:{node.handlerVersion}</Descriptions.Item>
+                              {node.contractHash ? <Descriptions.Item label={t('workflow.node.contractHash')}><Typography.Text code title={node.contractHash}>{shortHash(node.contractHash)}</Typography.Text></Descriptions.Item> : null}
+                              {node.executionBundleHash ? <Descriptions.Item label={t('workflow.node.bundleHash')}><Typography.Text code title={node.executionBundleHash}>{shortHash(node.executionBundleHash)}</Typography.Text></Descriptions.Item> : null}
+                              {node.fencingToken !== undefined ? <Descriptions.Item label={t('workflow.node.fencingToken')}>{node.fencingToken}</Descriptions.Item> : null}
                               <Descriptions.Item label={t('workflow.node.worker')}>{node.workerId ?? t('common.unassigned')}</Descriptions.Item>
                               <Descriptions.Item label={t('workflow.node.duration')}>{formatDuration(node.startedAt, node.finishedAt)}</Descriptions.Item>
                               <Descriptions.Item label={t('workflow.node.lastHeartbeat')}>{node.heartbeatAt ? formatDateTime(node.heartbeatAt, i18n.resolvedLanguage) : '—'}</Descriptions.Item>
+                              {node.actualToolCalls !== undefined ? <Descriptions.Item label={t('workflow.node.toolCalls')}>{node.actualToolCalls}</Descriptions.Item> : null}
+                              {readCacheInfo(node) ? (
+                                <Descriptions.Item label={t('workflow.node.cache')}>
+                                  {formatCacheInfo(readCacheInfo(node), t)}
+                                </Descriptions.Item>
+                              ) : null}
                               {node.errorCode ? <Descriptions.Item label={t('workflow.node.errorCode')}>{node.errorCode}</Descriptions.Item> : null}
                               {node.errorMessage ? <Descriptions.Item label={t('workflow.node.failure')} span={3}>{node.errorMessage}</Descriptions.Item> : null}
                             </Descriptions>
@@ -532,6 +599,48 @@ function isActive(status: string): boolean {
 
 function errorMessage(value: unknown, fallback: string): string {
   return value instanceof Error ? value.message : fallback;
+}
+
+function shortHash(value: string): string {
+  return value.length > 18 ? `${value.slice(0, 10)}…${value.slice(-6)}` : value;
+}
+
+interface CacheInfo {
+  mode: string;
+  hit: boolean;
+  reason?: string;
+}
+
+function readCacheInfo(node: WorkflowNodeRunResponse): CacheInfo | null {
+  if (!node.inputJson) return null;
+  try {
+    const input = JSON.parse(node.inputJson) as unknown;
+    const root = asRecord(input);
+    const cache = asRecord(root?.retrieval_cache);
+    if (!cache || typeof cache.mode !== 'string') return null;
+    return {
+      mode: cache.mode,
+      hit: cache.hit === true,
+      reason: typeof cache.invalidation_reason === 'string' ? cache.invalidation_reason : undefined
+    };
+  } catch {
+    return null;
+  }
+}
+
+function formatCacheInfo(cache: CacheInfo | null, t: TFunction): string {
+  if (!cache) return '—';
+  return t('workflow.node.cacheMode', {
+    mode: cache.mode,
+    state: cache.hit ? t('workflow.node.cacheHit') : t('workflow.node.cacheMiss'),
+    reason: cache.reason ? ` · ${cache.reason}` : ''
+  });
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
 }
 
 function createReplayKey(): string {

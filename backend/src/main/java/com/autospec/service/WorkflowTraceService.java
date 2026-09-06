@@ -76,6 +76,9 @@ public class WorkflowTraceService {
                     node.getRevision(),
                     node.getAttempt(),
                     node.getExecutionId(),
+                    node.getContractHash(),
+                    node.getExecutionBundleHash(),
+                    node.getFencingToken(),
                     node.getStatus(),
                     node.getHandlerKey(),
                     node.getHandlerVersion(),
@@ -103,6 +106,8 @@ public class WorkflowTraceService {
                 run.getId(),
                 run.getCorrelationId(),
                 run.getStatus(),
+                run.getExecutionBundleId(),
+                run.getExecutionBundleHash(),
                 traceNodes,
                 clusters.values().stream().map(FailureCluster::response).toList(),
                 offlineCases

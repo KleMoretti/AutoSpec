@@ -109,6 +109,7 @@ services:
       AUTH_DEMO_USER_DISPLAY_NAME: ${AUTH_DEMO_USER_DISPLAY_NAME:-Owner}
       AUTH_DEMO_USER_PASSWORD: ${AUTH_DEMO_USER_PASSWORD:-}
       AUTH_SESSION_COOKIE_SECURE: ${AUTH_SESSION_COOKIE_SECURE:-false}
+      AGENT_ENGINE_SERVICE_TOKEN: ${AGENT_ENGINE_SERVICE_TOKEN:?AGENT_ENGINE_SERVICE_TOKEN is required}
       WORKFLOW_OUTBOX_ENABLED: "true"
       WORKFLOW_EVENT_POLLING_ENABLED: "true"
       WORKFLOW_EVENT_CONSUMER_NAME: control-plane
@@ -151,6 +152,8 @@ services:
       OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://tempo:4318/v1/traces
       AUTOSPEC_ENV: ${AUTOSPEC_ENV:-development}
       AGENT_MODEL_MODE: ${AGENT_MODEL_MODE:-fixture}
+      AGENT_ENGINE_SERVICE_TOKEN: ${AGENT_ENGINE_SERVICE_TOKEN:?AGENT_ENGINE_SERVICE_TOKEN is required}
+      AUTOSPEC_TOOL_GATEWAY_URL: http://backend:8080
       MODEL_API_KEY: ${MODEL_API_KEY:-}
       MODEL_BASE_URL: ${MODEL_BASE_URL:-}
       MODEL_NAME: ${MODEL_NAME:-}
@@ -186,6 +189,8 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      backend:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; body=urllib.request.urlopen('http://localhost:9100/metrics', timeout=2).read(); assert b'autospec_worker_active 1.0' in body"]
       interval: 10s
@@ -209,6 +214,8 @@ services:
       OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://tempo:4318/v1/traces
       AUTOSPEC_ENV: ${AUTOSPEC_ENV:-development}
       AGENT_MODEL_MODE: ${AGENT_MODEL_MODE:-fixture}
+      AGENT_ENGINE_SERVICE_TOKEN: ${AGENT_ENGINE_SERVICE_TOKEN:?AGENT_ENGINE_SERVICE_TOKEN is required}
+      AUTOSPEC_TOOL_GATEWAY_URL: http://backend:8080
       MODEL_API_KEY: ${MODEL_API_KEY:-}
       MODEL_BASE_URL: ${MODEL_BASE_URL:-}
       MODEL_NAME: ${MODEL_NAME:-}
@@ -243,6 +250,8 @@ services:
       WORKER_PER_USER_CONCURRENCY: ${WORKER_PER_USER_CONCURRENCY:-1}
     depends_on:
       redis:
+        condition: service_healthy
+      backend:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; body=urllib.request.urlopen('http://localhost:9100/metrics', timeout=2).read(); assert b'autospec_worker_active 1.0' in body"]

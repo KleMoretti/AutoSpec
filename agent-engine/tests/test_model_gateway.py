@@ -118,7 +118,12 @@ def test_openai_compatible_gateway_records_real_usage_and_cost() -> None:
 
 def test_frozen_contract_controls_prompt_temperature_deadline_and_idempotency() -> None:
     prompt_dir = Path(__file__).resolve().parents[1] / "prompts"
-    prompt_material = (prompt_dir / "architect_v1.md").read_bytes()
+    prompt_material = (
+        (prompt_dir / "architect_v1.md")
+        .read_text(encoding="utf-8")
+        .replace("\r\n", "\n")
+        .encode("utf-8")
+    )
     calls = []
 
     class Completions:
@@ -160,7 +165,12 @@ def test_frozen_contract_controls_prompt_temperature_deadline_and_idempotency() 
 
 def test_v2_gateway_enforces_hard_output_call_limit_and_cached_price() -> None:
     prompt_dir = Path(__file__).resolve().parents[1] / "prompts"
-    prompt_material = (prompt_dir / "architect_v1.md").read_bytes()
+    prompt_material = (
+        (prompt_dir / "architect_v1.md")
+        .read_text(encoding="utf-8")
+        .replace("\r\n", "\n")
+        .encode("utf-8")
+    )
     calls = []
     usage = SimpleNamespace(
         prompt_tokens=100,

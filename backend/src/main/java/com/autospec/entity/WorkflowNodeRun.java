@@ -19,6 +19,7 @@ public class WorkflowNodeRun {
     private Integer attempt;
     private String executionId;
     private String contractHash;
+    private String executionBundleHash;
     private Long fencingToken;
     private String budgetReservationId;
     private Long reservedInputTokens;
