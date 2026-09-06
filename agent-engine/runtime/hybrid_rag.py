@@ -7,9 +7,17 @@ import time
 import unicodedata
 from collections import Counter, defaultdict
 from enum import StrEnum
-from typing import Any, Iterable
+from typing import Any, Iterable, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from runtime.cache_keys import (
+    CacheLayer,
+    CacheMode,
+    InMemoryResultCache,
+    canonical_hash,
+    rag_query_cache_key,
+)
 
 
 class CorpusType(StrEnum):
@@ -63,6 +71,9 @@ class RetrievalPolicy(BaseModel):
     embedding_version: str = Field(default="hashing-ngram-v1", min_length=1)
     reranker_version: str = Field(default="deterministic-rerank-v1", min_length=1)
     access_policy_version: str = Field(default="project-user-v1", min_length=1)
+    actor_scope_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    corpus_epoch: int = Field(default=1, ge=1)
+    cache_mode: Literal["DISABLED", "SHADOW", "ENABLED"] = "DISABLED"
 
     @model_validator(mode="after")
     def normalize_corpora(self) -> "RetrievalPolicy":
@@ -107,6 +118,17 @@ class RetrievalTrace(BaseModel):
     filtered_inactive_count: int = Field(ge=0)
     hit_count: int = Field(ge=0)
     failure_reason: str | None = None
+    corpus_epoch: int = Field(default=1, ge=1)
+    cache_key: str | None = None
+    cache_mode: Literal["DISABLED", "SHADOW", "ENABLED"] = "DISABLED"
+    cache_hit: bool = False
+    cache_shadow_match: bool | None = None
+    cache_source_execution_id: str | None = None
+    cache_source_version: str | None = None
+    cache_saved_input_tokens: int = Field(default=0, ge=0)
+    cache_saved_output_tokens: int = Field(default=0, ge=0)
+    cache_saved_cost: float = Field(default=0.0, ge=0.0)
+    cache_invalidation_reason: str | None = None
 
 
 class RetrievalResult(BaseModel):
@@ -132,10 +154,16 @@ class HybridRetriever:
     RETRIEVER_VERSION = "hybrid-rrf-rerank-v1"
     EMBEDDING_DIMENSIONS = 128
 
-    def __init__(self, documents: Iterable[RagDocument] = ()) -> None:
+    def __init__(
+        self,
+        documents: Iterable[RagDocument] = (),
+        *,
+        cache: InMemoryResultCache | None = None,
+    ) -> None:
         self._indexes: dict[CorpusType, dict[str, RagDocument]] = {
             corpus: {} for corpus in CorpusType
         }
+        self._cache = cache
         for document in documents:
             self.upsert(document)
 
@@ -151,8 +179,29 @@ class HybridRetriever:
         policy: RetrievalPolicy | None = None,
         *,
         now_epoch_ms: int | None = None,
+        source_execution_id: str | None = None,
     ) -> RetrievalResult:
         resolved_policy = policy or RetrievalPolicy()
+        cache_key = self._cache_key(query, resolved_policy)
+        cached_entry = self._cached_result(cache_key, resolved_policy)
+        if cached_entry is not None and resolved_policy.cache_mode == CacheMode.ENABLED:
+            cached_result, provenance = cached_entry
+            return cached_result.model_copy(
+                update={
+                    "trace": cached_result.trace.model_copy(
+                        update={
+                            "cache_key": cache_key,
+                            "cache_mode": resolved_policy.cache_mode,
+                            "cache_hit": True,
+                            "cache_source_execution_id": provenance.source_execution_id,
+                            "cache_source_version": provenance.source_version,
+                            "cache_saved_input_tokens": provenance.saved_input_tokens,
+                            "cache_saved_output_tokens": provenance.saved_output_tokens,
+                            "cache_saved_cost": provenance.saved_cost,
+                        }
+                    )
+                }
+            )
         rewrite = rewrite_query(query, resolved_policy.query_rewrite_version)
         now = int(time.time() * 1000) if now_epoch_ms is None else now_epoch_ms
         eligible: list[RagDocument] = []
@@ -174,7 +223,7 @@ class HybridRetriever:
                 eligible.append(document)
 
         if not eligible:
-            return RetrievalResult(
+            return self._finalize_cache(RetrievalResult(
                 hits=[],
                 rewrite=rewrite,
                 trace=self._trace(
@@ -187,7 +236,7 @@ class HybridRetriever:
                     hit_count=0,
                     failure_reason="NO_ELIGIBLE_DOCUMENTS",
                 ),
-            )
+            ), cache_key, resolved_policy, cached_entry, source_execution_id)
 
         lexical_scores = {
             _document_key(document): _bm25_score(rewrite.queries, document.content, eligible)
@@ -252,7 +301,7 @@ class HybridRetriever:
             if len(hits) >= resolved_policy.top_k:
                 break
 
-        return RetrievalResult(
+        return self._finalize_cache(RetrievalResult(
             hits=hits,
             rewrite=rewrite,
             trace=self._trace(
@@ -265,7 +314,92 @@ class HybridRetriever:
                 hit_count=len(hits),
                 failure_reason="EMPTY_RECALL" if not hits else None,
             ),
+        ), cache_key, resolved_policy, cached_entry, source_execution_id)
+
+    def _cache_key(self, query: str, policy: RetrievalPolicy) -> str | None:
+        if (
+            self._cache is None
+            or policy.cache_mode == CacheMode.DISABLED
+            or not policy.project_id
+            or not policy.actor_scope_hash
+        ):
+            return None
+        policy_hash = canonical_hash(
+            policy.model_dump(
+                mode="json",
+                exclude={"actor_scope_hash", "corpus_epoch", "cache_mode"},
+            )
         )
+        return rag_query_cache_key(
+            policy.project_id,
+            policy.actor_scope_hash,
+            policy.corpus_epoch,
+            canonical_hash(query),
+            policy_hash,
+            policy.top_k,
+        )
+
+    def _cached_result(
+        self,
+        cache_key: str | None,
+        policy: RetrievalPolicy,
+    ) -> tuple[RetrievalResult, Any] | None:
+        if cache_key is None or policy.cache_mode == CacheMode.DISABLED or self._cache is None:
+            return None
+        entry = self._cache.get(cache_key)
+        if entry is None:
+            return None
+        try:
+            return RetrievalResult.model_validate(entry.value), entry.provenance
+        except Exception:
+            self._cache.invalidate(key=cache_key, reason="CACHE_SCHEMA_INVALID")
+            return None
+
+    def _finalize_cache(
+        self,
+        result: RetrievalResult,
+        cache_key: str | None,
+        policy: RetrievalPolicy,
+        cached_entry: tuple[RetrievalResult, Any] | None,
+        source_execution_id: str | None,
+    ) -> RetrievalResult:
+        trace_update: dict[str, Any] = {
+            "corpus_epoch": policy.corpus_epoch,
+            "cache_key": cache_key,
+            "cache_mode": policy.cache_mode,
+        }
+        if cached_entry is not None and policy.cache_mode == CacheMode.SHADOW:
+            cached_result, provenance = cached_entry
+            trace_update.update(
+                {
+                    "cache_shadow_match": canonical_hash(cached_result.model_dump(mode="json"))
+                    == canonical_hash(result.model_dump(mode="json")),
+                    "cache_source_execution_id": provenance.source_execution_id,
+                    "cache_source_version": provenance.source_version,
+                    "cache_saved_input_tokens": provenance.saved_input_tokens,
+                    "cache_saved_output_tokens": provenance.saved_output_tokens,
+                    "cache_saved_cost": provenance.saved_cost,
+                }
+            )
+        if (
+            self._cache is not None
+            and cache_key is not None
+            and policy.cache_mode in {CacheMode.SHADOW, CacheMode.ENABLED}
+            and result.trace.failure_reason is None
+        ):
+            self._cache.put_success(
+                cache_key,
+                result.model_dump(mode="json"),
+                layer=CacheLayer.RAG_QUERY,
+                source_execution_id=source_execution_id or "retrieval-fixture",
+                source_version=f"corpus-epoch:{policy.corpus_epoch}",
+            )
+        invalidation_reason = self._cache.invalidation_reason(cache_key) if (
+            self._cache is not None and cache_key is not None
+        ) else None
+        if invalidation_reason:
+            trace_update["cache_invalidation_reason"] = invalidation_reason
+        return result.model_copy(update={"trace": result.trace.model_copy(update=trace_update)})
 
     def _trace(
         self,
@@ -292,6 +426,8 @@ class HybridRetriever:
             filtered_inactive_count=filtered_inactive_count,
             hit_count=hit_count,
             failure_reason=failure_reason,
+            corpus_epoch=policy.corpus_epoch,
+            cache_mode=policy.cache_mode,
         )
 
 

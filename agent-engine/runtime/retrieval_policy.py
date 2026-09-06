@@ -6,6 +6,7 @@ from typing import Any, Iterable
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from runtime.cache_keys import CacheProvenance, rag_query_cache_key
 from runtime.hybrid_rag import RetrievalResult
 
 
@@ -42,6 +43,8 @@ class NodeRetrievalRequest(BaseModel):
     query_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     policy_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     policy: NodeRetrievalPolicy
+    corpus_epoch: int = Field(default=1, ge=1)
+    cache_key: str | None = None
 
 
 class RetrievalSnapshot(BaseModel):
@@ -54,6 +57,9 @@ class RetrievalSnapshot(BaseModel):
     hit_versions: tuple[str, ...] = ()
     trace: dict[str, Any] = Field(default_factory=dict)
     snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    corpus_epoch: int = Field(default=1, ge=1)
+    cache_key: str | None = None
+    cache_provenance: CacheProvenance | None = None
 
 
 def build_node_retrieval_request(
@@ -63,9 +69,20 @@ def build_node_retrieval_request(
     *,
     project_id: str | None = None,
     actor_scope_hash: str | None = None,
+    corpus_epoch: int = 1,
 ) -> NodeRetrievalRequest:
     query = _query_for_node(node_id, input_payload)
     policy_hash = _hash(policy.model_dump(mode="json"))
+    cache_key = None
+    if project_id is not None and actor_scope_hash is not None:
+        cache_key = rag_query_cache_key(
+            project_id,
+            actor_scope_hash,
+            corpus_epoch,
+            _hash(query),
+            policy_hash,
+            policy.top_k,
+        )
     return NodeRetrievalRequest(
         node_id=node_id,
         project_id=project_id,
@@ -74,6 +91,8 @@ def build_node_retrieval_request(
         query_hash=_hash(query),
         policy_hash=policy_hash,
         policy=policy,
+        corpus_epoch=corpus_epoch,
+        cache_key=cache_key,
     )
 
 
@@ -91,7 +110,28 @@ def freeze_retrieval_snapshot(
         "hit_ids": hit_ids,
         "hit_versions": hit_versions,
         "trace": trace,
+        "corpus_epoch": request.corpus_epoch,
+        "cache_key": request.cache_key,
     }
+    cache_provenance = None
+    cache_fields = {
+        "layer": "RAG_QUERY",
+        "key": request.cache_key,
+        "hit": trace.get("cache_hit", False),
+        "source_execution_id": trace.get("cache_source_execution_id"),
+        "source_version": trace.get("cache_source_version"),
+        "saved_input_tokens": trace.get("cache_saved_input_tokens", 0),
+        "saved_output_tokens": trace.get("cache_saved_output_tokens", 0),
+        "saved_cost": trace.get("cache_saved_cost", 0.0),
+        "schema_validated": True,
+        "citation_gate_passed": True,
+        "reviewer_gate_passed": True,
+        "side_effect_free": True,
+    }
+    if cache_fields["key"] and (
+        cache_fields["hit"] or trace.get("cache_mode") in {"SHADOW", "ENABLED"}
+    ):
+        cache_provenance = CacheProvenance.model_validate(cache_fields)
     return RetrievalSnapshot(
         query_hash=request.query_hash,
         policy_hash=request.policy_hash,
@@ -99,6 +139,9 @@ def freeze_retrieval_snapshot(
         hit_versions=hit_versions,
         trace=trace,
         snapshot_hash=_hash(material),
+        corpus_epoch=request.corpus_epoch,
+        cache_key=request.cache_key,
+        cache_provenance=cache_provenance,
     )
 
 

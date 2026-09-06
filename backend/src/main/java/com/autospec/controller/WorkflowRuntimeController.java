@@ -187,6 +187,31 @@ public class WorkflowRuntimeController {
         trusted.put("retrieved_sources", sources);
         trusted.put("retrieval_project_id", projectId);
         trusted.put("retrieval_policy", KnowledgeIndexService.RETRIEVAL_POLICY);
+        long corpusEpoch = knowledgeIndexService.currentCorpusEpoch(projectId);
+        String actorScopeHash = knowledgeIndexService.actorScopeHash(projectId, actorUserId);
+        String retrievalCacheKey = knowledgeIndexService.retrievalCacheKey(
+                requirement,
+                5,
+                projectId,
+                actorUserId
+        );
+        trusted.put("corpus_epoch", corpusEpoch);
+        if (actorScopeHash != null) {
+            trusted.put("actor_scope_hash", actorScopeHash);
+        }
+        if (retrievalCacheKey != null) {
+            trusted.put("retrieval_cache_key", retrievalCacheKey);
+        }
+        Map<String, Object> retrievalCache = new LinkedHashMap<>();
+        retrievalCache.put("layer", "RAG_QUERY");
+        retrievalCache.put("mode", "SHADOW");
+        retrievalCache.put("hit", false);
+        retrievalCache.put("corpus_epoch", corpusEpoch);
+        retrievalCache.put("invalidation_reason", "SHADOW_READ_ONLY");
+        if (retrievalCacheKey != null) {
+            retrievalCache.put("key", retrievalCacheKey);
+        }
+        trusted.put("retrieval_cache", retrievalCache);
         trusted.put("retrieval_trace", Map.of(
                 "retriever_version", KnowledgeIndexService.RETRIEVAL_STRATEGY,
                 "query_rewrite_version", KnowledgeQueryRewriter.VERSION,
@@ -200,6 +225,8 @@ public class WorkflowRuntimeController {
                         "expiry", "NULL_OR_FUTURE",
                         "user_scope", "PROJECT_MEMBER"
                 ),
+                "corpus_epoch", corpusEpoch,
+                "cache_key", retrievalCacheKey == null ? "UNAVAILABLE" : retrievalCacheKey,
                 "hit_count", sources.size(),
                 "empty_recall", sources.isEmpty()
         ));
