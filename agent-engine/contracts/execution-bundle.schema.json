@@ -59,6 +59,7 @@
         "retry_policy": {"type": "object"},
         "fallback": {"type": "object"},
         "tool_policy": {"type": "object"}
+        ,"retrieval_policy": {"type": "object"}
       }
     }
   }

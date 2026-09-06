@@ -122,6 +122,7 @@ public class WorkflowExecutionBundleService {
         result.set("retry_policy", node.retryPolicy().deepCopy());
         result.set("fallback", node.fallback().deepCopy());
         result.set("tool_policy", node.toolPolicy().deepCopy());
+        result.set("retrieval_policy", node.retrievalPolicy().deepCopy());
         if (node.promptKey() != null && !node.promptKey().isBlank()
                 && node.promptVersion() != null && !node.promptVersion().isBlank()) {
             PromptVersionSnapshot prompt = promptSnapshot(node);

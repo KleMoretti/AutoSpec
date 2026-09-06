@@ -162,7 +162,7 @@ public class WorkflowRunCreationServiceImpl implements WorkflowRunCreationServic
             node.setHandlerKey(handler.key());
             node.setHandlerVersion(handler.version());
             node.setTimeoutMs(nodeSpec.timeoutMs());
-            node.setInputJson(resolvedInputJson);
+            node.setInputJson(withNodeRetrievalPolicy(resolvedInputJson, nodeSpec));
             node.setLockVersion(0);
             node.setCreatedAt(now);
             node.setUpdatedAt(now);
@@ -231,6 +231,21 @@ public class WorkflowRunCreationServiceImpl implements WorkflowRunCreationServic
             com.fasterxml.jackson.databind.node.ObjectNode root =
                     (com.fasterxml.jackson.databind.node.ObjectNode) objectMapper.readTree(inputJson);
             root.put("_autospec_actor_user_id", actorUserId.toString());
+            return objectMapper.writeValueAsString(root);
+        } catch (JsonProcessingException exception) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid workflow input", exception);
+        }
+    }
+
+    private String withNodeRetrievalPolicy(String inputJson, WorkflowNodeDocument nodeSpec) {
+        if (nodeSpec.retrievalPolicy() == null || nodeSpec.retrievalPolicy().isEmpty()) {
+            return inputJson;
+        }
+        try {
+            com.fasterxml.jackson.databind.node.ObjectNode root =
+                    (com.fasterxml.jackson.databind.node.ObjectNode) objectMapper.readTree(inputJson);
+            root.set("retrieval_policy", nodeSpec.retrievalPolicy().deepCopy());
+            root.put("retrieval_node_id", nodeSpec.nodeId());
             return objectMapper.writeValueAsString(root);
         } catch (JsonProcessingException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid workflow input", exception);

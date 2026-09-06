@@ -19,6 +19,7 @@ _ISSUE_TARGETS = {
     "PERMISSION_BOUNDARY": "backend_engineer",
     "CODE_EXPORT_SECRET": "backend_engineer",
     "RAG_SOURCE_CITATION": "architect",
+    "CITATION_INVALID": "architect",
 }
 
 

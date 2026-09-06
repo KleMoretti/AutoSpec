@@ -117,6 +117,30 @@ class ToolPolicy(BaseModel):
         return self
 
 
+class RetrievalPolicySpec(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    version: str = Field(default="retrieval-v1", min_length=1)
+    enabled: bool = False
+    allowed_corpora: list[str] = Field(default_factory=list)
+    top_n: int = Field(default=20, ge=1, le=100)
+    top_k: int = Field(default=5, ge=1, le=50)
+    max_per_artifact: int = Field(default=2, ge=1, le=10)
+    token_budget: int = Field(default=0, ge=0, le=100_000)
+    query_template: str = Field(default="node-aware-v1", min_length=1)
+    retriever_version: str = Field(default="hybrid-rrf-rerank-v1", min_length=1)
+    embedding_version: str = Field(default="hashing-ngram-v1", min_length=1)
+    reranker_version: str = Field(default="deterministic-rerank-v1", min_length=1)
+    timeout_ms: int = Field(default=5_000, ge=100, le=600_000)
+
+    @model_validator(mode="after")
+    def normalize_corpora(self) -> "RetrievalPolicySpec":
+        self.allowed_corpora = list(dict.fromkeys(self.allowed_corpora))
+        if self.top_k > self.top_n:
+            raise ValueError("retrieval top_k must not exceed top_n")
+        return self
+
+
 class WorkflowRuntimePolicy(BaseModel):
     model_config = ConfigDict(extra="forbid")
     max_parallel_nodes: int = Field(default=1, ge=1, le=32)
@@ -197,6 +221,7 @@ class WorkflowNodeSpec(BaseModel):
     retry_policy: RetryPolicy
     timeout_ms: int = Field(default=30000, ge=1000)
     tool_policy: ToolPolicy = Field(default_factory=ToolPolicy)
+    retrieval_policy: RetrievalPolicySpec | None = None
     requires_human_approval: bool = False
     depends_on: list[str] = Field(default_factory=list)
     approval: ApprovalPolicy = Field(default_factory=ApprovalPolicy)

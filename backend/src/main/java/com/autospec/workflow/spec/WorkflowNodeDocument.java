@@ -23,7 +23,8 @@ public record WorkflowNodeDocument(
         JsonNode retryPolicy,
         JsonNode fallback,
         JsonNode toolPolicy,
-        int timeoutMs
+        int timeoutMs,
+        JsonNode retrievalPolicy
 ) {
     public WorkflowNodeDocument {
         dependsOn = dependsOn == null ? List.of() : List.copyOf(dependsOn);
@@ -33,6 +34,7 @@ public record WorkflowNodeDocument(
         retryPolicy = objectOrEmpty(retryPolicy, "retry_policy");
         fallback = objectOrEmpty(fallback, "fallback");
         toolPolicy = objectOrEmpty(toolPolicy, "tool_policy");
+        retrievalPolicy = objectOrEmpty(retrievalPolicy, "retrieval_policy");
     }
 
     public WorkflowNodeDocument(
@@ -61,7 +63,8 @@ public record WorkflowNodeDocument(
                 null,
                 null,
                 null,
-                timeoutMs
+                timeoutMs,
+                null
         );
     }
 

@@ -13,6 +13,7 @@ from schemas.evaluation import (
 from schemas.frontend_skeleton import FrontendSkeletonArtifact
 from schemas.prd import PrdArtifact
 from schemas.review import ReviewReport
+from review.citation_gate import validate_citations
 
 
 def evaluate_artifacts(
@@ -40,7 +41,15 @@ def evaluate_artifacts(
         _requirement_coverage_score(traceability, issues),
         _cross_artifact_consistency_score(backend_design, frontend_skeleton, issues),
         _permission_coverage_score(backend_design, issues),
-        _rag_citation_score(requirement, prd, retrieved_sources or [], issues),
+        _rag_citation_score(
+            requirement,
+            prd,
+            architecture_design,
+            backend_design,
+            frontend_skeleton,
+            retrieved_sources or [],
+            issues,
+        ),
         _runtime_reliability_score(records or [], model_invocations or [], issues),
         _export_readiness_score(generated_files or [], issues),
     ]
@@ -345,14 +354,19 @@ def _permission_coverage_score(
 def _rag_citation_score(
     requirement: str,
     prd: PrdArtifact,
+    architecture_design: ArchitectureDesignArtifact,
+    backend_design: BackendDesignArtifact,
+    frontend_skeleton: FrontendSkeletonArtifact,
     retrieved_sources: list[dict[str, Any]],
     issues: list[EvaluationIssue],
 ) -> EvaluationDimensionScore:
     text = f"{requirement} {_prd_text(prd)}".lower()
+    artifacts = [prd, architecture_design, backend_design, frontend_skeleton]
+    citations = [citation for artifact in artifacts for citation in artifact.source_citations]
     needs_sources = (
         any(term in text for term in ["history", "historical", "rag", "reuse"])
         or bool(retrieved_sources)
-        or bool(prd.source_citations)
+        or bool(citations)
     )
     if needs_sources and not _has_valid_retrieved_source(retrieved_sources):
         issues.append(
@@ -371,7 +385,6 @@ def _rag_citation_score(
         )
 
     if needs_sources:
-        citations = prd.source_citations
         if not citations:
             issues.append(
                 EvaluationIssue(
@@ -388,31 +401,19 @@ def _rag_citation_score(
                 rationale="Retrieved context is present without claim-level citation evidence.",
             )
 
-        source_by_id = {
-            str(source.get("citation_id")): source
-            for source in retrieved_sources
-            if isinstance(source, dict) and source.get("citation_id")
-        }
-        unknown = [citation.citation_id for citation in citations if citation.citation_id not in source_by_id]
-        unfaithful = [
-            citation.citation_id
-            for citation in citations
-            if citation.citation_id in source_by_id
-            and not _excerpt_is_supported(
-                citation.excerpt,
-                str(source_by_id[citation.citation_id].get("content", "")),
-            )
+        failures = [
+            failure
+            for artifact in artifacts
+            for failure in validate_citations(artifact.source_citations, retrieved_sources)
         ]
-        if unknown or unfaithful:
-            evidence = [f"unknown:{value}" for value in unknown]
-            evidence.extend(f"unsupported:{value}" for value in unfaithful)
+        if failures:
             issues.append(
                 EvaluationIssue(
                     severity="HIGH",
                     issue_type="RAG_CITATION_UNFAITHFUL",
-                    description="One or more source citations are unknown or not supported by the cited excerpt.",
-                    suggestion="Use a server-issued citation id and copy a short excerpt from that exact source chunk.",
-                    evidence=evidence,
+                    description="One or more source citations failed deterministic identity, version, hash, or excerpt validation.",
+                    suggestion="Use a server-issued citation id and copy a supported excerpt from that exact source chunk.",
+                    evidence=failures,
                 )
             )
             return EvaluationDimensionScore(
@@ -426,12 +427,6 @@ def _rag_citation_score(
         score=100,
         rationale="No RAG citation is required, or retrieved sources are attached.",
     )
-
-
-def _excerpt_is_supported(excerpt: str, content: str) -> bool:
-    normalized_excerpt = " ".join(excerpt.lower().split())
-    normalized_content = " ".join(content.lower().split())
-    return len(normalized_excerpt) >= 3 and normalized_excerpt in normalized_content
 
 
 def _runtime_reliability_score(
