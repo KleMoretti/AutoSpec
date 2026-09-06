@@ -111,7 +111,11 @@ public class WorkflowRunCreationServiceImpl implements WorkflowRunCreationServic
                 command.maxWallTimeMs()
         );
         String resolvedInputJson = withExecutionPolicy(command.inputJson(), executionPolicy);
-        resolvedInputJson = withActorMetadata(resolvedInputJson, command.actorUserId());
+        resolvedInputJson = withActorMetadata(
+                resolvedInputJson,
+                command.projectId(),
+                command.actorUserId()
+        );
 
         LocalDateTime now = LocalDateTime.now();
         WorkflowRun run = new WorkflowRun();
@@ -223,14 +227,19 @@ public class WorkflowRunCreationServiceImpl implements WorkflowRunCreationServic
         }
     }
 
-    private String withActorMetadata(String inputJson, Long actorUserId) {
-        if (actorUserId == null) {
+    private String withActorMetadata(String inputJson, Long projectId, Long actorUserId) {
+        if (projectId == null && actorUserId == null) {
             return inputJson;
         }
         try {
             com.fasterxml.jackson.databind.node.ObjectNode root =
                     (com.fasterxml.jackson.databind.node.ObjectNode) objectMapper.readTree(inputJson);
-            root.put("_autospec_actor_user_id", actorUserId.toString());
+            if (projectId != null) {
+                root.put("_autospec_project_id", projectId.toString());
+            }
+            if (actorUserId != null) {
+                root.put("_autospec_actor_user_id", actorUserId.toString());
+            }
             return objectMapper.writeValueAsString(root);
         } catch (JsonProcessingException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid workflow input", exception);

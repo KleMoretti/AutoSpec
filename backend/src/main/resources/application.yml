@@ -71,6 +71,8 @@ management:
 
 autospec:
   environment: ${AUTOSPEC_ENV:development}
+  agent-engine:
+    service-token: ${AGENT_ENGINE_SERVICE_TOKEN:}
   knowledge:
     recovery:
       enabled: ${KNOWLEDGE_INDEX_RECOVERY_ENABLED:false}

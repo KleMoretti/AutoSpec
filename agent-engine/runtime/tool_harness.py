@@ -183,6 +183,15 @@ class ToolRuntimeContext:
     harness: "ToolHarness"
     started_at: float = field(default_factory=monotonic)
     calls_used: int = 0
+    workflow_run_id: int = 0
+    node_run_id: int = 0
+    actor_user_id: str | None = None
+    project_id: str | None = None
+    fencing_token: int = 0
+    execution_bundle_hash: str | None = None
+    correlation_id: str | None = None
+    traceparent: str | None = None
+    tracestate: str | None = None
 
 
 _TOOL_CONTEXT: ContextVar[ToolRuntimeContext | None] = ContextVar(
@@ -203,6 +212,10 @@ def bind_tool_runtime_context(context: ToolRuntimeContext) -> Iterator[None]:
 def current_tool_harness() -> "ToolHarness | None":
     context = _TOOL_CONTEXT.get()
     return context.harness if context is not None else None
+
+
+def current_tool_runtime_context() -> ToolRuntimeContext | None:
+    return _TOOL_CONTEXT.get()
 
 
 async def execute_current_tool(

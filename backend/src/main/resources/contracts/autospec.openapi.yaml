@@ -52,6 +52,28 @@ paths:
           description: Session revoked.
         '401':
           $ref: '#/components/responses/Unauthorized'
+  /internal/tool-gateway/requests:
+    post:
+      summary: Execute one bounded read-only Worker tool request through the control plane.
+      security:
+      - ServiceToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ToolGatewayRequest'
+      responses:
+        '200':
+          description: Structured tool result or deterministic rejection.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ToolGatewayResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   /api/prompts/active:
     get:
       summary: List active Agent prompt versions.
@@ -1147,6 +1169,10 @@ components:
       type: apiKey
       in: cookie
       name: AUTOSPEC_SESSION
+    ServiceToken:
+      type: apiKey
+      in: header
+      name: X-AutoSpec-Service-Token
   parameters:
     SessionToken:
       name: AUTOSPEC_SESSION
@@ -1818,6 +1844,132 @@ components:
           type: string
           maxLength: 128
           nullable: true
+    ToolGatewayRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - request_id
+      - execution_id
+      - workflow_run_id
+      - node_run_id
+      - node_id
+      - actor_user_id
+      - project_id
+      - fencing_token
+      - deadline_epoch_ms
+      - policy_hash
+      - idempotency_key
+      - name
+      - version
+      - arguments
+      - normalized_params_hash
+      - max_result_bytes
+      properties:
+        request_id:
+          type: string
+          maxLength: 255
+        execution_id:
+          type: string
+          maxLength: 255
+        workflow_run_id:
+          type: integer
+          format: int64
+        node_run_id:
+          type: integer
+          format: int64
+        node_id:
+          type: string
+          maxLength: 128
+        actor_user_id:
+          type: integer
+          format: int64
+        project_id:
+          type: integer
+          format: int64
+        fencing_token:
+          type: integer
+          format: int64
+          minimum: 1
+        deadline_epoch_ms:
+          type: integer
+          format: int64
+          minimum: 1
+        execution_bundle_hash:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+          nullable: true
+        policy_hash:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        idempotency_key:
+          type: string
+          maxLength: 255
+        name:
+          type: string
+          enum: [knowledge.search, artifact.get, contract.lookup, trace.query, bundle.verify]
+        version:
+          type: string
+          enum: [v1]
+        arguments:
+          type: object
+        normalized_params_hash:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        max_result_bytes:
+          type: integer
+          minimum: 256
+          maximum: 1000000
+        correlation_id:
+          type: string
+          nullable: true
+        traceparent:
+          type: string
+          nullable: true
+        tracestate:
+          type: string
+          maxLength: 512
+          nullable: true
+    ToolGatewayResponse:
+      type: object
+      required:
+      - request_id
+      - idempotency_key
+      - status
+      - cached
+      - attempts
+      - duration_ms
+      properties:
+        request_id:
+          type: string
+        idempotency_key:
+          type: string
+        status:
+          type: string
+          enum: [SUCCEEDED, FAILED]
+        result:
+          nullable: true
+        result_hash:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+          nullable: true
+        error_code:
+          type: string
+          nullable: true
+        error_message:
+          type: string
+          nullable: true
+        cached:
+          type: boolean
+        source_execution_id:
+          type: string
+          nullable: true
+        attempts:
+          type: integer
+        duration_ms:
+          type: integer
+        usage:
+          type: object
+          additionalProperties: true
     WorkflowRunResponse:
       type: object
       required:

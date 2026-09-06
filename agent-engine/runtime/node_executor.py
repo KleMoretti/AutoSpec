@@ -364,6 +364,14 @@ class NodeExecutor:
         execution_payload = dict(command.input_payload)
         raw_user_key = execution_payload.pop("_autospec_actor_user_id", None)
         user_key = None if raw_user_key is None else str(raw_user_key)
+        raw_project_key = execution_payload.pop("_autospec_project_id", None)
+        project_key = (
+            None
+            if raw_project_key is None
+            else str(raw_project_key)
+        )
+        if project_key is None and execution_payload.get("retrieval_project_id") is not None:
+            project_key = str(execution_payload.get("retrieval_project_id"))
         try:
             validated_input = registration.input_model.model_validate(execution_payload)
         except ValidationError as exception:
@@ -382,6 +390,15 @@ class NodeExecutor:
             contract_hash=command.contract_hash,
             schema_version=command.output_schema,
             harness=self._tool_harness,
+            workflow_run_id=command.workflow_run_id,
+            node_run_id=command.node_run_id,
+            actor_user_id=user_key,
+            project_id=project_key,
+            fencing_token=command.fencing_token,
+            execution_bundle_hash=command.execution_bundle_hash,
+            correlation_id=command.correlation_id,
+            traceparent=command.traceparent,
+            tracestate=command.tracestate,
         )
         with bind_model_execution_contract(execution_contract):
             with bind_tool_runtime_context(tool_context):

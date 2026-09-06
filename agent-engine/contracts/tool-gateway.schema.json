@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://autospec.local/contracts/tool-gateway-v1.schema.json",
+  "title": "AutoSpec controlled Tool Gateway v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "request_id",
+    "execution_id",
+    "workflow_run_id",
+    "node_run_id",
+    "node_id",
+    "actor_user_id",
+    "project_id",
+    "fencing_token",
+    "deadline_epoch_ms",
+    "policy_hash",
+    "idempotency_key",
+    "name",
+    "version",
+    "arguments",
+    "normalized_params_hash",
+    "max_result_bytes"
+  ],
+  "properties": {
+    "request_id": {"type": "string", "minLength": 1, "maxLength": 255},
+    "execution_id": {"type": "string", "minLength": 1, "maxLength": 255},
+    "workflow_run_id": {"type": "integer", "minimum": 1},
+    "node_run_id": {"type": "integer", "minimum": 1},
+    "node_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "actor_user_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "project_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "fencing_token": {"type": "integer", "minimum": 1},
+    "deadline_epoch_ms": {"type": "integer", "minimum": 1},
+    "execution_bundle_hash": {"type": ["string", "null"], "pattern": "^[0-9a-f]{64}$"},
+    "policy_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "idempotency_key": {"type": "string", "minLength": 1, "maxLength": 255},
+    "name": {
+      "type": "string",
+      "enum": [
+        "knowledge.search",
+        "artifact.get",
+        "contract.lookup",
+        "trace.query",
+        "bundle.verify"
+      ]
+    },
+    "version": {"const": "v1"},
+    "arguments": {"type": "object"},
+    "normalized_params_hash": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "max_result_bytes": {"type": "integer", "minimum": 256, "maximum": 1000000},
+    "correlation_id": {"type": ["string", "null"], "minLength": 1, "maxLength": 128},
+    "traceparent": {"type": ["string", "null"]},
+    "tracestate": {"type": ["string", "null"], "maxLength": 512}
+  }
+}
