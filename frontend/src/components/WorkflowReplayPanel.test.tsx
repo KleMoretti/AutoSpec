@@ -8,6 +8,8 @@ const run: WorkflowRunResponse = {
   projectId: 3,
   operation: 'GENERATE_V5',
   idempotencyKey: 'source-key',
+  executionBundleId: 90,
+  executionBundleHash: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
   status: 'COMPLETED'
 };
 
@@ -33,6 +35,7 @@ describe('WorkflowReplayPanel', () => {
         onCancel={vi.fn()}
         onLoadTimeline={vi.fn()}
         onLoadMetrics={vi.fn()}
+        onLoadTrace={vi.fn()}
       />
     );
 
@@ -41,6 +44,7 @@ describe('WorkflowReplayPanel', () => {
     expect(html).toContain('Replay mode');
     expect(html).toContain('View timeline');
     expect(html).toContain('Generate specification');
+    expect(html).toContain('Bundle #90');
   });
 
   it('renders the first-run entry point without existing history', () => {
@@ -55,6 +59,7 @@ describe('WorkflowReplayPanel', () => {
         onCancel={vi.fn()}
         onLoadTimeline={vi.fn()}
         onLoadMetrics={vi.fn()}
+        onLoadTrace={vi.fn()}
       />
     );
 
@@ -78,6 +83,7 @@ describe('WorkflowReplayPanel', () => {
         onCancel={vi.fn()}
         onLoadTimeline={vi.fn()}
         onLoadMetrics={vi.fn()}
+        onLoadTrace={vi.fn()}
       />
     );
 

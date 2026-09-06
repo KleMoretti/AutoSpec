@@ -2004,6 +2004,13 @@ components:
           type: integer
           format: int64
           nullable: true
+        executionBundleId:
+          type: integer
+          format: int64
+          nullable: true
+        executionBundleHash:
+          type: string
+          nullable: true
         replayOfRunId:
           type: integer
           format: int64
@@ -2300,6 +2307,13 @@ components:
         status:
           type: string
           nullable: true
+        executionBundleId:
+          type: integer
+          format: int64
+          nullable: true
+        executionBundleHash:
+          type: string
+          nullable: true
         nodes:
           type: array
           items:
@@ -2333,6 +2347,16 @@ components:
           type: integer
         executionId:
           type: string
+          nullable: true
+        contractHash:
+          type: string
+          nullable: true
+        executionBundleHash:
+          type: string
+          nullable: true
+        fencingToken:
+          type: integer
+          format: int64
           nullable: true
         status:
           type: string
@@ -2547,6 +2571,16 @@ components:
           type: integer
         executionId:
           type: string
+        contractHash:
+          type: string
+          nullable: true
+        executionBundleHash:
+          type: string
+          nullable: true
+        fencingToken:
+          type: integer
+          format: int64
+          nullable: true
         status:
           type: string
         handlerKey:

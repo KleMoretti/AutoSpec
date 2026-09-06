@@ -15,10 +15,12 @@ import {
   type WorkflowRunResponse,
   type WorkflowRunStartPayload,
   type WorkflowRuntimeMetricsResponse,
+  type WorkflowTraceResponse,
   cancelWorkflowRun,
   decideWorkflowApproval,
   getWorkflowRunMetrics,
   getWorkflowRunNodes,
+  getWorkflowRunTrace,
   replayWorkflowRun,
   startWorkflowRun
 } from '../api/workflow';
@@ -119,6 +121,10 @@ function ProjectDetailPage() {
 
   async function handleLoadMetrics(runId: number): Promise<WorkflowRuntimeMetricsResponse> {
     return getWorkflowRunMetrics(runId);
+  }
+
+  async function handleLoadTrace(runId: number): Promise<WorkflowTraceResponse> {
+    return getWorkflowRunTrace(runId);
   }
 
   async function handleExportMarkdown() {
@@ -277,6 +283,7 @@ function ProjectDetailPage() {
           onCancel={handleCancelRun}
           onLoadTimeline={handleLoadTimeline}
           onLoadMetrics={handleLoadMetrics}
+          onLoadTrace={handleLoadTrace}
         />
       ) : null}
 
