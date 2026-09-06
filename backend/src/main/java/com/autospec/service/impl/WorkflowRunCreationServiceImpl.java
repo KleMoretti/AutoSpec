@@ -10,6 +10,8 @@ import com.autospec.mapper.WorkflowTransitionMapper;
 import com.autospec.mapper.WorkflowVersionMapper;
 import com.autospec.service.WorkflowRunCreationService;
 import com.autospec.service.WorkflowExecutionPolicy;
+import com.autospec.service.WorkflowExecutionBundleService;
+import com.autospec.entity.WorkflowExecutionBundle;
 import com.autospec.workflow.runtime.CompiledWorkflow;
 import com.autospec.workflow.runtime.DagCompiler;
 import com.autospec.workflow.runtime.WorkflowHandlerCatalog;
@@ -42,6 +44,7 @@ public class WorkflowRunCreationServiceImpl implements WorkflowRunCreationServic
     private final WorkflowRunReconciliationService reconciliationService;
     private final WorkflowAdmissionGuard admissionGuard;
     private final ObjectMapper objectMapper;
+    private final WorkflowExecutionBundleService executionBundleService;
 
     public WorkflowRunCreationServiceImpl(
             WorkflowVersionMapper versionMapper,
@@ -53,7 +56,8 @@ public class WorkflowRunCreationServiceImpl implements WorkflowRunCreationServic
             WorkflowHandlerCatalog handlerCatalog,
             WorkflowRunReconciliationService reconciliationService,
             WorkflowAdmissionGuard admissionGuard,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            WorkflowExecutionBundleService executionBundleService
     ) {
         this.versionMapper = versionMapper;
         this.runMapper = runMapper;
@@ -65,6 +69,7 @@ public class WorkflowRunCreationServiceImpl implements WorkflowRunCreationServic
         this.reconciliationService = reconciliationService;
         this.admissionGuard = admissionGuard;
         this.objectMapper = objectMapper;
+        this.executionBundleService = executionBundleService;
     }
 
     @Override
@@ -90,6 +95,7 @@ public class WorkflowRunCreationServiceImpl implements WorkflowRunCreationServic
         }
         var document = snapshotParser.parse(version.getSpecJson());
         WorkflowExecutableContractValidator.validate(document);
+        WorkflowExecutionBundle bundle = executionBundleService.ensureFor(version, document);
         CompiledWorkflow graph = dagCompiler.compile(document);
         Map<String, HandlerRef> handlers = graph.nodes().entrySet().stream()
                 .collect(java.util.stream.Collectors.toUnmodifiableMap(
@@ -116,6 +122,9 @@ public class WorkflowRunCreationServiceImpl implements WorkflowRunCreationServic
         run.setCorrelationId(UUID.randomUUID().toString());
         run.setWorkflowVersionId(version.getId());
         run.setWorkflowSnapshotJson(version.getSpecJson());
+        run.setExecutionBundleId(bundle.getId());
+        run.setExecutionBundleHash(bundle.getBundleHash());
+        run.setExecutionBundleJson(bundle.getBundleJson());
         run.setReviewRound(0);
         run.setMaxReviewRounds(document.maxReviewRounds());
         run.setQualityProfile(executionPolicy.qualityProfile());
@@ -148,6 +157,7 @@ public class WorkflowRunCreationServiceImpl implements WorkflowRunCreationServic
             node.setRevision(1);
             node.setAttempt(1);
             node.setExecutionId(run.getId() + ":" + nodeId + ":1:1");
+            node.setExecutionBundleHash(bundle.getBundleHash());
             node.setStatus("PENDING");
             node.setHandlerKey(handler.key());
             node.setHandlerVersion(handler.version());

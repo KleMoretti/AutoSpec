@@ -45,21 +45,37 @@ public class AuthService {
 
     @Transactional
     public UserAccount ensureDemoUser(String username, String displayName, String password) {
+        return ensureDemoUser(username, displayName, password, "PROJECT_USER");
+    }
+
+    @Transactional
+    public UserAccount ensureDemoUser(
+            String username,
+            String displayName,
+            String password,
+            String platformRole
+    ) {
         if (username == null || username.isBlank() || password == null || password.isBlank()) {
             throw new IllegalArgumentException("Demo user credentials must not be blank");
         }
-        return userAccountService.lambdaQuery()
+        UserAccount user = userAccountService.lambdaQuery()
                 .eq(UserAccount::getUsername, username)
                 .oneOpt()
                 .orElseGet(() -> {
-                    UserAccount user = new UserAccount();
-                    user.setUsername(username);
-                    user.setDisplayName(displayName == null || displayName.isBlank() ? username : displayName);
-                    user.setPasswordHash(passwordEncoder.encode(password));
-                    user.setEnabled(true);
-                    userAccountService.save(user);
-                    return user;
+                    UserAccount created = new UserAccount();
+                    created.setUsername(username);
+                    created.setDisplayName(displayName == null || displayName.isBlank() ? username : displayName);
+                    created.setPasswordHash(passwordEncoder.encode(password));
+                    created.setEnabled(true);
+                    created.setPlatformRole(normalizePlatformRole(platformRole));
+                    userAccountService.save(created);
+                    return created;
                 });
+        if (user.getPlatformRole() == null || user.getPlatformRole().isBlank()) {
+            user.setPlatformRole(normalizePlatformRole(platformRole));
+            userAccountService.updateById(user);
+        }
+        return user;
     }
 
     public Duration sessionTtl() {
@@ -152,5 +168,11 @@ public class AuthService {
 
     private ResponseStatusException invalidSession() {
         return new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid session token");
+    }
+
+    private String normalizePlatformRole(String platformRole) {
+        return platformRole == null || platformRole.isBlank()
+                ? "PROJECT_USER"
+                : platformRole.trim().toUpperCase();
     }
 }

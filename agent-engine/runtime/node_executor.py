@@ -178,6 +178,7 @@ class NodeCommand(TraceContextEnvelope):
     tool_policy: dict[str, Any] = Field(default_factory=dict)
     budget_reservation: BudgetReservation | None = None
     deadline_epoch_ms: int = Field(default=0, ge=0)
+    execution_bundle_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     fencing_token: int = Field(default=0, ge=0)
     worker_id: str | None = Field(default=None, min_length=1, max_length=128)
 
@@ -278,6 +279,7 @@ class NodeExecutionEvent(TraceContextEnvelope):
     output_schema_hash: str | None = None
     prompt_version: str | None = None
     prompt_checksum: str | None = None
+    execution_bundle_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     fencing_token: int = Field(default=0, ge=0)
     worker_id: str | None = None
 
@@ -589,6 +591,7 @@ class NodeExecutor:
                 "input_schema_hash": command.input_schema_hash,
                 "output_schema": command.output_schema,
                 "output_schema_hash": command.output_schema_hash,
+                "execution_bundle_hash": command.execution_bundle_hash,
                 "fencing_token": command.fencing_token,
                 "worker_id": command.worker_id,
                 "budget_reservation_id": (

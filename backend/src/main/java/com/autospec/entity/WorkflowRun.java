@@ -29,6 +29,12 @@ public class WorkflowRun {
 
     private String workflowSnapshotJson;
 
+    private Long executionBundleId;
+
+    private String executionBundleHash;
+
+    private String executionBundleJson;
+
     private Long replayOfRunId;
 
     private Integer reviewRound;

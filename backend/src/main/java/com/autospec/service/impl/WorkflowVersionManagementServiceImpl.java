@@ -5,6 +5,8 @@ import com.autospec.entity.WorkflowVersion;
 import com.autospec.mapper.WorkflowDefinitionMapper;
 import com.autospec.mapper.WorkflowVersionMapper;
 import com.autospec.service.WorkflowVersionManagementService;
+import com.autospec.service.WorkflowExecutionBundleService;
+import com.autospec.util.CanonicalJson;
 import com.autospec.workflow.runtime.CompiledWorkflow;
 import com.autospec.workflow.runtime.DagCompiler;
 import com.autospec.workflow.runtime.WorkflowSnapshotParser;
@@ -15,12 +17,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
-import java.util.HexFormat;
 import java.util.List;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 
 @Service
 public class WorkflowVersionManagementServiceImpl implements WorkflowVersionManagementService {
@@ -28,17 +27,20 @@ public class WorkflowVersionManagementServiceImpl implements WorkflowVersionMana
     private final WorkflowVersionMapper versionMapper;
     private final WorkflowSnapshotParser snapshotParser;
     private final DagCompiler dagCompiler;
+    private final WorkflowExecutionBundleService executionBundleService;
 
     public WorkflowVersionManagementServiceImpl(
             WorkflowDefinitionMapper definitionMapper,
             WorkflowVersionMapper versionMapper,
             WorkflowSnapshotParser snapshotParser,
-            DagCompiler dagCompiler
+            DagCompiler dagCompiler,
+            WorkflowExecutionBundleService executionBundleService
     ) {
         this.definitionMapper = definitionMapper;
         this.versionMapper = versionMapper;
         this.snapshotParser = snapshotParser;
         this.dagCompiler = dagCompiler;
+        this.executionBundleService = executionBundleService;
     }
 
     @Override
@@ -80,7 +82,7 @@ public class WorkflowVersionManagementServiceImpl implements WorkflowVersionMana
         version.setDefinitionId(definition.getId());
         version.setVersion(command.version().trim());
         version.setSpecJson(command.specJson());
-        version.setContentHash(sha256(command.specJson()));
+        version.setContentHash(CanonicalJson.sha256(command.specJson()));
         version.setStatus("DRAFT");
         version.setCreatedAt(now);
         versionMapper.insert(version);
@@ -127,13 +129,34 @@ public class WorkflowVersionManagementServiceImpl implements WorkflowVersionMana
         if (!"DRAFT".equals(version.getStatus())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Only draft versions can be published");
         }
+        String canonicalHash = CanonicalJson.sha256(version.getSpecJson());
+        if (!canonicalHash.equals(version.getContentHash())) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Workflow draft content hash does not match canonical JSON"
+            );
+        }
         ValidationResult validation = validate(versionId);
         if (!validation.valid()) {
             throw badRequest("Invalid workflow version: " + String.join("; ", validation.errors()));
         }
-        version.setStatus("PUBLISHED");
-        version.setPublishedAt(LocalDateTime.now());
-        versionMapper.updateById(version);
+        executionBundleService.ensureFor(version, snapshotParser.parse(version.getSpecJson()));
+        LocalDateTime publishedAt = LocalDateTime.now();
+        int updated = versionMapper.update(
+                null,
+                new LambdaUpdateWrapper<WorkflowVersion>()
+                        .eq(WorkflowVersion::getId, versionId)
+                        .eq(WorkflowVersion::getStatus, "DRAFT")
+                        .set(WorkflowVersion::getStatus, "PUBLISHED")
+                        .set(WorkflowVersion::getPublishedAt, publishedAt)
+                        .set(WorkflowVersion::getImmutableAt, publishedAt)
+        );
+        if (updated != 1) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Workflow version was changed before publication"
+            );
+        }
         return versionMapper.selectById(versionId);
     }
 
@@ -143,16 +166,6 @@ public class WorkflowVersionManagementServiceImpl implements WorkflowVersionMana
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Workflow version not found");
         }
         return version;
-    }
-
-    private String sha256(String value) {
-        try {
-            return HexFormat.of().formatHex(
-                    MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8))
-            );
-        } catch (NoSuchAlgorithmException exception) {
-            throw new IllegalStateException("SHA-256 is not available", exception);
-        }
     }
 
     private ResponseStatusException badRequest(String message) {

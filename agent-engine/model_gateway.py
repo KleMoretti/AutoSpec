@@ -404,11 +404,12 @@ class OpenAICompatibleModelClient:
     ) -> str:
         prompt_path = self._prompt_dir / f"{prompt_key}_{prompt_version}.md"
         try:
-            material = prompt_path.read_bytes()
-        except OSError as exc:
+            prompt_text = prompt_path.read_text(encoding="utf-8").replace("\r\n", "\n")
+        except (OSError, UnicodeDecodeError) as exc:
             raise ModelConfigurationError(
                 f"Unable to load prompt {prompt_key}:{prompt_version}"
             ) from exc
+        material = prompt_text.encode("utf-8")
         actual_checksum = hashlib.sha256(material).hexdigest()
         if actual_checksum != expected_checksum:
             raise ModelConfigurationError(
@@ -416,12 +417,7 @@ class OpenAICompatibleModelClient:
                 f"{prompt_key}:{prompt_version}; expected {expected_checksum}, "
                 f"got {actual_checksum}"
             )
-        try:
-            return material.decode("utf-8")
-        except UnicodeDecodeError as exc:
-            raise ModelConfigurationError(
-                f"Prompt is not valid UTF-8: {prompt_key}:{prompt_version}"
-            ) from exc
+        return prompt_text
 
 
 class RoutedModelClient:

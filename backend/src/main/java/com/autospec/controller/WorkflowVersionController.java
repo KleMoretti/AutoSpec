@@ -7,6 +7,7 @@ import com.autospec.entity.WorkflowDefinition;
 import com.autospec.entity.WorkflowVersion;
 import com.autospec.mapper.WorkflowDefinitionMapper;
 import com.autospec.mapper.WorkflowVersionMapper;
+import com.autospec.service.GovernanceAccessService;
 import com.autospec.service.ProjectAccessService;
 import com.autospec.service.WorkflowVersionManagementService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
@@ -29,17 +30,20 @@ public class WorkflowVersionController {
     private final WorkflowDefinitionMapper definitionMapper;
     private final WorkflowVersionMapper versionMapper;
     private final ProjectAccessService projectAccessService;
+    private final GovernanceAccessService governanceAccessService;
     private final WorkflowVersionManagementService managementService;
 
     public WorkflowVersionController(
             WorkflowDefinitionMapper definitionMapper,
             WorkflowVersionMapper versionMapper,
             ProjectAccessService projectAccessService,
+            GovernanceAccessService governanceAccessService,
             WorkflowVersionManagementService managementService
     ) {
         this.definitionMapper = definitionMapper;
         this.versionMapper = versionMapper;
         this.projectAccessService = projectAccessService;
+        this.governanceAccessService = governanceAccessService;
         this.managementService = managementService;
     }
 
@@ -48,7 +52,7 @@ public class WorkflowVersionController {
             @Valid @RequestBody WorkflowDraftRequest request,
             @RequestHeader(value = "X-AutoSpec-Session-Token", required = false) String sessionToken
     ) {
-        projectAccessService.resolveUserId(sessionToken);
+        governanceAccessService.requirePlatformAdmin(sessionToken);
         WorkflowVersion version = managementService.createDraft(
                 new WorkflowVersionManagementService.CreateDraftCommand(
                         request.workflowKey(),
@@ -67,7 +71,7 @@ public class WorkflowVersionController {
             @PathVariable Long versionId,
             @RequestHeader(value = "X-AutoSpec-Session-Token", required = false) String sessionToken
     ) {
-        projectAccessService.resolveUserId(sessionToken);
+        governanceAccessService.requirePlatformAdmin(sessionToken);
         return WorkflowValidationResponse.from(managementService.validate(versionId));
     }
 
@@ -76,7 +80,7 @@ public class WorkflowVersionController {
             @PathVariable Long versionId,
             @RequestHeader(value = "X-AutoSpec-Session-Token", required = false) String sessionToken
     ) {
-        projectAccessService.resolveUserId(sessionToken);
+        governanceAccessService.requirePlatformAdmin(sessionToken);
         WorkflowVersion version = managementService.publish(versionId);
         WorkflowDefinition definition = definitionMapper.selectById(version.getDefinitionId());
         return WorkflowVersionResponse.from(definition, version);

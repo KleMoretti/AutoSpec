@@ -41,7 +41,8 @@ public record QueuedNodeCommand(
         @JsonProperty("fallback") JsonNode fallback,
         @JsonProperty("tool_policy") JsonNode toolPolicy,
         @JsonProperty("budget_reservation") WorkflowBudgetReservation budgetReservation,
-        @JsonProperty("deadline_epoch_ms") long deadlineEpochMs
+        @JsonProperty("deadline_epoch_ms") long deadlineEpochMs,
+        @JsonProperty("execution_bundle_hash") String executionBundleHash
 ) {
     private static final Pattern SHA256 = Pattern.compile("^[0-9a-f]{64}$");
 
@@ -149,7 +150,8 @@ public record QueuedNodeCommand(
                 null,
                 null,
                 null,
-                0
+                0,
+                null
         );
     }
 
@@ -199,7 +201,8 @@ public record QueuedNodeCommand(
                 null,
                 null,
                 null,
-                0
+                0,
+                null
         );
     }
 
@@ -264,7 +267,8 @@ public record QueuedNodeCommand(
                 fallback,
                 null,
                 budgetReservation,
-                deadlineEpochMs
+                deadlineEpochMs,
+                null
         );
     }
 
@@ -319,7 +323,8 @@ public record QueuedNodeCommand(
                     null,
                     null,
                     null,
-                    0
+                    0,
+                    nodeRun.getExecutionBundleHash()
             );
         } catch (JsonProcessingException exception) {
             throw new IllegalArgumentException("Invalid workflow node input JSON", exception);
@@ -389,7 +394,8 @@ public record QueuedNodeCommand(
                     contract == null ? null : contract.fallback(),
                     contract == null ? null : contract.toolPolicy(),
                     reservation,
-                    deadline
+                    deadline,
+                    nodeRun.getExecutionBundleHash()
             );
         } catch (JsonProcessingException exception) {
             throw new IllegalArgumentException("Invalid workflow node input JSON", exception);

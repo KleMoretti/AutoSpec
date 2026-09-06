@@ -8,23 +8,13 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 @Data
-@TableName("user_account")
-public class UserAccount {
-
+@TableName("workflow_execution_bundle")
+public class WorkflowExecutionBundle {
     @TableId(type = IdType.AUTO)
     private Long id;
-
-    private String username;
-
-    private String displayName;
-
-    private String passwordHash;
-
-    private Boolean enabled;
-
-    private String platformRole;
-
+    private Long workflowVersionId;
+    private String bundleVersion;
+    private String bundleJson;
+    private String bundleHash;
     private LocalDateTime createdAt;
-
-    private LocalDateTime updatedAt;
 }

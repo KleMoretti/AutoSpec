@@ -230,6 +230,7 @@ class WorkflowStreamWorker:
                 prompt_key=command.prompt_key,
                 prompt_version=command.prompt_version,
                 prompt_checksum=command.prompt_checksum,
+                execution_bundle_hash=command.execution_bundle_hash,
                 fencing_token=command.fencing_token,
                 worker_id=command.worker_id,
             )

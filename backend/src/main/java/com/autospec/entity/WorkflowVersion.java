@@ -18,5 +18,6 @@ public class WorkflowVersion {
     private String contentHash;
     private String status;
     private LocalDateTime publishedAt;
+    private LocalDateTime immutableAt;
     private LocalDateTime createdAt;
 }

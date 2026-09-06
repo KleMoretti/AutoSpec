@@ -83,6 +83,7 @@ autospec:
       username: ${AUTH_DEMO_USER_USERNAME:owner}
       display-name: ${AUTH_DEMO_USER_DISPLAY_NAME:Owner}
       password: ${AUTH_DEMO_USER_PASSWORD:}
+      platform-role: ${AUTH_DEMO_USER_PLATFORM_ROLE:PLATFORM_ADMIN}
     login-rate-limit:
       enabled: ${AUTH_LOGIN_RATE_LIMIT_ENABLED:true}
       max-attempts: ${AUTH_LOGIN_RATE_LIMIT_MAX_ATTEMPTS:5}

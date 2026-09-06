@@ -22,21 +22,31 @@ public class PromptRegistryService {
 
     @Transactional
     public PromptVersion registerActive(String promptKey, String version, String content) {
-        promptVersionService.lambdaUpdate()
-                .eq(PromptVersion::getPromptKey, promptKey)
-                .set(PromptVersion::getActive, false)
-                .update();
-
+        String canonicalKey = normalizePromptKey(promptKey);
+        String expectedChecksum = "sha256:" + sha256Hex(content);
         PromptVersion existing = promptVersionService.lambdaQuery()
-                .eq(PromptVersion::getPromptKey, promptKey)
+                .eq(PromptVersion::getPromptKey, canonicalKey)
                 .eq(PromptVersion::getVersion, version)
                 .oneOpt()
                 .orElse(null);
+        if (existing != null
+                && (!java.util.Objects.equals(existing.getContent(), content)
+                || !expectedChecksum.equals(existing.getChecksum()))) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Prompt version is immutable and its content/checksum already exists"
+            );
+        }
+        promptVersionService.lambdaUpdate()
+                .eq(PromptVersion::getPromptKey, canonicalKey)
+                .set(PromptVersion::getActive, false)
+                .update();
+
         PromptVersion prompt = existing == null ? new PromptVersion() : existing;
-        prompt.setPromptKey(promptKey);
+        prompt.setPromptKey(canonicalKey);
         prompt.setVersion(version);
         prompt.setContent(content);
-        prompt.setChecksum("sha256:" + sha256Hex(content));
+        prompt.setChecksum(expectedChecksum);
         prompt.setActive(true);
         if (prompt.getId() == null) {
             promptVersionService.save(prompt);
@@ -48,7 +58,7 @@ public class PromptRegistryService {
 
     public PromptVersion activePrompt(String promptKey) {
         return promptVersionService.lambdaQuery()
-                .eq(PromptVersion::getPromptKey, promptKey)
+                .eq(PromptVersion::getPromptKey, normalizePromptKey(promptKey))
                 .eq(PromptVersion::getActive, true)
                 .orderByDesc(PromptVersion::getId)
                 .last("limit 1")
@@ -58,7 +68,7 @@ public class PromptRegistryService {
 
     public Long activePromptIdOrNull(String promptKey) {
         return promptVersionService.lambdaQuery()
-                .eq(PromptVersion::getPromptKey, promptKey)
+                .eq(PromptVersion::getPromptKey, normalizePromptKey(promptKey))
                 .eq(PromptVersion::getActive, true)
                 .orderByDesc(PromptVersion::getId)
                 .last("limit 1")
@@ -74,5 +84,20 @@ public class PromptRegistryService {
         } catch (NoSuchAlgorithmException ex) {
             throw new IllegalStateException("SHA-256 is not available", ex);
         }
+    }
+
+    public String normalizePromptKey(String promptKey) {
+        if (promptKey == null || promptKey.isBlank()) {
+            throw new IllegalArgumentException("promptKey is required");
+        }
+        return switch (promptKey.trim()) {
+            case "ProductManagerAgent" -> "product_manager";
+            case "ArchitectAgent" -> "architect";
+            case "BackendEngineerAgent" -> "backend_engineer";
+            case "FrontendEngineerAgent" -> "frontend_engineer";
+            case "ReviewerAgent" -> "reviewer";
+            case "EvaluatorAgent" -> "evaluator";
+            default -> promptKey.trim();
+        };
     }
 }
