@@ -23,6 +23,7 @@ public record WorkflowNodeDocument(
         JsonNode retryPolicy,
         JsonNode fallback,
         JsonNode toolPolicy,
+        JsonNode agentLoopPolicy,
         int timeoutMs,
         JsonNode retrievalPolicy
 ) {
@@ -34,6 +35,7 @@ public record WorkflowNodeDocument(
         retryPolicy = objectOrEmpty(retryPolicy, "retry_policy");
         fallback = objectOrEmpty(fallback, "fallback");
         toolPolicy = objectOrEmpty(toolPolicy, "tool_policy");
+        agentLoopPolicy = objectOrEmpty(agentLoopPolicy, "agent_loop_policy");
         retrievalPolicy = objectOrEmpty(retrievalPolicy, "retrieval_policy");
     }
 
@@ -55,6 +57,7 @@ public record WorkflowNodeDocument(
                 null,
                 null,
                 artifactType,
+                null,
                 null,
                 null,
                 null,

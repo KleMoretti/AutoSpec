@@ -40,6 +40,7 @@ public record QueuedNodeCommand(
         @JsonProperty("retry_policy") JsonNode retryPolicy,
         @JsonProperty("fallback") JsonNode fallback,
         @JsonProperty("tool_policy") JsonNode toolPolicy,
+        @JsonProperty("agent_loop_policy") JsonNode agentLoopPolicy,
         @JsonProperty("budget_reservation") WorkflowBudgetReservation budgetReservation,
         @JsonProperty("deadline_epoch_ms") long deadlineEpochMs,
         @JsonProperty("execution_bundle_hash") String executionBundleHash
@@ -53,6 +54,7 @@ public record QueuedNodeCommand(
         retryPolicy = objectOrEmpty(retryPolicy, "retryPolicy");
         fallback = objectOrEmpty(fallback, "fallback");
         toolPolicy = objectOrEmpty(toolPolicy, "toolPolicy");
+        agentLoopPolicy = objectOrEmpty(agentLoopPolicy, "agentLoopPolicy");
         if (!inputPayload.isObject()) {
             throw new IllegalArgumentException("inputPayload must be a JSON object");
         }
@@ -150,6 +152,7 @@ public record QueuedNodeCommand(
                 null,
                 null,
                 null,
+                null,
                 0,
                 null
         );
@@ -187,6 +190,7 @@ public record QueuedNodeCommand(
                 traceparent,
                 tracestate,
                 0,
+                null,
                 null,
                 null,
                 null,
@@ -266,6 +270,7 @@ public record QueuedNodeCommand(
                 retryPolicy,
                 fallback,
                 null,
+                null,
                 budgetReservation,
                 deadlineEpochMs,
                 null
@@ -309,6 +314,7 @@ public record QueuedNodeCommand(
                     traceContext == null ? null : traceContext.traceparent(),
                     traceContext == null ? null : traceContext.tracestate(),
                     0,
+                    null,
                     null,
                     null,
                     null,
@@ -393,6 +399,7 @@ public record QueuedNodeCommand(
                     contract == null ? null : contract.retryPolicy(),
                     contract == null ? null : contract.fallback(),
                     contract == null ? null : contract.toolPolicy(),
+                    contract == null ? null : contract.agentLoopPolicy(),
                     reservation,
                     deadline,
                     nodeRun.getExecutionBundleHash()

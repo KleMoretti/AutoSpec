@@ -34,6 +34,7 @@ class ExecutionBundleNode(BaseModel):
     retry_policy: dict[str, Any] = Field(default_factory=dict)
     fallback: dict[str, Any] = Field(default_factory=dict)
     tool_policy: dict[str, Any] = Field(default_factory=dict)
+    agent_loop_policy: dict[str, Any] = Field(default_factory=dict)
     retrieval_policy: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")

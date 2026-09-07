@@ -28,6 +28,8 @@ from runtime.tool_harness import (
     ToolRuntimeContext,
     bind_tool_runtime_context,
 )
+from runtime.agent_loop_trace import capture_agent_loop_trace, current_agent_loop_trace
+from schemas.agent_loop import AgentStepRecord, LoopPolicy, StopReason
 from schemas.workflow_spec import (
     ContextPolicy,
     FallbackPolicy,
@@ -176,6 +178,7 @@ class NodeCommand(TraceContextEnvelope):
     retry_policy: dict[str, Any] = Field(default_factory=dict)
     fallback: dict[str, Any] = Field(default_factory=dict)
     tool_policy: dict[str, Any] = Field(default_factory=dict)
+    agent_loop_policy: dict[str, Any] = Field(default_factory=dict)
     budget_reservation: BudgetReservation | None = None
     deadline_epoch_ms: int = Field(default=0, ge=0)
     execution_bundle_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
@@ -186,9 +189,13 @@ class NodeCommand(TraceContextEnvelope):
     def validate_contract_envelope(self) -> "NodeCommand":
         if self.tool_policy:
             ToolPolicy.model_validate(self.tool_policy)
+        if self.agent_loop_policy:
+            LoopPolicy.model_validate(self.agent_loop_policy)
         if self.protocol_version == 0:
             if self.contract_hash is not None:
                 raise ValueError("contract_hash requires protocol_version 1")
+            if self.agent_loop_policy:
+                raise ValueError("agent_loop_policy requires protocol_version 2")
             return self
         required = {
             "contract_hash": self.contract_hash,
@@ -282,6 +289,8 @@ class NodeExecutionEvent(TraceContextEnvelope):
     execution_bundle_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     fencing_token: int = Field(default=0, ge=0)
     worker_id: str | None = None
+    agent_steps: list[AgentStepRecord] = Field(default_factory=list)
+    agent_loop_stop_reason: StopReason | None = None
 
     @model_validator(mode="after")
     def validate_call_records(self) -> "NodeExecutionEvent":
@@ -414,43 +423,50 @@ class NodeExecutor:
                         command.deadline_epoch_ms if command.deadline_epoch_ms > 0 else None
                     ),
                 ) as invocations, capture_context_manifests() as manifests:
-                    try:
-                        if self._concurrency is None:
-                            raw_output = await asyncio.wait_for(
-                                self._invoke(registration.handler, validated_input),
-                                timeout=remaining_ms / 1000,
-                            )
-                        else:
-                            async with self._concurrency.hold(
-                                user_key=user_key,
-                                requires_model=bool(command.model_policy),
-                            ):
+                    with capture_agent_loop_trace():
+                        try:
+                            if self._concurrency is None:
                                 raw_output = await asyncio.wait_for(
                                     self._invoke(registration.handler, validated_input),
                                     timeout=remaining_ms / 1000,
                                 )
-                    except asyncio.TimeoutError:
-                        timeout_message = (
-                            f"node exceeded timeout of {command.timeout_ms} ms"
-                            if command.deadline_epoch_ms <= 0
-                            else f"node exceeded execution deadline after {remaining_ms} ms"
+                            else:
+                                async with self._concurrency.hold(
+                                    user_key=user_key,
+                                    requires_model=bool(command.model_policy),
+                                ):
+                                    raw_output = await asyncio.wait_for(
+                                        self._invoke(registration.handler, validated_input),
+                                        timeout=remaining_ms / 1000,
+                                    )
+                        except asyncio.TimeoutError:
+                            timeout_message = (
+                                f"node exceeded timeout of {command.timeout_ms} ms"
+                                if command.deadline_epoch_ms <= 0
+                                else f"node exceeded execution deadline after {remaining_ms} ms"
+                            )
+                            return self._failure(
+                                command,
+                                started,
+                                "MODEL_TIMEOUT",
+                                timeout_message,
+                                self._metadata(
+                                    invocations, manifests, current_agent_loop_trace()
+                                ),
+                            )
+                        except Exception as exception:  # noqa: BLE001 - converted to runtime envelope.
+                            return self._failure(
+                                command,
+                                started,
+                                getattr(exception, "error_code", "HANDLER_ERROR"),
+                                str(exception),
+                                self._metadata(
+                                    invocations, manifests, current_agent_loop_trace()
+                                ),
+                            )
+                        usage = self._metadata(
+                            invocations, manifests, current_agent_loop_trace()
                         )
-                        return self._failure(
-                            command,
-                            started,
-                            "MODEL_TIMEOUT",
-                            timeout_message,
-                            self._metadata(invocations, manifests),
-                        )
-                    except Exception as exception:  # noqa: BLE001 - converted to runtime envelope.
-                        return self._failure(
-                            command,
-                            started,
-                            getattr(exception, "error_code", "HANDLER_ERROR"),
-                            str(exception),
-                            self._metadata(invocations, manifests),
-                        )
-                    usage = self._metadata(invocations, manifests)
 
         try:
             validated_output = registration.output_model.model_validate(raw_output)
@@ -519,9 +535,14 @@ class NodeExecutor:
     def _duration_ms(self, started: float) -> int:
         return max(0, round((perf_counter() - started) * 1000))
 
-    def _metadata(self, invocations, manifests) -> dict[str, Any]:
+    def _metadata(self, invocations, manifests, loop_trace=None) -> dict[str, Any]:
         metadata = summarize_model_invocations(invocations)
         metadata["context_manifest"] = manifests[-1] if manifests else None
+        if loop_trace is not None:
+            metadata["agent_steps"] = [
+                step.model_dump(mode="json") for step in loop_trace.steps
+            ]
+            metadata["agent_loop_stop_reason"] = loop_trace.stop_reason.value
         return metadata
 
     def _remaining_ms(self, command: NodeCommand) -> int:
@@ -586,6 +607,7 @@ class NodeExecutor:
             fallback_policy=dict(command.fallback),
             schema_version=command.output_schema,
             tool_policy=dict(command.tool_policy),
+            agent_loop_policy=dict(command.agent_loop_policy),
         )
 
     def _execution_metadata(
@@ -616,6 +638,8 @@ class NodeExecutor:
                     if command.budget_reservation is not None
                     else None
                 ),
+                "agent_steps": metadata.get("agent_steps", []),
+                "agent_loop_stop_reason": metadata.get("agent_loop_stop_reason"),
             }
         )
         return metadata
@@ -642,6 +666,8 @@ def contract_fingerprint(command: NodeCommand) -> str:
         material["context_policy"] = command.context_policy
         if command.tool_policy:
             material["tool_policy"] = command.tool_policy
+        if command.agent_loop_policy:
+            material["agent_loop_policy"] = command.agent_loop_policy
     canonical = json.dumps(
         material,
         ensure_ascii=False,

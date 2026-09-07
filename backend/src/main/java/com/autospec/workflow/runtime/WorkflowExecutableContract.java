@@ -28,7 +28,8 @@ public record WorkflowExecutableContract(
         JsonNode modelPolicy,
         JsonNode retryPolicy,
         JsonNode fallback,
-        JsonNode toolPolicy
+        JsonNode toolPolicy,
+        JsonNode agentLoopPolicy
 ) {
     public static WorkflowExecutableContract from(
             int protocolVersion,
@@ -61,6 +62,9 @@ public record WorkflowExecutableContract(
         if (protocolVersion >= 2 && !node.toolPolicy().isEmpty()) {
             material.put("tool_policy", generic(objectMapper, node.toolPolicy()));
         }
+        if (protocolVersion >= 2 && !node.agentLoopPolicy().isEmpty()) {
+            material.put("agent_loop_policy", generic(objectMapper, node.agentLoopPolicy()));
+        }
         return new WorkflowExecutableContract(
                 protocolVersion,
                 sha256(canonicalJson(objectMapper, material)),
@@ -75,7 +79,8 @@ public record WorkflowExecutableContract(
                 node.modelPolicy().deepCopy(),
                 node.retryPolicy().deepCopy(),
                 node.fallback().deepCopy(),
-                node.toolPolicy().deepCopy()
+                node.toolPolicy().deepCopy(),
+                node.agentLoopPolicy().deepCopy()
         );
     }
 
