@@ -40,6 +40,7 @@ public class WorkflowEventPollingConfiguration {
             ObjectProvider<WorkflowArtifactProjector> artifactProjectorProvider,
             ObjectProvider<ReviewerReworkCoordinator> reworkCoordinatorProvider,
             ObjectProvider<WorkflowUsageRecorder> usageRecorderProvider,
+            ObjectProvider<WorkflowAgentStepRecorder> agentStepRecorderProvider,
             ObjectProvider<OpenTelemetry> openTelemetryProvider,
             ObjectMapper objectMapper
     ) {
@@ -54,7 +55,8 @@ public class WorkflowEventPollingConfiguration {
                 new WorkflowEventTracer(
                         openTelemetryProvider.getIfAvailable(OpenTelemetry::noop)
                 ),
-                usageRecorderProvider.getIfAvailable(WorkflowUsageRecorder::none)
+                usageRecorderProvider.getIfAvailable(WorkflowUsageRecorder::none),
+                agentStepRecorderProvider.getIfAvailable(WorkflowAgentStepRecorder::none)
         );
     }
 

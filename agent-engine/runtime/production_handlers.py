@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 from pathlib import Path
@@ -11,11 +12,14 @@ from agents.base import ModelClient
 from model_gateway import model_routing_request
 from review.evaluator import evaluate_artifacts
 from runtime.agent_node_runner import run_agent_node
+from runtime.agent_loop_trace import publish_agent_loop_trace
+from runtime.backend_agent_loop import BackendAgentLoopError, run_backend_agent_loop
 from runtime.handler_registry import HandlerRegistry
 from runtime.context_policy import ContextPolicyError, apply_context_policy
 from runtime.execution_context import current_model_execution_contract
 from runtime.model_telemetry import ModelInvocationTelemetry, record_model_invocation
 from schemas.architecture_design import ArchitectureDesignArtifact
+from schemas.agent_loop import LoopPolicy
 from schemas.backend_design import BackendDesignArtifact
 from schemas.evaluation import EvaluationInput, EvaluationReport
 from schemas.frontend_skeleton import FrontendSkeletonArtifact
@@ -145,7 +149,7 @@ def _register_agent_node(
     prompt_key: str,
     model_client: ModelClient | None,
 ) -> None:
-    def execute(input_payload: BaseModel) -> dict[str, Any]:
+    def compact_input(input_payload: BaseModel) -> tuple[dict[str, Any], str | None]:
         serialized_input = input_payload.model_dump(mode="json")
         execution_policy = serialized_input.get("execution_policy", {})
         quality_profile = (
@@ -159,6 +163,10 @@ def _register_agent_node(
             quality_profile,
             input_model,
         )
+        return compacted_input, quality_profile
+
+    def execute_single_shot(input_payload: BaseModel) -> dict[str, Any]:
+        compacted_input, quality_profile = compact_input(input_payload)
         with model_routing_request(quality_profile, node_name):
             record = run_agent_node(
                 node_name,
@@ -167,29 +175,43 @@ def _register_agent_node(
             )
         if record.status != "SUCCEEDED" or record.output_payload is None:
             raise RuntimeError(record.error_message or f"{node_name} execution failed")
-        if model_client is None:
-            contract = current_model_execution_contract()
-            model_policy = contract.model_policy if contract is not None else {}
-            context_policy = contract.context_policy if contract is not None else {}
-            record_model_invocation(
-                ModelInvocationTelemetry(
-                    provider_key=record.provider_key,
-                    model_name=record.model_name,
-                    prompt_key=prompt_key,
-                    prompt_version="v1",
-                    prompt_checksum=_prompt_checksum(prompt_key, "v1"),
-                    schema_version=output_schema,
-                    contract_hash=contract.contract_hash if contract is not None else None,
-                    normalized_params_hash=_hash_json(compacted_input),
-                    result_hash=_hash_json(record.output_payload),
-                    status="SUCCEEDED",
-                    duration_ms=record.duration_ms,
-                    reserved_input_tokens=int(context_policy.get("max_input_tokens", 0)),
-                    reserved_output_tokens=int(model_policy.get("max_output_tokens", 0)),
-                    reserved_cost=_reserved_call_cost(context_policy, model_policy),
-                )
-            )
+        _record_fixture_invocation(
+            model_client=model_client,
+            record=record,
+            compacted_input=compacted_input,
+            prompt_key=prompt_key,
+            output_schema=output_schema,
+        )
         return record.output_payload
+
+    async def execute_backend(input_payload: BaseModel) -> dict[str, Any]:
+        compacted_input, quality_profile = compact_input(input_payload)
+        contract = current_model_execution_contract()
+        policy = LoopPolicy.model_validate(
+            contract.agent_loop_policy if contract is not None else {}
+        )
+        if not policy.enabled:
+            return await asyncio.to_thread(execute_single_shot, input_payload)
+        with model_routing_request(quality_profile, node_name):
+            result = await run_backend_agent_loop(
+                requirement=str(compacted_input["requirement"]),
+                prd=PrdArtifact.model_validate(compacted_input["prd"]),
+                architecture_design=compacted_input["architecture_design"],
+                retrieved_sources=list(compacted_input.get("retrieved_sources", [])),
+                context_manifest=dict(compacted_input.get("context_manifest", {})),
+                rework_directive=compacted_input.get("rework_directive"),
+                model_client=model_client,
+                policy=policy,
+            )
+        publish_agent_loop_trace(result)
+        if not result.completed or result.candidate is None:
+            raise BackendAgentLoopError(
+                f"Backend Engineer loop stopped with {result.stop_reason.value}",
+                result.stop_reason.value,
+            )
+        return result.candidate
+
+    execute = execute_backend if node_name == "backend_engineer" else execute_single_shot
 
     registry.register(
         handler_key,
@@ -202,6 +224,39 @@ def _register_agent_node(
         prompt_key=prompt_key,
         prompt_version="v1",
         prompt_checksum=_prompt_checksum(prompt_key, "v1"),
+    )
+
+
+def _record_fixture_invocation(
+    *,
+    model_client: ModelClient | None,
+    record: Any,
+    compacted_input: dict[str, Any],
+    prompt_key: str,
+    output_schema: str,
+) -> None:
+    if model_client is not None:
+        return
+    contract = current_model_execution_contract()
+    model_policy = contract.model_policy if contract is not None else {}
+    context_policy = contract.context_policy if contract is not None else {}
+    record_model_invocation(
+        ModelInvocationTelemetry(
+            provider_key=record.provider_key,
+            model_name=record.model_name,
+            prompt_key=prompt_key,
+            prompt_version="v1",
+            prompt_checksum=_prompt_checksum(prompt_key, "v1"),
+            schema_version=output_schema,
+            contract_hash=contract.contract_hash if contract is not None else None,
+            normalized_params_hash=_hash_json(compacted_input),
+            result_hash=_hash_json(record.output_payload),
+            status="SUCCEEDED",
+            duration_ms=record.duration_ms,
+            reserved_input_tokens=int(context_policy.get("max_input_tokens", 0)),
+            reserved_output_tokens=int(model_policy.get("max_output_tokens", 0)),
+            reserved_cost=_reserved_call_cost(context_policy, model_policy),
+        )
     )
 
 

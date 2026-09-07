@@ -48,10 +48,13 @@ public record WorkflowExecutionEvent(
         @JsonProperty("prompt_version") String promptVersion,
         @JsonProperty("prompt_checksum") String promptChecksum,
         @JsonProperty("fencing_token") Long fencingToken,
-        @JsonProperty("worker_id") String workerId
+        @JsonProperty("worker_id") String workerId,
+        @JsonProperty("agent_steps") List<WorkflowAgentStep> agentSteps,
+        @JsonProperty("agent_loop_stop_reason") String agentLoopStopReason
 ) {
     public WorkflowExecutionEvent {
         callRecords = callRecords == null ? List.of() : List.copyOf(callRecords);
+        agentSteps = agentSteps == null ? List.of() : List.copyOf(agentSteps);
         if (eventId == null || eventId.isBlank()
                 || eventType == null || eventType.isBlank()
                 || workflowRunId == null || workflowRunId < 1
@@ -86,6 +89,12 @@ public record WorkflowExecutionEvent(
         }
         if (fencingToken != null && fencingToken < 0) {
             throw new IllegalArgumentException("fencing_token must not be negative");
+        }
+        java.util.Set<Integer> stepNumbers = new java.util.HashSet<>();
+        for (WorkflowAgentStep step : agentSteps) {
+            if (!stepNumbers.add(step.step())) {
+                throw new IllegalArgumentException("agent_steps must have unique step numbers");
+            }
         }
         if (safe(protocolVersion) >= 2 && isTerminalType(eventType)) {
             validateCallRecords(
@@ -182,6 +191,99 @@ public record WorkflowExecutionEvent(
                 null,
                 null,
                 null,
+                null,
+                List.of(),
+                null
+        );
+    }
+
+    /** Source-compatible constructor for protocol-v2 producers before step facts existed. */
+    public WorkflowExecutionEvent(
+            String eventId,
+            String sourceEventId,
+            String eventType,
+            Long workflowRunId,
+            Long nodeRunId,
+            String nodeId,
+            Integer revision,
+            Integer attempt,
+            String executionId,
+            Integer durationMs,
+            JsonNode outputPayload,
+            String errorCode,
+            String errorMessage,
+            String providerKey,
+            String modelName,
+            String promptKey,
+            String routeKey,
+            String routeReason,
+            Boolean fallbackUsed,
+            JsonNode contextManifest,
+            Integer modelCallCount,
+            Integer toolCallCount,
+            Integer inputTokens,
+            Integer outputTokens,
+            Integer cacheTokens,
+            BigDecimal estimatedCost,
+            List<WorkflowCallRecord> callRecords,
+            String budgetReservationId,
+            String correlationId,
+            String traceparent,
+            String tracestate,
+            Integer protocolVersion,
+            String contractHash,
+            String inputSchema,
+            String inputSchemaHash,
+            String outputSchema,
+            String outputSchemaHash,
+            String promptVersion,
+            String promptChecksum,
+            Long fencingToken,
+            String workerId
+    ) {
+        this(
+                eventId,
+                sourceEventId,
+                eventType,
+                workflowRunId,
+                nodeRunId,
+                nodeId,
+                revision,
+                attempt,
+                executionId,
+                durationMs,
+                outputPayload,
+                errorCode,
+                errorMessage,
+                providerKey,
+                modelName,
+                promptKey,
+                routeKey,
+                routeReason,
+                fallbackUsed,
+                contextManifest,
+                modelCallCount,
+                toolCallCount,
+                inputTokens,
+                outputTokens,
+                cacheTokens,
+                estimatedCost,
+                callRecords,
+                budgetReservationId,
+                correlationId,
+                traceparent,
+                tracestate,
+                protocolVersion,
+                contractHash,
+                inputSchema,
+                inputSchemaHash,
+                outputSchema,
+                outputSchemaHash,
+                promptVersion,
+                promptChecksum,
+                fencingToken,
+                workerId,
+                List.of(),
                 null
         );
     }

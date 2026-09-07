@@ -18,6 +18,126 @@ EvaluationDimension = Literal[
 ]
 
 
+class AutoSpecRequirementExpectation(BaseModel):
+    """A deterministic MUST/SHOULD trace target for the AutoSpec eval set."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    requirement_id: str = Field(min_length=1)
+    statement: str = Field(min_length=1)
+    priority: Literal["MUST", "SHOULD", "COULD"] = "MUST"
+    api_evidence: list[str] = Field(default_factory=list)
+    data_evidence: list[str] = Field(default_factory=list)
+    ui_evidence: list[str] = Field(default_factory=list)
+    acceptance_evidence: list[str] = Field(default_factory=list)
+
+
+class AutoSpecEvalCase(BaseModel):
+    """Provider-neutral evaluation case for the six-node AutoSpec product."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    case_id: str = Field(min_length=1)
+    title: str = Field(min_length=1)
+    category: Literal[
+        "CRUD",
+        "APPROVAL",
+        "PERMISSION",
+        "MULTI_ENTITY",
+        "EXTERNAL_INTEGRATION",
+        "AMBIGUOUS_REQUIREMENT",
+        "CONFLICTING_CONSTRAINTS",
+        "REWORK",
+    ]
+    requirement: str = Field(min_length=1)
+    dataset_version: str = Field(default="autospec-v5-agent-execution-eval-v1", min_length=1)
+    must_requirements: list[AutoSpecRequirementExpectation] = Field(min_length=1)
+    expected_artifact_types: list[str] = Field(min_length=1)
+    allowed_tools: list[str] = Field(default_factory=list)
+    prohibited_tools: list[str] = Field(default_factory=list)
+    failure_conditions: list[str] = Field(min_length=1)
+
+
+class AutoSpecCaseResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    case_id: str = Field(min_length=1)
+    status: Literal["SUCCEEDED", "PARTIAL", "FAILED", "NOT_EXECUTED"]
+    gate_pass: bool | None = None
+    must_trace_coverage: float | None = Field(default=None, ge=0.0, le=1.0)
+    blocking_issue_count: int | None = Field(default=None, ge=0)
+    unauthorized_tool_requests: int | None = Field(default=None, ge=0)
+    invalid_tool_arguments: int | None = Field(default=None, ge=0)
+    steps: int | None = Field(default=None, ge=0)
+    replans: int | None = Field(default=None, ge=0)
+    path_oscillations: int | None = Field(default=None, ge=0)
+    p95_latency_ms: float | None = Field(default=None, ge=0.0)
+    tokens: int | None = Field(default=None, ge=0)
+    cost: float | None = Field(default=None, ge=0.0)
+    failure_codes: list[str] = Field(default_factory=list)
+
+
+class AutoSpecMetric(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(min_length=1)
+    status: Literal["MEASURED", "NOT_EXECUTED", "UNAVAILABLE"]
+    value: float | None = None
+    unit: str = Field(min_length=1)
+    source: str = Field(min_length=1)
+    note: str | None = None
+
+
+class AutoSpecEvalRun(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: str = Field(min_length=1)
+    dataset_version: str = Field(min_length=1)
+    group: Literal["A", "B", "C", "D"]
+    group_name: Literal[
+        "single-shot",
+        "loop-no-tools",
+        "loop-with-tools",
+        "loop-tools-replan",
+    ]
+    execution_mode: Literal["LIVE_CONTROL_PLANE", "FIXTURE_BASELINE"]
+    workflow_key: str = Field(default="autospec-v5", min_length=1)
+    workflow_version: str = Field(min_length=1)
+    code_version: str = Field(min_length=1)
+    bundle_hash: str | None = None
+    prompt_schema_versions: dict[str, str] = Field(default_factory=dict)
+    model_version: str | None = None
+    retriever_version: str | None = None
+    tool_policy_version: str | None = None
+    budget_version: str = Field(min_length=1)
+    random_seed: int | None = None
+    status: Literal["SUCCEEDED", "PARTIAL", "FAILED", "NOT_EXECUTED"]
+    gate_status: Literal["PASSED", "BLOCKED", "NOT_EVALUATED"]
+    decision: Literal["PROMOTE", "REVISE", "REJECT", "NOT_EVALUATED"]
+    not_executed_reason: str | None = None
+    case_results: list[AutoSpecCaseResult] = Field(default_factory=list)
+    metrics: list[AutoSpecMetric] = Field(default_factory=list)
+
+
+class AutoSpecAblationMatrix(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    matrix_id: str = Field(min_length=1)
+    dataset_version: str = Field(min_length=1)
+    generated_at_epoch_ms: int = Field(ge=0)
+    runs: list[AutoSpecEvalRun] = Field(min_length=4)
+
+
+class AutoSpecGateDecision(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    decision: Literal["PROMOTE", "REVISE", "REJECT", "NOT_EVALUATED"]
+    gate_status: Literal["PASSED", "BLOCKED", "NOT_EVALUATED"]
+    reasons: list[str] = Field(min_length=1)
+    baseline_run_id: str = Field(min_length=1)
+    candidate_run_id: str = Field(min_length=1)
+
+
 class EvalCase(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

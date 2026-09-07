@@ -67,6 +67,15 @@ public final class WorkflowExecutableContractValidator {
             "permission_policy",
             "retry_policy"
     );
+    private static final Set<String> LOOP_FIELDS = Set.of(
+            "version",
+            "enabled",
+            "strategy",
+            "max_steps",
+            "max_replans",
+            "no_progress_limit",
+            "validator_profile"
+    );
 
     private WorkflowExecutableContractValidator() {
     }
@@ -125,6 +134,7 @@ public final class WorkflowExecutableContractValidator {
                     "Node tool_policy requires protocol version 2: " + node.nodeId()
             );
         }
+        validateAgentLoopPolicy(node, protocolVersion);
         validateToolPolicy(node);
 
         JsonNode model = node.modelPolicy();
@@ -191,6 +201,41 @@ public final class WorkflowExecutableContractValidator {
         if (retry.has("retryable_errors") && !retry.path("retryable_errors").isArray()) {
             throw new IllegalArgumentException(
                     "Node retry_policy retryable_errors must be an array: " + node.nodeId()
+            );
+        }
+    }
+
+    private static void validateAgentLoopPolicy(WorkflowNodeDocument node, int protocolVersion) {
+        JsonNode policy = node.agentLoopPolicy();
+        if (policy == null || policy.isEmpty()) {
+            return;
+        }
+        if (protocolVersion < 2) {
+            throw new IllegalArgumentException(
+                    "Node agent_loop_policy requires protocol version 2: " + node.nodeId()
+            );
+        }
+        rejectUnknown(policy, LOOP_FIELDS, "agent_loop_policy", node.nodeId());
+        if (policy.has("version") && text(policy, "version") == null) {
+            throw new IllegalArgumentException(
+                    "Node agent_loop_policy version must be non-blank: " + node.nodeId()
+            );
+        }
+        String strategy = policy.path("strategy").asText("plan-act-observe-validate-v1");
+        if (!"plan-act-observe-validate-v1".equals(strategy)) {
+            throw new IllegalArgumentException(
+                    "Unsupported node agent_loop_policy strategy: " + node.nodeId()
+            );
+        }
+        int maxSteps = policy.path("max_steps").asInt(4);
+        int maxReplans = policy.path("max_replans").asInt(2);
+        int noProgress = policy.path("no_progress_limit").asInt(1);
+        if (maxSteps < 1 || maxSteps > 32
+                || maxReplans < 0 || maxReplans > 16
+                || noProgress < 0 || noProgress > 8
+                || text(policy, "validator_profile") == null) {
+            throw new IllegalArgumentException(
+                    "Node agent_loop_policy quotas are invalid: " + node.nodeId()
             );
         }
     }

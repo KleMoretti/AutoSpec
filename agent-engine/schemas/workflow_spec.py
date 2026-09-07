@@ -5,6 +5,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from schemas.agent_loop import LoopPolicy
+
 
 class ModelPolicy(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -221,6 +223,7 @@ class WorkflowNodeSpec(BaseModel):
     retry_policy: RetryPolicy
     timeout_ms: int = Field(default=30000, ge=1000)
     tool_policy: ToolPolicy = Field(default_factory=ToolPolicy)
+    agent_loop_policy: LoopPolicy = Field(default_factory=LoopPolicy)
     retrieval_policy: RetrievalPolicySpec | None = None
     requires_human_approval: bool = False
     depends_on: list[str] = Field(default_factory=list)
@@ -282,6 +285,12 @@ class WorkflowSpec(BaseModel):
                 if self.protocol_version < 2 and node.tool_policy.model_dump(exclude_defaults=True):
                     raise ValueError(
                         f"node {node.node_id} tool_policy requires protocol_version 2"
+                    )
+                if self.protocol_version < 2 and node.agent_loop_policy.model_dump(
+                    exclude_defaults=True
+                ):
+                    raise ValueError(
+                        f"node {node.node_id} agent_loop_policy requires protocol_version 2"
                     )
                 missing = [
                     name

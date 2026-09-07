@@ -11,6 +11,7 @@ from typing import Any
 from uuid import uuid4
 
 from runtime.agent_router import route_after_evaluation, route_after_review
+from evaluation.ablation import run_ablation_matrix
 from runtime.node_executor import NodeCommand, NodeExecutionEvent, NodeExecutor
 from runtime.production_handlers import build_production_registry
 from runtime.trace import TraceRecorder

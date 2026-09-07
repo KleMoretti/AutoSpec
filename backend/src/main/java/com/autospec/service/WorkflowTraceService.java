@@ -5,10 +5,13 @@ import com.autospec.dto.WorkflowFailureClusterResponse;
 import com.autospec.dto.WorkflowTraceInvocationResponse;
 import com.autospec.dto.WorkflowTraceNodeResponse;
 import com.autospec.dto.WorkflowTraceResponse;
+import com.autospec.dto.WorkflowTraceStepResponse;
 import com.autospec.entity.ModelInvocation;
+import com.autospec.entity.WorkflowAgentStepFact;
 import com.autospec.entity.WorkflowNodeRun;
 import com.autospec.entity.WorkflowRun;
 import com.autospec.mapper.ModelInvocationMapper;
+import com.autospec.mapper.WorkflowAgentStepFactMapper;
 import com.autospec.mapper.WorkflowNodeRunMapper;
 import com.autospec.mapper.WorkflowRunMapper;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
@@ -27,15 +30,18 @@ public class WorkflowTraceService {
     private final WorkflowRunMapper runMapper;
     private final WorkflowNodeRunMapper nodeRunMapper;
     private final ModelInvocationMapper modelInvocationMapper;
+    private final WorkflowAgentStepFactMapper agentStepFactMapper;
 
     public WorkflowTraceService(
             WorkflowRunMapper runMapper,
             WorkflowNodeRunMapper nodeRunMapper,
-            ModelInvocationMapper modelInvocationMapper
+            ModelInvocationMapper modelInvocationMapper,
+            WorkflowAgentStepFactMapper agentStepFactMapper
     ) {
         this.runMapper = runMapper;
         this.nodeRunMapper = nodeRunMapper;
         this.modelInvocationMapper = modelInvocationMapper;
+        this.agentStepFactMapper = agentStepFactMapper;
     }
 
     public WorkflowTraceResponse trace(long workflowRunId) {
@@ -53,6 +59,13 @@ public class WorkflowTraceService {
                         .eq(ModelInvocation::getWorkflowRunId, workflowRunId)
                         .orderByAsc(ModelInvocation::getId)
         );
+        List<WorkflowAgentStepFact> steps = agentStepFactMapper.selectList(
+                new LambdaQueryWrapper<WorkflowAgentStepFact>()
+                        .eq(WorkflowAgentStepFact::getWorkflowRunId, workflowRunId)
+                        .orderByAsc(WorkflowAgentStepFact::getNodeRunId)
+                        .orderByAsc(WorkflowAgentStepFact::getStep)
+                        .orderByAsc(WorkflowAgentStepFact::getId)
+        );
         Map<Long, List<ModelInvocation>> byNodeRun = invocations.stream()
                 .filter(invocation -> invocation.getWorkflowNodeRunId() != null)
                 .collect(java.util.stream.Collectors.groupingBy(
@@ -61,6 +74,12 @@ public class WorkflowTraceService {
                         java.util.stream.Collectors.toList()
                 ));
         Map<String, FailureCluster> clusters = new LinkedHashMap<>();
+        Map<Long, List<WorkflowAgentStepFact>> stepsByNodeRun = steps.stream()
+                .collect(java.util.stream.Collectors.groupingBy(
+                        WorkflowAgentStepFact::getNodeRunId,
+                        LinkedHashMap::new,
+                        java.util.stream.Collectors.toList()
+                ));
         List<WorkflowFailureCaseResponse> offlineCases = new ArrayList<>();
         List<WorkflowTraceNodeResponse> traceNodes = new ArrayList<>();
         for (WorkflowNodeRun node : nodes) {
@@ -92,7 +111,11 @@ public class WorkflowTraceService {
                     node.getActualToolCalls(),
                     node.getErrorCode(),
                     node.getWorkerId(),
-                    nodeInvocations.stream().map(this::invocation).toList()
+                    nodeInvocations.stream().map(this::invocation).toList(),
+                    stepsByNodeRun.getOrDefault(node.getId(), List.of())
+                            .stream()
+                            .map(this::step)
+                            .toList()
             ));
         }
         for (ModelInvocation invocation : invocations) {
@@ -132,6 +155,37 @@ public class WorkflowTraceService {
                 invocation.getCacheTokens(),
                 invocation.getEstimatedCost(),
                 invocation.getErrorCode()
+        );
+    }
+
+    private WorkflowTraceStepResponse step(WorkflowAgentStepFact step) {
+        List<String> issueCodes = List.of();
+        if (step.getValidationIssueCodesJson() != null
+                && !step.getValidationIssueCodesJson().isBlank()) {
+            try {
+                issueCodes = new com.fasterxml.jackson.databind.ObjectMapper()
+                        .readValue(
+                                step.getValidationIssueCodesJson(),
+                                new com.fasterxml.jackson.core.type.TypeReference<List<String>>() { }
+                        );
+            } catch (java.io.IOException ignored) {
+                issueCodes = List.of("TRACE_DECODE_ERROR");
+            }
+        }
+        return new WorkflowTraceStepResponse(
+                step.getId(),
+                step.getStep(),
+                step.getPhase(),
+                step.getStatus(),
+                step.getReasonCode(),
+                step.getPlanHash(),
+                step.getObservationHash(),
+                issueCodes,
+                step.getModelCallRef(),
+                step.getToolCallRef(),
+                step.getStartedAtEpochMs(),
+                step.getFinishedAtEpochMs(),
+                step.getDurationMs()
         );
     }
 

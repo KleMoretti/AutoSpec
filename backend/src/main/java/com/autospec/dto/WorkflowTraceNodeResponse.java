@@ -25,6 +25,7 @@ public record WorkflowTraceNodeResponse(
         Integer actualToolCalls,
         String errorCode,
         String workerId,
-        List<WorkflowTraceInvocationResponse> invocations
+        List<WorkflowTraceInvocationResponse> invocations,
+        List<WorkflowTraceStepResponse> steps
 ) {
 }
