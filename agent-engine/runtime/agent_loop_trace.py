@@ -4,7 +4,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from typing import Iterator
 
-from schemas.agent_loop import AgentLoopResult, AgentStepRecord, StopReason
+from schemas.agent_loop import AgentLoopResult, AgentStepRecord
 
 
 _TRACE: ContextVar[AgentLoopResult | None] = ContextVar(
@@ -16,14 +16,10 @@ _TRACE: ContextVar[AgentLoopResult | None] = ContextVar(
 @contextmanager
 def capture_agent_loop_trace() -> Iterator[list[AgentStepRecord]]:
     steps: list[AgentStepRecord] = []
-    token = _TRACE.set(
-        AgentLoopResult(
-            candidate=None,
-            steps=[],
-            stop_reason=StopReason.VALIDATION_FAILED,
-            completed=False,
-        )
-    )
+    # A single-shot node must not emit a synthetic loop stop reason. The
+    # bounded handler publishes a result only after it actually enters the
+    # loop, while the executor still captures the same context boundary.
+    token = _TRACE.set(None)
     try:
         yield steps
     finally:
