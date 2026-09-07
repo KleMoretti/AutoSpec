@@ -1,9 +1,12 @@
 package com.autospec.workflow.runtime;
 
+import com.autospec.dto.KnowledgeSourceResponse;
 import com.autospec.entity.WorkflowNodeRun;
 import com.autospec.entity.ModelInvocation;
 import com.autospec.mapper.ModelInvocationMapper;
 import com.autospec.mapper.WorkflowNodeRunMapper;
+import com.autospec.service.KnowledgeIndexService;
+import com.autospec.util.ContentHash;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -11,12 +14,16 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -25,15 +32,27 @@ public class WorkflowNodeInputAssembler {
     private final WorkflowNodeRunMapper nodeRunMapper;
     private final ObjectMapper objectMapper;
     private final ModelInvocationMapper modelInvocationMapper;
+    private final KnowledgeIndexService knowledgeIndexService;
 
     public WorkflowNodeInputAssembler(
             WorkflowNodeRunMapper nodeRunMapper,
             ObjectMapper objectMapper,
             ModelInvocationMapper modelInvocationMapper
     ) {
+        this(nodeRunMapper, objectMapper, modelInvocationMapper, null);
+    }
+
+    @Autowired
+    public WorkflowNodeInputAssembler(
+            WorkflowNodeRunMapper nodeRunMapper,
+            ObjectMapper objectMapper,
+            ModelInvocationMapper modelInvocationMapper,
+            KnowledgeIndexService knowledgeIndexService
+    ) {
         this.nodeRunMapper = nodeRunMapper;
         this.objectMapper = objectMapper;
         this.modelInvocationMapper = modelInvocationMapper;
+        this.knowledgeIndexService = knowledgeIndexService;
     }
 
     public void assemble(CompiledWorkflow graph, WorkflowNodeRun target) {
@@ -52,6 +71,7 @@ public class WorkflowNodeInputAssembler {
             input.set("model_invocations", trustedModelInvocations(target.getWorkflowRunId()));
             input.putArray("generated_files");
         }
+        retrieveNodeSources(input, target);
         String assembled = input.toString();
         int updated = nodeRunMapper.update(null, new LambdaUpdateWrapper<WorkflowNodeRun>()
                 .eq(WorkflowNodeRun::getId, target.getId())
@@ -60,6 +80,194 @@ public class WorkflowNodeInputAssembler {
         if (updated == 1) {
             target.setInputJson(assembled);
         }
+    }
+
+    /**
+     * Resolve project knowledge after upstream artifacts have been assembled.
+     * The resulting sources and snapshot are frozen into the node input so a
+     * retry/replay can explain exactly which corpus epoch and hits were used.
+     */
+    private void retrieveNodeSources(ObjectNode input, WorkflowNodeRun target) {
+        if (knowledgeIndexService == null) {
+            return;
+        }
+        JsonNode policy = input.path("retrieval_policy");
+        if (!policy.isObject() || !policy.path("enabled").asBoolean(false)) {
+            return;
+        }
+        Long projectId = longMetadata(input, "_autospec_project_id");
+        Long actorUserId = longMetadata(input, "_autospec_actor_user_id");
+        if (projectId == null || actorUserId == null) {
+            input.set("retrieved_sources", objectMapper.createArrayNode());
+            return;
+        }
+
+        int topN = Math.max(1, Math.min(policy.path("top_n").asInt(20), 50));
+        int topK = Math.max(1, Math.min(policy.path("top_k").asInt(5), topN));
+        int maxPerArtifact = Math.max(1, policy.path("max_per_artifact")
+                .asInt(2));
+        String query = retrievalQuery(input, target.getNodeId());
+        List<String> corpora = textValues(policy.path("allowed_corpora"));
+        List<KnowledgeSourceResponse> candidates = new ArrayList<>();
+        if (corpora.isEmpty()) {
+            candidates.addAll(knowledgeIndexService.retrieveForProject(
+                    query, topN, projectId, actorUserId, null
+            ));
+        } else {
+            for (String corpus : corpora) {
+                candidates.addAll(knowledgeIndexService.retrieveForProject(
+                        query, topN, projectId, actorUserId, corpus
+                ));
+            }
+        }
+        List<KnowledgeSourceResponse> selected = selectSources(
+                candidates, projectId, topK, maxPerArtifact
+        );
+        input.set("retrieved_sources", sourceArray(selected));
+        input.put("retrieval_project_id", projectId);
+        input.put("retrieval_node_id", target.getNodeId());
+        long corpusEpoch = knowledgeIndexService.currentCorpusEpoch(projectId);
+        input.put("corpus_epoch", corpusEpoch);
+        String cacheKey = knowledgeIndexService.retrievalCacheKey(
+                query, topN, projectId, actorUserId
+        );
+        ObjectNode snapshot = input.putObject("retrieval_snapshot");
+        snapshot.put("version", "node-retrieval-snapshot-v1");
+        snapshot.put("node_id", target.getNodeId());
+        snapshot.put("query_hash", ContentHash.sha256(query));
+        snapshot.put("policy_hash", ContentHash.sha256(policy.toString()));
+        snapshot.put("project_id", projectId);
+        snapshot.put("corpus_epoch", corpusEpoch);
+        snapshot.put("hit_count", selected.size());
+        snapshot.put("cache_key", cacheKey == null ? "UNAVAILABLE" : cacheKey);
+        snapshot.set("hit_ids", hitIds(selected));
+        snapshot.put("retriever_version", policy.path("retriever_version")
+                .asText(KnowledgeIndexService.RETRIEVAL_STRATEGY));
+        snapshot.put("reranker_version", policy.path("reranker_version")
+                .asText(KnowledgeIndexService.RERANKER_VERSION));
+        String actorScopeHash = knowledgeIndexService.actorScopeHash(projectId, actorUserId);
+        if (actorScopeHash != null) {
+            snapshot.put("actor_scope_hash", actorScopeHash);
+        }
+    }
+
+    private List<KnowledgeSourceResponse> selectSources(
+            List<KnowledgeSourceResponse> candidates,
+            Long projectId,
+            int topK,
+            int maxPerArtifact
+    ) {
+        Map<String, KnowledgeSourceResponse> unique = new LinkedHashMap<>();
+        for (KnowledgeSourceResponse source : candidates) {
+            if (!projectId.equals(source.projectId())) {
+                continue;
+            }
+            String key = source.chunkId() == null
+                    ? source.artifactId() + ":" + source.artifactVersion() + ":"
+                    + source.citationLocation()
+                    : "chunk:" + source.chunkId();
+            unique.putIfAbsent(key, source);
+        }
+        Map<Long, Integer> perArtifact = new LinkedHashMap<>();
+        return unique.values().stream()
+                .sorted(Comparator
+                        .comparingDouble((KnowledgeSourceResponse source) ->
+                                source.relevanceScore() == null ? 0.0 : source.relevanceScore())
+                        .reversed()
+                        .thenComparing(source -> source.artifactId() == null
+                                ? Long.MAX_VALUE : source.artifactId())
+                        .thenComparing(source -> source.chunkId() == null
+                                ? Long.MAX_VALUE : source.chunkId()))
+                .filter(source -> {
+                    Long artifactId = source.artifactId();
+                    int count = perArtifact.getOrDefault(artifactId, 0);
+                    if (count >= maxPerArtifact) {
+                        return false;
+                    }
+                    perArtifact.put(artifactId, count + 1);
+                    return true;
+                })
+                .limit(topK)
+                .toList();
+    }
+
+    private ArrayNode sourceArray(List<KnowledgeSourceResponse> sources) {
+        ArrayNode values = objectMapper.createArrayNode();
+        for (KnowledgeSourceResponse source : sources) {
+            ObjectNode value = values.addObject();
+            String citationId = "artifact:" + source.artifactId()
+                    + ":v" + source.artifactVersion();
+            if (source.chunkIndex() != null) {
+                citationId += ":chunk:" + source.chunkIndex();
+            }
+            value.put("citation_id", citationId);
+            value.put("project_id", source.projectId());
+            value.put("artifact_id", source.artifactId());
+            value.put("artifact_type", source.artifactType());
+            value.put("corpus_type", source.corpusType());
+            value.put("title", source.title());
+            value.put("artifact_version", source.artifactVersion());
+            value.put("chunk_id", source.chunkId());
+            value.put("chunk_index", source.chunkIndex());
+            value.put("citation_location", source.citationLocation());
+            value.put("content", source.content());
+            value.put("retrieval_strategy", source.retrievalStrategy());
+            value.put("chunker_version", source.chunkerVersion());
+            value.put("embedding_model", source.embeddingModel());
+            value.put("artifact_content_hash", source.artifactContentHash());
+            value.put("chunk_content_hash", source.chunkContentHash());
+            value.put("relevance_score", source.relevanceScore());
+        }
+        return values;
+    }
+
+    private ArrayNode hitIds(List<KnowledgeSourceResponse> sources) {
+        ArrayNode values = objectMapper.createArrayNode();
+        for (KnowledgeSourceResponse source : sources) {
+            ObjectNode value = values.addObject();
+            value.put("artifact_id", source.artifactId());
+            value.put("artifact_version", source.artifactVersion());
+            value.put("chunk_id", source.chunkId());
+            value.put("chunk_content_hash", source.chunkContentHash());
+            value.put("corpus_type", source.corpusType());
+        }
+        return values;
+    }
+
+    private String retrievalQuery(ObjectNode input, String nodeId) {
+        ObjectNode query = input.deepCopy();
+        query.remove("_autospec_project_id");
+        query.remove("_autospec_actor_user_id");
+        query.remove("retrieval_policy");
+        query.remove("retrieved_sources");
+        query.remove("retrieval_snapshot");
+        query.put("node_id", nodeId);
+        return query.toString();
+    }
+
+    private Long longMetadata(ObjectNode input, String field) {
+        JsonNode value = input.get(field);
+        if (value == null || value.isNull()) {
+            return null;
+        }
+        try {
+            return Long.valueOf(value.asText());
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
+
+    private List<String> textValues(JsonNode value) {
+        if (!value.isArray()) {
+            return List.of();
+        }
+        List<String> result = new ArrayList<>();
+        value.forEach(item -> {
+            if (item.isTextual() && !item.asText().isBlank()) {
+                result.add(item.asText());
+            }
+        });
+        return List.copyOf(result);
     }
 
     private Map<String, WorkflowNodeRun> latestRuns(long runId) {

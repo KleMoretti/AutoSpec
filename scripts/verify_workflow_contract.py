@@ -9,11 +9,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 AGENT_ENGINE = ROOT / "agent-engine"
 CONTRACT = ROOT / "agent-engine" / "contracts" / "autospec-v5.workflow.json"
+CANDIDATE_CONTRACT = ROOT / "agent-engine" / "contracts" / "autospec-v5-agent-execution.workflow.json"
 MIGRATION_DIR = ROOT / "backend" / "src" / "main" / "resources" / "db" / "migration"
 MIGRATION_PATTERN = re.compile(r"^V(?P<version>\d+)_.*\.sql$")
 
 
-def latest_seeded_contract() -> tuple[Path, dict] | None:
+def latest_seeded_contract(version: str = "v5") -> tuple[Path, dict] | None:
     candidates: list[tuple[int, Path, dict]] = []
     for migration in MIGRATION_DIR.glob("V*.sql"):
         version_match = MIGRATION_PATTERN.match(migration.name)
@@ -26,17 +27,51 @@ def latest_seeded_contract() -> tuple[Path, dict] | None:
             sql,
             re.DOTALL,
         ):
+            seeded = json.loads(match.group(1))
+            if seeded.get("version") != version:
+                continue
             candidates.append(
-                (
-                    int(version_match.group("version")),
-                    migration,
-                    json.loads(match.group(1)),
-                )
+                (int(version_match.group("version")), migration, seeded)
+            )
+        for match in re.finditer(
+            r"definition\.id\s*,\s*'(?P<contract_version>[^']+)'\s*,\s*"
+            r"'(?P<spec>\{\s*\"workflow_key\"\s*:\s*\"autospec-v5\".*?\})'\s*,\s*"
+            r"'(?P<content_hash>[^']+)'",
+            sql,
+            re.DOTALL,
+        ):
+            if match.group("contract_version") != version:
+                continue
+            seeded = json.loads(match.group("spec"))
+            candidates.append(
+                (int(version_match.group("version")), migration, seeded)
             )
     if not candidates:
         return None
     _, migration, seeded = max(candidates, key=lambda item: item[0])
     return migration, seeded
+
+
+def verify_seeded_contract(path: Path, version: str) -> str | None:
+    if not path.exists():
+        return None
+    seeded_contract = latest_seeded_contract(version)
+    if seeded_contract is None:
+        print(
+            f"Unable to locate a seeded {version} workflow contract",
+            file=sys.stderr,
+        )
+        return "missing"
+    migration, seeded = seeded_contract
+    canonical = json.loads(path.read_text(encoding="utf-8"))
+    if seeded != canonical:
+        print(
+            f"{version} workflow contract drift: update the canonical contract and create a new migration together "
+            f"(latest seeded migration: {migration.name})",
+            file=sys.stderr,
+        )
+        return "drift"
+    return None
 
 
 def main() -> int:
@@ -52,6 +87,12 @@ def main() -> int:
             f"(latest seeded migration: {migration.name})",
             file=sys.stderr,
         )
+        return 1
+    candidate_error = verify_seeded_contract(
+        CANDIDATE_CONTRACT,
+        "v5-agent-execution",
+    )
+    if candidate_error is not None:
         return 1
     sys.path.insert(0, str(AGENT_ENGINE))
     from runtime.production_handlers import build_production_registry
@@ -85,7 +126,7 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
-    print("autospec-v5 workflow contract is synchronized")
+    print("autospec-v5 workflow contracts are synchronized")
     return 0
 
 
