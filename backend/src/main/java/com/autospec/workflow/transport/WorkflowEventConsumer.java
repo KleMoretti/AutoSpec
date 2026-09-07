@@ -37,6 +37,7 @@ public class WorkflowEventConsumer {
     private final ReviewerReworkCoordinator reworkCoordinator;
     private final WorkflowEventTracer eventTracer;
     private final WorkflowUsageRecorder usageRecorder;
+    private final WorkflowAgentStepRecorder agentStepRecorder;
 
     public WorkflowEventConsumer(
             ProcessedWorkflowEventMapper processedEventMapper,
@@ -130,7 +131,8 @@ public class WorkflowEventConsumer {
                 reworkCoordinator,
                 runMapper,
                 eventTracer,
-                WorkflowUsageRecorder.none()
+                WorkflowUsageRecorder.none(),
+                WorkflowAgentStepRecorder.none()
         );
     }
 
@@ -147,6 +149,36 @@ public class WorkflowEventConsumer {
             WorkflowEventTracer eventTracer,
             WorkflowUsageRecorder usageRecorder
     ) {
+        this(
+                processedEventMapper,
+                nodeRunMapper,
+                reconciliationTrigger,
+                failureDecisionService,
+                objectMapper,
+                approvalCoordinator,
+                artifactProjector,
+                reworkCoordinator,
+                runMapper,
+                eventTracer,
+                usageRecorder,
+                WorkflowAgentStepRecorder.none()
+        );
+    }
+
+    public WorkflowEventConsumer(
+            ProcessedWorkflowEventMapper processedEventMapper,
+            WorkflowNodeRunMapper nodeRunMapper,
+            WorkflowRunReconciliationTrigger reconciliationTrigger,
+            WorkflowFailureDecisionService failureDecisionService,
+            ObjectMapper objectMapper,
+            WorkflowApprovalCoordinator approvalCoordinator,
+            WorkflowArtifactProjector artifactProjector,
+            ReviewerReworkCoordinator reworkCoordinator,
+            WorkflowRunMapper runMapper,
+            WorkflowEventTracer eventTracer,
+            WorkflowUsageRecorder usageRecorder,
+            WorkflowAgentStepRecorder agentStepRecorder
+    ) {
         this.processedEventMapper = processedEventMapper;
         this.nodeRunMapper = nodeRunMapper;
         this.runMapper = runMapper;
@@ -158,6 +190,7 @@ public class WorkflowEventConsumer {
         this.reworkCoordinator = reworkCoordinator;
         this.eventTracer = eventTracer;
         this.usageRecorder = usageRecorder;
+        this.agentStepRecorder = agentStepRecorder;
     }
 
     public WorkflowEventConsumer(
@@ -224,6 +257,7 @@ public class WorkflowEventConsumer {
         if (usageRecorder.record(event) == WorkflowUsageRecorder.UsageDecision.BUDGET_EXCEEDED) {
             return WorkflowEventOutcome.ACCEPTED;
         }
+        agentStepRecorder.record(event);
 
         int updated = apply(event);
         if (updated == 0) {
