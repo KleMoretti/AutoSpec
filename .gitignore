@@ -12,6 +12,7 @@ node_modules/
 .venv/
 __pycache__/
 .pytest_cache/
+.pytest-tmp-*/
 pytest-cache-files-*/
 
 *.log
