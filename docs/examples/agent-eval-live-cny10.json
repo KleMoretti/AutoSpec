@@ -1,0 +1,37 @@
+{
+  "experiment_id": "live-flash-smoke-20260916-r1",
+  "version_ids": {},
+  "contract_family": "v4",
+  "budget_authorization_id": "interview-live-20260916-cny10",
+  "code_version": "replace-with-tested-source-fingerprint",
+  "environment": {
+    "name": "isolated-compose",
+    "model_mode": "live",
+    "corpus": "fresh-project-per-case"
+  },
+  "dataset_split": "smoke",
+  "case_ids": [
+    "crud_inventory"
+  ],
+  "repetitions": 1,
+  "run_max_cost": 2,
+  "total_max_cost": 10,
+  "max_runs": 4,
+  "run_max_tokens": 250000,
+  "run_max_model_calls": 32,
+  "run_timeout_seconds": 600,
+  "poll_seconds": 2,
+  "pricing_snapshot": {
+    "source": "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/",
+    "observed_at": "2026-09-16",
+    "currency": "CNY",
+    "version": "deepseek-flash-peak-20260916",
+    "models": {
+      "deepseek:deepseek-v4-flash": {
+        "input_per_million": 2,
+        "cached_input_per_million": 0.04,
+        "output_per_million": 8
+      }
+    }
+  }
+}

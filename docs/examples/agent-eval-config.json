@@ -1,0 +1,16 @@
+{
+  "experiment_id": "replace-with-unique-experiment-id",
+  "version_ids": {"A": 1, "B": 2, "C": 3, "D": 4},
+  "code_version": "replace-with-tested-commit",
+  "environment": {"name": "isolated-compose", "model_mode": "fixture", "corpus": "fresh-project-per-case"},
+  "dataset_split": "smoke",
+  "repetitions": 1,
+  "run_max_cost": 1,
+  "total_max_cost": 32,
+  "max_runs": 32,
+  "run_max_tokens": 500000,
+  "run_max_model_calls": 32,
+  "run_timeout_seconds": 600,
+  "poll_seconds": 2,
+  "pricing_snapshot": {}
+}
