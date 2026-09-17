@@ -8,6 +8,7 @@ import pytest
 
 from model_gateway import (
     ModelConfigurationError,
+    ModelOutputLimitError,
     OpenAICompatibleModelClient,
     RoutedModelClient,
     build_model_client,
@@ -23,6 +24,43 @@ from runtime.execution_context import (
     ModelExecutionContract,
     bind_model_execution_contract,
 )
+
+
+def test_frozen_thinking_mode_is_sent_hashed_and_truncation_keeps_usage() -> None:
+    node = json.loads((Path(__file__).resolve().parents[1] / "contracts" /
+                       "autospec-v5-agent-execution-v5-d.workflow.json").read_text())["nodes"][0]
+    calls = []
+    class Completions:
+        def create(self, **kwargs):
+            calls.append(kwargs)
+            truncated = kwargs["extra_body"]["thinking"]["type"] == "enabled"
+            return SimpleNamespace(usage=SimpleNamespace(prompt_tokens=100, completion_tokens=4000 if truncated else 10),
+                choices=[SimpleNamespace(finish_reason="length" if truncated else "stop",
+                    message=SimpleNamespace(content=None if truncated else '{"ok":true}'))])
+    gateway = OpenAICompatibleModelClient(api_key="test-key", base_url="https://model.invalid", provider_key="deepseek",
+        model_name="deepseek-v4-flash", client=SimpleNamespace(chat=SimpleNamespace(completions=Completions())))
+    hashes = []
+    for mode in ("enabled", "disabled"):
+        contract = ModelExecutionContract(execution_id="thinking-test", prompt_key=node["prompt_key"],
+            prompt_version=node["prompt_version"], prompt_checksum=node["prompt_checksum"],
+            model_policy={**node["model_policy"], "thinking_mode": mode}, context_policy=node["context_policy"],
+            protocol_version=2, contract_hash="a" * 64, schema_version=node["output_schema"],
+            deadline_epoch_ms=round(time.time() * 1000) + 60000)
+        with bind_model_execution_contract(contract), capture_model_invocations() as invocations:
+            if mode == "enabled":
+                with pytest.raises(ModelOutputLimitError):
+                    gateway.generate_json("ProductManagerAgent_v1", {"requirement": "inventory"})
+            else:
+                assert gateway.generate_json("ProductManagerAgent_v1", {"requirement": "inventory"}) == {"ok": True}
+        assert calls[-1]["extra_body"] == {"thinking": {"type": mode}}
+        assert calls[-1]["max_tokens"] == 4000
+        assert len(invocations) == 1
+        if mode == "enabled":
+            assert invocations[0].error_code == "MODEL_OUTPUT_LIMIT"
+            assert invocations[0].output_tokens == 4000
+            assert invocations[0].estimated_cost == pytest.approx(.0322)
+        hashes.append(invocations[0].normalized_params_hash)
+    assert hashes[0] != hashes[1]
 
 
 def test_fixture_mode_is_explicitly_forbidden_in_production() -> None:

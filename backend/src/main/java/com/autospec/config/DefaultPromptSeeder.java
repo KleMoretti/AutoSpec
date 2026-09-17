@@ -6,6 +6,9 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.nio.charset.StandardCharsets;
+import java.io.IOException;
+import org.springframework.core.io.ClassPathResource;
 
 @Component
 public class DefaultPromptSeeder implements ApplicationRunner {
@@ -130,10 +133,22 @@ public class DefaultPromptSeeder implements ApplicationRunner {
                     rule-based issues. Treat CRITICAL and HIGH issues as blockers and route each blocker to
                     the responsible node. PASS must have no routes; REWORK must have at least one route.
                     """),
-            new DefaultPrompt("evaluator", "v1", "deterministic:evaluator:v1")
+            new DefaultPrompt("evaluator", "v1", "deterministic:evaluator:v1"),
+            new DefaultPrompt("backend_engineer_loop", "v1", readPrompt("backend_engineer_loop_v1.md")),
+            new DefaultPrompt("product_manager_schema", "v1", readPrompt("product_manager_schema_v1.md"))
     );
 
     private final PromptRegistryService promptRegistryService;
+
+    private static String readPrompt(String name) {
+        try {
+            // Match Python text loading and the contract hash on Windows and Linux.
+            return new ClassPathResource("prompts/" + name).getContentAsString(StandardCharsets.UTF_8)
+                    .replace("\r\n", "\n").replace("\r", "\n");
+        } catch (IOException error) {
+            throw new IllegalStateException("Bundled prompt is unavailable: " + name, error);
+        }
+    }
 
     public DefaultPromptSeeder(PromptRegistryService promptRegistryService) {
         this.promptRegistryService = promptRegistryService;

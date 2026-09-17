@@ -30,8 +30,10 @@ from runtime.execution_context import (
 
 PROMPT_FILES = {
     "ProductManagerAgent_v1": "product_manager_v1.md",
+    "ProductManagerAgent_v2": "product_manager_schema_v1.md",
     "ArchitectAgent_v1": "architect_v1.md",
     "BackendEngineerAgent_v1": "backend_engineer_v1.md",
+    "BackendEngineerAgent_v2": "backend_engineer_loop_v1.md",
     "FrontendEngineerAgent_v1": "frontend_engineer_v1.md",
     "ReviewerAgent_v1": "reviewer_v1.md",
 }
@@ -39,6 +41,10 @@ PROMPT_FILES = {
 
 class ModelConfigurationError(RuntimeError):
     pass
+
+
+class ModelOutputLimitError(RuntimeError):
+    error_code = "MODEL_OUTPUT_LIMIT"
 
 
 @dataclass(frozen=True)
@@ -210,6 +216,11 @@ class OpenAICompatibleModelClient:
             {"role": "user", "content": user_content},
         ]
         response_format = {"type": "json_object"}
+        thinking_mode = policy.get("thinking_mode")
+        if thinking_mode is not None:
+            if self.provider_key != "deepseek" or thinking_mode not in {"enabled", "disabled"}:
+                raise ModelConfigurationError("Unsupported frozen thinking_mode for this provider")
+            request_options["extra_body"] = {"thinking": {"type": thinking_mode}}
         params_hash = hashlib.sha256(
             json.dumps(
                 {
@@ -217,6 +228,7 @@ class OpenAICompatibleModelClient:
                     "temperature": temperature,
                     "max_tokens": max_output_tokens,
                     "response_format": response_format,
+                    **({"thinking_mode": thinking_mode} if thinking_mode is not None else {}),
                     "system_hash": hashlib.sha256(
                         system_content.encode("utf-8")
                     ).hexdigest(),
@@ -278,6 +290,8 @@ class OpenAICompatibleModelClient:
             )
             if not completion.choices:
                 raise RuntimeError("Model returned no choices")
+            if getattr(completion.choices[0], "finish_reason", None) == "length":
+                raise ModelOutputLimitError("Model exhausted the frozen output token allowance before completing its JSON response")
             content = completion.choices[0].message.content
             if content is None or not content.strip():
                 raise RuntimeError("Model returned an empty response")
@@ -331,7 +345,7 @@ class OpenAICompatibleModelClient:
                         else None
                     ),
                     status="FAILED",
-                    error_code=exception.__class__.__name__.upper(),
+                    error_code=getattr(exception, "error_code", exception.__class__.__name__.upper()),
                     error_message=str(exception)[:1000],
                     duration_ms=max(0, round((time.perf_counter() - started) * 1000)),
                     deadline_epoch_ms=permit.deadline_epoch_ms,

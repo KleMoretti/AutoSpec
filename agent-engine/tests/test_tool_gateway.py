@@ -1,5 +1,6 @@
 import hashlib
 import json
+from pathlib import Path
 
 import httpx
 import pytest
@@ -11,6 +12,8 @@ from runtime.tool_gateway import (
     register_controlled_gateway_tools,
 )
 from runtime.tool_harness import ToolHarness, ToolRegistry
+from runtime.tool_harness import ToolRuntimeContext, bind_tool_runtime_context, execute_current_tool
+from runtime.execution_context import ModelExecutionContract, bind_model_execution_contract
 from schemas.tool_gateway import ToolGatewayRequest
 from schemas.workflow_spec import ToolPolicy, ToolRef
 
@@ -152,3 +155,37 @@ def test_production_registry_only_contains_fixed_gateway_catalog() -> None:
         ("knowledge.search", "v1"),
         ("trace.query", "v1"),
     }
+
+
+@pytest.mark.asyncio
+async def test_http_tool_hash_includes_defaults_matching_control_plane_normalization() -> None:
+    spec = json.loads((Path(__file__).resolve().parents[1] / "contracts" /
+                       "autospec-v5-agent-execution-v3-c.workflow.json").read_text())
+    node = next(node for node in spec["nodes"] if node["node_id"] == "backend_engineer")
+    raw_policy = node["tool_policy"]
+    typed_policy = ToolPolicy.model_validate(raw_policy)
+    expected = "c917e219df519108526e1dda8091c26d2060dd1a5743ef58dd07e0f830d490bd"
+    assert typed_policy.model_dump(mode="json") != raw_policy  # Java and Python both include retry defaults
+    calls = []
+    async def receive(request):
+        body = json.loads(request.content)
+        calls.append(body)
+        assert body["policy_hash"] == expected
+        return httpx.Response(200, json={"request_id": body["request_id"], "idempotency_key": body["idempotency_key"],
+            "status": "SUCCEEDED", "result": {"node_id": "backend_engineer"}, "result_hash": "a" * 64})
+    gateway = HttpToolGatewayClient("http://backend", "test-token", transport=httpx.MockTransport(receive))
+    registry = ToolRegistry()
+    register_controlled_gateway_tools(registry, gateway)
+    harness = ToolHarness(registry)
+    contract = ModelExecutionContract(execution_id="frozen-call", prompt_key=node["prompt_key"],
+        prompt_version=node["prompt_version"], prompt_checksum=node["prompt_checksum"], model_policy=node["model_policy"],
+        deadline_epoch_ms=9_999_999_999_999, protocol_version=2, contract_hash="b" * 64, tool_policy=raw_policy)
+    context = ToolRuntimeContext(execution_id=contract.execution_id, node_id="backend_engineer", attempt=1,
+        policy=typed_policy, deadline_epoch_ms=contract.deadline_epoch_ms, contract_hash=contract.contract_hash,
+        schema_version=node["output_schema"], harness=harness, workflow_run_id=1, node_run_id=3,
+        actor_user_id="1", project_id="1", fencing_token=1)
+    with bind_model_execution_contract(contract), bind_tool_runtime_context(context):
+        result = await execute_current_tool({"name": "contract.lookup", "version": "v1",
+                                             "arguments": {"node_id": "backend_engineer"}, "idempotency_key": "lookup"})
+    assert result.status == "SUCCEEDED"
+    assert len(calls) == 1

@@ -257,6 +257,13 @@ def captured_invocation_count() -> int:
     return len(state.invocations) if state is not None else 0
 
 
+def last_model_call_id() -> str | None:
+    state = _STATE.get()
+    if state is not None:
+        return next((i.call_id for i in reversed(state.invocations) if i.call_type == "MODEL"), None)
+    return None
+
+
 def serialize_invocations(
     invocations: list[ModelInvocationTelemetry],
 ) -> list[dict[str, Any]]:

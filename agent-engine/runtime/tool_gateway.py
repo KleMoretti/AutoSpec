@@ -7,7 +7,7 @@ from typing import Any, Callable, Protocol
 from uuid import uuid4
 
 import httpx
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from runtime.tool_harness import (
     ToolHarness,
@@ -180,7 +180,22 @@ class HttpToolGatewayClient:
 
 
 class GatewayToolArguments(BaseModel):
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="forbid")
+
+
+class KnowledgeSearchArguments(GatewayToolArguments):
+    query: str = Field(min_length=1, max_length=10000)
+    limit: int = Field(default=5, ge=1, le=20)
+    corpus_type: str | None = None
+
+
+class ArtifactGetArguments(GatewayToolArguments):
+    artifact_id: int = Field(ge=1)
+    version: int | None = Field(default=None, ge=1)
+
+
+class ContractLookupArguments(GatewayToolArguments):
+    node_id: str | None = Field(default=None, min_length=1)
 
 
 class GatewayToolOutput(BaseModel):
@@ -202,6 +217,8 @@ def register_controlled_gateway_tools(
         ("trace.query", "workflow", "READ_ONLY"),
         ("bundle.verify", "workflow", "DETERMINISTIC"),
     )
+    inputs = {"knowledge.search": KnowledgeSearchArguments, "artifact.get": ArtifactGetArguments,
+              "contract.lookup": ContractLookupArguments}
     for name, permission_policy, side_effect in definitions:
         async def handler(
             arguments: GatewayToolArguments,
@@ -248,7 +265,7 @@ def register_controlled_gateway_tools(
         registry.register(
             name,
             "v1",
-            GatewayToolArguments,
+            inputs.get(name, GatewayToolArguments),
             GatewayToolOutput,
             handler,
             description=f"Controlled {name} gateway tool.",

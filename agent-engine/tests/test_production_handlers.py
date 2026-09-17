@@ -77,6 +77,26 @@ async def test_frontend_handler_consumes_backend_contract_output() -> None:
     assert _requirement_refs(backend.output_payload) <= requirement_ids
     assert _requirement_refs(frontend.output_payload) <= requirement_ids
 
+    review_input = {**shared, "backend_design": backend.output_payload, "frontend_skeleton": frontend.output_payload}
+    reviewer = await executor.execute(command("ReviewerAgent", review_input, node_id="reviewer"))
+    assert reviewer.event_type == "NODE_SUCCEEDED"
+    runtime_input = {**review_input, "review_report": reviewer.output_payload,
+        "retrieval_policy": {"version": "retrieval-v1", "enabled": True},
+        "retrieval_project_id": 1, "retrieval_node_id": "evaluator", "corpus_epoch": 3,
+        "actor_scope_hash": "scope", "retrieval_cache_key": "cache",
+        "retrieval_cache": {"mode": "SHADOW", "hit": False},
+        "retrieval_trace": {"hit_count": 0}, "retrieval_snapshot": {"project_id": 1, "hit_count": 0}}
+    old = await executor.execute(command("EvaluatorAgent", runtime_input, node_id="evaluator"))
+    assert old.error_code == "VALIDATION_ERROR"  # frozen v1 remains unchanged
+    new = await executor.execute(command("EvaluatorAgent", runtime_input, node_id="evaluator").model_copy(
+        update={"handler_version": "v2"}))
+    assert new.error_code == "QUALITY_GATE_BLOCKED", new.error_message
+    assert "RUNTIME_EVIDENCE_MISSING" in new.error_message  # reaches the real evaluator, still fails closed
+    runtime_input["unknown_business_field"] = "must not be silently accepted"
+    rejected = await executor.execute(command("EvaluatorAgent", runtime_input, node_id="evaluator").model_copy(
+        update={"handler_version": "v2"}))
+    assert rejected.error_code == "VALIDATION_ERROR"
+
 
 def _requirement_refs(value: object) -> set[str]:
     if isinstance(value, dict):

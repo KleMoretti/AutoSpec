@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 from uuid import uuid4
 
@@ -14,10 +14,10 @@ from runtime.execution_context import current_model_execution_contract
 from runtime.model_telemetry import (
     ModelCallBudgetExceeded,
     ModelInvocationTelemetry,
-    captured_invocation_count,
+    last_model_call_id,
     record_model_invocation,
 )
-from runtime.tool_harness import ToolRuntimeError, execute_current_tool
+from runtime.tool_harness import ToolRuntimeError, execute_current_tool, current_tool_harness
 from review.backend_validator import BackendValidationIssue, validate_backend_candidate
 from schemas.architecture_design import ArchitectureDesignArtifact
 from schemas.agent_loop import (
@@ -34,6 +34,8 @@ from schemas.agent_loop import (
     ToolCallTurn,
     parse_agent_turn,
     stable_hash,
+    agent_turn_schema,
+    validate_loop_budget,
 )
 from schemas.backend_design import BackendDesignArtifact
 from schemas.prd import PrdArtifact
@@ -55,7 +57,9 @@ class _LoopState:
     last_path_hash: str | None = None
     plan: PlanTurn | None = None
     observation: dict[str, Any] | None = None
+    observations: list[dict[str, Any]] = field(default_factory=list)
     candidate: dict[str, Any] | None = None
+    rejected_candidate: dict[str, Any] | None = None
     issues: list[BackendValidationIssue] | None = None
 
 
@@ -77,6 +81,10 @@ async def run_backend_agent_loop(
     """
 
     state = _LoopState(steps=[])
+    contract = current_model_execution_contract()
+    if contract is not None:
+        validate_loop_budget(policy, int(contract.model_policy.get("max_calls", 1)),
+                             bool(contract.tool_policy.get("enabled", False)))
     base_payload: dict[str, Any] = {
         "requirement": requirement,
         "prd": prd.model_dump(mode="json"),
@@ -120,6 +128,11 @@ async def run_backend_agent_loop(
             return _result(state, StopReason.VALIDATION_FAILED)
         except TimeoutError:
             return _result(state, StopReason.DEADLINE_EXCEEDED)
+
+        if policy.version == "agent-loop-v2" and turn.turn_type not in _allowed_turns(phase):
+            _append_step(state, StepPhase.VALIDATION, StepStatus.FAILED,
+                         reason_code="TURN_PHASE_INVALID", model_call_ref=model_call_ref)
+            return _result(state, StopReason.VALIDATION_FAILED)
 
         if isinstance(turn, PlanTurn):
             state.plan = turn
@@ -215,7 +228,11 @@ async def run_backend_agent_loop(
                     tool_call_ref=tool_ref,
                     duration_ms=_elapsed(started),
                 )
-                if error.error_code in {"TOOL_RATE_LIMITED", "TOOL_TIMEOUT"}:
+                if policy.version == "agent-loop-v2" and error.error_code == "TOOL_INPUT_INVALID":
+                    state.observation = {"status": "FAILED", "error_code": error.error_code,
+                                         "required_change": "Correct arguments using the tool input_schema."}
+                    continue
+                if error.error_code == "TOOL_RATE_LIMITED":
                     return _result(state, StopReason.TOOL_BUDGET_EXHAUSTED)
                 return _result(state, StopReason.VALIDATION_FAILED)
             if result.status != "SUCCEEDED":
@@ -231,6 +248,8 @@ async def run_backend_agent_loop(
                 )
                 return _result(state, StopReason.VALIDATION_FAILED)
             state.observation = _observation(result.result)
+            state.observations.append({"tool": turn.name, "version": turn.version,
+                                       "arguments": turn.arguments, "result": state.observation})
             _append_step(
                 state,
                 StepPhase.OBSERVATION,
@@ -246,19 +265,17 @@ async def run_backend_agent_loop(
 
         if isinstance(turn, ReplanTurn):
             state.replans += 1
-            state.issues = [
-                BackendValidationIssue(
-                    code=code,
-                    path="$",
-                    message=turn.reason,
-                    required_change=change,
-                )
-                for code, change in zip(
-                    turn.issue_codes,
-                    turn.required_changes,
-                    strict=False,
-                )
-            ]
+            if policy.version == "agent-loop-v2":
+                actual_codes = {issue.code for issue in (state.issues or [])}
+                if set(turn.issue_codes) != actual_codes:
+                    _append_step(state, StepPhase.REPLAN, StepStatus.FAILED,
+                                 reason_code="REPLAN_ISSUES_CHANGED", model_call_ref=model_call_ref)
+                    return _result(state, StopReason.VALIDATION_FAILED)
+            else:
+                state.issues = [
+                    BackendValidationIssue(code=code, path="$", message=turn.reason, required_change=change)
+                    for code, change in zip(turn.issue_codes, turn.required_changes, strict=False)
+                ]
             _append_step(
                 state,
                 StepPhase.REPLAN,
@@ -271,6 +288,7 @@ async def run_backend_agent_loop(
             )
             if state.replans > policy.max_replans:
                 return _result(state, StopReason.REPLAN_LIMIT)
+            state.rejected_candidate = state.candidate
             state.candidate = None
             continue
 
@@ -338,35 +356,30 @@ async def _next_turn(
     context_manifest: dict[str, Any],
     rework_directive: dict[str, Any] | None,
 ) -> tuple[AgentTurn, str | None]:
-    if model_client is None:
-        return (
-            _fixture_turn(
-                phase,
-                state,
-                prd,
-                requirement,
-                architecture_design,
-                retrieved_sources,
-                context_manifest,
-                rework_directive,
-                policy,
-            ),
-            _record_fixture_model_call(phase, state),
-        )
     payload = dict(base_payload)
     payload["agent_loop"] = {
         "phase": phase,
         "strategy": policy.strategy.value,
         "plan": state.plan.model_dump(mode="json") if state.plan else None,
         "observation": state.observation,
+        "observations": state.observations,
+        "candidate_to_repair": state.candidate or state.rejected_candidate,
         "validation_issues": [
             issue.model_dump(mode="json") for issue in (state.issues or [])
         ],
-        "turn_schema": "AgentTurn@v1",
+        "turn_schema": agent_turn_schema(),
+        "candidate_schema": BackendDesignArtifact.model_json_schema(),
+        "allowed_turn_types": _allowed_turns(phase),
+        "tools": current_tool_harness().describe_allowed() if current_tool_harness() else [],
+        "remaining_steps": policy.max_steps - state.iterations,
     }
+    if model_client is None:
+        turn = _fixture_turn(phase, state, prd, requirement, architecture_design,
+                             retrieved_sources, context_manifest, rework_directive, policy)
+        return turn, _record_fixture_model_call(payload, turn)
     output = await asyncio.to_thread(
         model_client.generate_json,
-        "BackendEngineerAgent_v1",
+        "BackendEngineerAgent_v2" if policy.version == "agent-loop-v2" else "BackendEngineerAgent_v1",
         payload,
     )
     turn = parse_agent_turn(output)
@@ -456,7 +469,7 @@ def _append_step(
             reason_code=reason_code,
             plan_hash=plan_hash,
             observation_hash=observation_hash,
-            validation_issue_codes=validation_issue_codes or [],
+            validation_issue_codes=list(dict.fromkeys(validation_issue_codes or [])),
             model_call_ref=model_call_ref,
             tool_call_ref=tool_call_ref,
             started_at_epoch_ms=max(0, now - duration_ms),
@@ -472,9 +485,16 @@ def _next_phase(state: _LoopState, policy: LoopPolicy) -> str:
         return "PLAN"
     if state.candidate is not None and state.issues:
         return "REPLAN"
-    if policy.enabled and _tool_policy().get("enabled", False) and not state.observation:
+    if policy.enabled and _tool_policy().get("enabled", False) and (
+        not state.observation or state.observation.get("error_code") == "TOOL_INPUT_INVALID"
+    ):
         return "ACTION"
     return "FINAL"
+
+
+def _allowed_turns(phase: str) -> list[str]:
+    return {"PLAN": ["PLAN"], "ACTION": ["TOOL_CALL", "FINAL_CANDIDATE"],
+            "REPLAN": ["REPLAN"], "FINAL": ["FINAL_CANDIDATE", "TOOL_CALL"]}[phase]
 
 
 def _plan_hash(state: _LoopState) -> str | None:
@@ -502,24 +522,19 @@ def _tool_idempotency_key(turn: ToolCallTurn) -> str:
     return f"{execution}:backend-engineer:{turn.name}:{stable_hash(turn.arguments)}"
 
 
-def _model_call_ref() -> str:
-    contract = current_model_execution_contract()
-    execution = contract.execution_id if contract is not None else "standalone"
-    count = captured_invocation_count()
-    return f"{execution}:model:{count}" if count else f"{execution}:model:pending"
+def _model_call_ref() -> str | None:
+    return last_model_call_id()
 
 
-def _record_fixture_model_call(phase: str, state: _LoopState) -> str:
+def _record_fixture_model_call(payload: dict[str, Any], turn: AgentTurn) -> str | None:
     contract = current_model_execution_contract()
-    execution = contract.execution_id if contract is not None else "standalone"
-    output_hash = stable_hash({"phase": phase, "iteration": state.iterations})
     record_model_invocation(
         ModelInvocationTelemetry(
-            call_id=f"{execution}:fixture:{state.next_step}",
             provider_key="local",
             model_name="deterministic-agent-loop-fixture",
-            prompt_key="backend_engineer",
-            result_hash=output_hash,
+            prompt_key=contract.prompt_key if contract is not None else "backend_engineer",
+            normalized_params_hash=stable_hash(payload),
+            result_hash=stable_hash(turn.model_dump(mode="json")),
             status="SUCCEEDED",
         )
     )
