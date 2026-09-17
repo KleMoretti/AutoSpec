@@ -1,0 +1,116 @@
+{
+  "schema_version": "isolated-eval-evidence-v1",
+  "date": "2026-09-17",
+  "environment": {
+    "name": "autospec-p0-retry-20260916",
+    "model_mode": "fixture",
+    "corpus": "fresh-project-per-case",
+    "agent_image": "sha256:e2f64f46b56b89daa1d2bbca3e5b07b71eb170c629b4a8facc87a9ea98506fcf",
+    "backend_image": "sha256:d5802b2c2ad9b75c25499975682733fc0f62940befba77aa11a352089ec48a9b"
+  },
+  "experiment_id": "fixture-prd-schema-20260917-r1",
+  "workflow_version": "v5-agent-execution-v6-d",
+  "source_fingerprint": "8a0e5331db55a47ce29603acf154521fa2e9d26630fcf98793f9acaa49080254",
+  "execution_mode": "FIXTURE_BASELINE",
+  "decision": "NOT_EVALUATED",
+  "paid_model_requests": 0,
+  "fixture_model_calls": 7,
+  "workflow_version_id": 16,
+  "official_active_version_changed": false,
+  "journal_sha256": "9433dd90237481c6c2462bd2b175f1de14ee59bbb5e7f6814ddd846ab70ca7de",
+  "case_result": {
+    "case_id": "crud_inventory",
+    "repetition": 1,
+    "workflow_run_id": "16",
+    "trace_id": "6c0f6723-4689-4bf8-b024-95623a0e654c",
+    "bundle_hash": "ec8d7c6a14bfe10a4d1b049bb738ffe22ebde2a733f174eee1c51eddfb77f6ab",
+    "rubric_ref": null,
+    "status": "FAILED",
+    "gate_pass": false,
+    "must_trace_coverage": null,
+    "blocking_issue_count": null,
+    "unauthorized_tool_requests": 0,
+    "invalid_tool_arguments": 0,
+    "tool_call_count": 1,
+    "unauthorized_tool_executions": 0,
+    "schema_invalid_count": 0,
+    "duration_ms": 8312.000000005355,
+    "steps": 6,
+    "replans": 0,
+    "path_oscillations": 0,
+    "p95_latency_ms": null,
+    "tokens": 0,
+    "cost": null,
+    "failure_codes": [
+      "QUALITY_GATE_BLOCKED"
+    ]
+  },
+  "nodes": [
+    {
+      "nodeId": "architect",
+      "handlerKey": "ArchitectAgent",
+      "handlerVersion": "v1",
+      "status": "SUCCEEDED",
+      "errorCode": null
+    },
+    {
+      "nodeId": "backend_engineer",
+      "handlerKey": "BackendEngineerAgent",
+      "handlerVersion": "v2",
+      "status": "SUCCEEDED",
+      "errorCode": null
+    },
+    {
+      "nodeId": "evaluator",
+      "handlerKey": "EvaluatorAgent",
+      "handlerVersion": "v2",
+      "status": "FAILED",
+      "errorCode": "QUALITY_GATE_BLOCKED"
+    },
+    {
+      "nodeId": "frontend_engineer",
+      "handlerKey": "FrontendEngineerAgent",
+      "handlerVersion": "v1",
+      "status": "SUCCEEDED",
+      "errorCode": null
+    },
+    {
+      "nodeId": "product_manager",
+      "handlerKey": "ProductManagerAgent",
+      "handlerVersion": "v2",
+      "status": "SUCCEEDED",
+      "errorCode": null
+    },
+    {
+      "nodeId": "reviewer",
+      "handlerKey": "ReviewerAgent",
+      "handlerVersion": "v1",
+      "status": "SUCCEEDED",
+      "errorCode": null
+    }
+  ],
+  "tools": [
+    {
+      "toolName": "contract.lookup",
+      "toolVersion": "v1",
+      "status": "SUCCEEDED",
+      "errorCode": null
+    }
+  ],
+  "approvals": [
+    {
+      "run_id": 16,
+      "approval_id": 11,
+      "kind": "SIMULATED_FIXTURE_OWNER"
+    }
+  ],
+  "verification": {
+    "prd_criteria_nested_in_user_stories": true,
+    "unknown_prd_root_field_accepted": false,
+    "live_budget_reservations_unchanged": true
+  },
+  "limitations": [
+    "Fixture validates deployment, frozen contracts and trace transport, not live model adherence.",
+    "Evaluator remained blocked; simulated owner approval is not independent human quality review."
+  ]
+}

@@ -1,0 +1,105 @@
+{
+  "execution_mode": "FIXTURE_BASELINE",
+  "workflow_run_id": "16",
+  "artifact_type": "PRD",
+  "note": "Synthetic fixture output, not a live quality result. It retains the fixture domain mismatch and incomplete MUST coverage; the workflow was blocked by Evaluator.",
+  "content_sha256": "69f6f05b81de4fb1fe1e8ab71d1068ff1fa5a78917fc126d41553228d5477493",
+  "content": {
+    "project_name": "AutoSpec Generated Project",
+    "target_users": [
+      "student",
+      "admin"
+    ],
+    "core_features": [
+      {
+        "requirement_id": "REQ-PUBLISH",
+        "name": "Product publishing",
+        "description": "Students can publish second-hand products with structured listing details.",
+        "priority": "MUST"
+      },
+      {
+        "requirement_id": "REQ-SEARCH",
+        "name": "Product search",
+        "description": "Students can search and browse available campus listings.",
+        "priority": "MUST"
+      },
+      {
+        "requirement_id": "REQ-FAVORITE",
+        "name": "Favorite products",
+        "description": "Students can save products they are interested in.",
+        "priority": "SHOULD"
+      },
+      {
+        "requirement_id": "REQ-AUDIT",
+        "name": "Admin audit",
+        "description": "Admins can review listings before they become visible.",
+        "priority": "MUST"
+      }
+    ],
+    "user_stories": [
+      {
+        "story_id": "STORY-PUBLISH",
+        "role": "student",
+        "goal": "publish an idle item",
+        "benefit": "find a buyer inside the campus community",
+        "requirement_refs": [
+          "REQ-PUBLISH"
+        ],
+        "acceptance_criteria": [
+          {
+            "acceptance_id": "AC-PUBLISH-DETAILS",
+            "criterion": "The listing stores title, price, category, description, and images.",
+            "requirement_refs": [
+              "REQ-PUBLISH"
+            ]
+          },
+          {
+            "acceptance_id": "AC-PUBLISH-PENDING",
+            "criterion": "The listing enters a pending audit state after submission.",
+            "requirement_refs": [
+              "REQ-PUBLISH"
+            ]
+          }
+        ]
+      },
+      {
+        "story_id": "STORY-AUDIT",
+        "role": "admin",
+        "goal": "audit product listings",
+        "benefit": "keep prohibited goods out of the marketplace",
+        "requirement_refs": [
+          "REQ-AUDIT"
+        ],
+        "acceptance_criteria": [
+          {
+            "acceptance_id": "AC-AUDIT-ROLE",
+            "criterion": "Only admins can approve or reject pending listings.",
+            "requirement_refs": [
+              "REQ-AUDIT"
+            ]
+          },
+          {
+            "acceptance_id": "AC-AUDIT-REASON",
+            "criterion": "Rejected listings include a visible reason.",
+            "requirement_refs": [
+              "REQ-AUDIT"
+            ]
+          }
+        ]
+      }
+    ],
+    "business_boundaries": [
+      "Payment escrow is outside the current delivery scope.",
+      "Off-campus logistics are outside the current delivery scope."
+    ],
+    "non_functional_requirements": [
+      "Every agent input, output, status, duration, and error is observable.",
+      "Agent artifacts must be valid JSON matching the published schema."
+    ],
+    "risks": [
+      "Listings may include prohibited or unsafe goods.",
+      "Generated API and database designs may drift without reviewer checks."
+    ],
+    "source_citations": []
+  }
+}
