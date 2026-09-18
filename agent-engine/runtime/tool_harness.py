@@ -260,6 +260,16 @@ class ToolHarness:
         self._open_until: dict[tuple[str, str], float] = {}
         self._circuit_lock = asyncio.Lock()
 
+    def describe_allowed(self) -> list[dict[str, Any]]:
+        context = _TOOL_CONTEXT.get()
+        if context is None or not context.policy.enabled:
+            return []
+        allowed = {(tool.name, tool.version) for tool in context.policy.allowed_tools}
+        return [description for description in self._registry.describe()
+                if (description["name"], description["version"]) in allowed
+                and description["side_effect"] in context.policy.allowed_side_effects
+                and description["permission_policy"] == context.policy.permission_policy]
+
     async def execute(
         self,
         request: ToolCallRequest | dict[str, Any],

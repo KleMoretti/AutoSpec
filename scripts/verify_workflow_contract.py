@@ -94,12 +94,31 @@ def main() -> int:
     )
     if candidate_error is not None:
         return 1
+    contracts = [CONTRACT, CANDIDATE_CONTRACT, *sorted(
+        CONTRACT.parent.glob("autospec-v5-agent-execution-v[23456]-*.workflow.json")
+    )]
+    if len(contracts) != 16:
+        print("Missing v2/v3/v4 experiments or v5/v6 diagnostic contracts", file=sys.stderr)
+        return 1
+    for path in contracts[2:]:
+        document = json.loads(path.read_text(encoding="utf-8"))
+        if verify_seeded_contract(path, document["version"]) is not None:
+            return 1
     sys.path.insert(0, str(AGENT_ENGINE))
     from runtime.production_handlers import build_production_registry
+    from schemas.workflow_spec import WorkflowSpec
 
     registry = build_production_registry()
     capability_errors: list[str] = []
-    for node in canonical.get("nodes", []):
+    documents = [json.loads(path.read_text(encoding="utf-8")) for path in contracts]
+    for document in documents:
+        WorkflowSpec.model_validate(document)
+    for prompt_name in ("backend_engineer_loop_v1.md", "product_manager_schema_v1.md"):
+        prompt_path = AGENT_ENGINE / "prompts" / prompt_name
+        if prompt_path.read_text(encoding="utf-8") != (ROOT / "backend/src/main/resources/prompts" / prompt_name).read_text(encoding="utf-8"):
+            print(f"Prompt resource drift: {prompt_name}", file=sys.stderr)
+            return 1
+    for node in [node for document in documents for node in document["nodes"]]:
         agent_name = node["agent_name"]
         marker = agent_name.rfind("_v")
         handler_key = agent_name[:marker] if marker > 0 else agent_name

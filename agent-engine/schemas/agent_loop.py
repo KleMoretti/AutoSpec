@@ -81,6 +81,19 @@ AgentTurn = Annotated[
 _AGENT_TURN_ADAPTER = TypeAdapter(AgentTurn)
 
 
+def agent_turn_schema() -> dict[str, Any]:
+    return _AGENT_TURN_ADAPTER.json_schema()
+
+
+def validate_loop_budget(policy: LoopPolicy, model_calls: int, tools_enabled: bool) -> None:
+    """v2 checks feasibility without making historical v1 snapshots unreadable."""
+    if not policy.enabled or policy.version != "agent-loop-v2":
+        return
+    minimum = 2 + int(tools_enabled) + 2 * policy.max_replans
+    if policy.max_steps < minimum or model_calls < minimum:
+        raise ValueError(f"agent-loop-v2 needs at least {minimum} steps and model calls")
+
+
 def parse_agent_turn(value: Any) -> AgentTurn:
     """Parse a model response while accepting the wire-level ``type`` alias.
 

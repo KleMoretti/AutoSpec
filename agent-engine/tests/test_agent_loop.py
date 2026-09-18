@@ -1,4 +1,7 @@
 import pytest
+import json
+from dataclasses import asdict
+from pathlib import Path
 from pydantic import BaseModel, ConfigDict, Field
 
 from agents.architect import ArchitectAgent
@@ -15,6 +18,11 @@ from runtime.tool_harness import (
 )
 from schemas.agent_loop import LoopPolicy, StopReason
 from schemas.workflow_spec import ToolPolicy, ToolRef
+from schemas.workflow_spec import WorkflowSpec
+from runtime.model_telemetry import capture_model_invocations, record_model_invocation, ModelInvocationTelemetry
+from runtime.node_executor import InvocationRecord
+from runtime.tool_gateway import register_controlled_gateway_tools
+from schemas.tool_gateway import ToolGatewayResult
 
 
 def _inputs():
@@ -57,7 +65,7 @@ async def test_fixture_backend_loop_executes_allowlisted_tool_and_finishes() -> 
     policy = LoopPolicy(enabled=True, max_steps=4, max_replans=1)
     contract = ModelExecutionContract(
         execution_id="loop-test",
-        prompt_key="backend_engineer",
+        prompt_key="backend_engineer_loop",
         prompt_version="v1",
         prompt_checksum="a" * 64,
         model_policy={"route_key": "balanced", "max_calls": 4},
@@ -79,7 +87,9 @@ async def test_fixture_backend_loop_executes_allowlisted_tool_and_finishes() -> 
         harness=harness,
     )
 
-    with bind_model_execution_contract(contract), bind_tool_runtime_context(tool_context):
+    with bind_model_execution_contract(contract), bind_tool_runtime_context(tool_context), capture_model_invocations(
+        execution_id=contract.execution_id, deadline_epoch_ms=contract.deadline_epoch_ms, max_model_calls=4,
+    ) as invocations:
         result = await run_backend_agent_loop(
             requirement=requirement,
             prd=prd,
@@ -94,6 +104,12 @@ async def test_fixture_backend_loop_executes_allowlisted_tool_and_finishes() -> 
     assert result.completed is True
     assert result.stop_reason == StopReason.COMPLETED
     assert {step.phase for step in result.steps} >= {"PLAN", "TOOL_CALL", "OBSERVATION", "VALIDATION"}
+    models = [invocation for invocation in invocations if invocation.call_type == "MODEL"]
+    assert len(models) == 3
+    assert len({invocation.call_id for invocation in invocations}) == len(invocations)
+    for invocation in models:
+        InvocationRecord.model_validate(asdict(invocation)).validate_frozen_call()
+        assert invocation.prompt_key == contract.prompt_key
 
 
 @pytest.mark.asyncio
@@ -134,3 +150,120 @@ async def test_backend_loop_replans_after_deterministic_validation_failure() -> 
     assert result.completed is True
     assert result.stop_reason == StopReason.COMPLETED
     assert any(step.phase == "REPLAN" for step in result.steps)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("early_final,invalid_tool", [(False, False), (True, False), (False, True)])
+async def test_v2_frozen_candidate_executes_tools_and_repairs_within_actual_budget(early_final: bool, invalid_tool: bool) -> None:
+    document = json.loads((Path(__file__).resolve().parents[1] / "contracts" /
+                          "autospec-v5-agent-execution-v2-d.workflow.json").read_text())
+    spec = WorkflowSpec.model_validate(document)
+    node = next(n for n in spec.nodes if n.node_id == "backend_engineer")
+    requirement, prd, architecture = _inputs()
+    valid = BackendEngineerAgent().run(requirement, prd, architecture).model_dump(mode="json")
+    payloads = []
+
+    class Model:
+        def generate_json(self, prompt_name, payload):
+            assert prompt_name == "BackendEngineerAgent_v2"
+            loop = payload["agent_loop"]
+            assert "$defs" in loop["turn_schema"]
+            tools = {t["name"]: t for t in loop["tools"]}
+            assert set(tools) == {"knowledge.search", "artifact.get", "contract.lookup"}
+            assert "artifact_id" in tools["artifact.get"]["input_schema"]["required"]
+            payloads.append(payload)
+            record_model_invocation(ModelInvocationTelemetry(provider_key="scripted", model_name="test",
+                                                             prompt_key="backend_engineer_loop", status="SUCCEEDED"))
+            if early_final:
+                return {"turn_type": "FINAL_CANDIDATE", "candidate": valid}
+            phase = loop["phase"]
+            if phase == "PLAN":
+                return {"turn_type": "PLAN", "goal": "design", "steps": ["lookup", "validate"]}
+            if phase == "ACTION":
+                return {"turn_type": "TOOL_CALL", "name": "contract.lookup", "version": "v1",
+                        "arguments": {"node_id": [] if invalid_tool and len(payloads) == 2 else "backend_engineer"},
+                        "reason": "verify contract"}
+            if phase == "REPLAN":
+                assert loop["candidate_to_repair"]["apis"] == []
+                return {"turn_type": "REPLAN", "issue_codes": [i["code"] for i in loop["validation_issues"]],
+                        "required_changes": [i["required_change"] for i in loop["validation_issues"]],
+                        "reason": "repair deterministic failures"}
+            candidate = valid if len(payloads) >= 5 else {**valid, "apis": []}
+            if len(payloads) >= 5:
+                assert loop["candidate_to_repair"]["apis"] == []
+            return {"turn_type": "FINAL_CANDIDATE", "candidate": candidate}
+
+    class Gateway:
+        async def execute(self, request, **_kwargs):
+            return ToolGatewayResult(request_id=request.request_id, idempotency_key=request.idempotency_key,
+                                     status="SUCCEEDED", result={"node_id": "backend_engineer"},
+                                     result_hash="a" * 64)
+
+    registry = ToolRegistry()
+    register_controlled_gateway_tools(registry, Gateway())
+    contract = ModelExecutionContract(
+        execution_id="v2-test", prompt_key=node.prompt_key, prompt_version=node.prompt_version,
+        prompt_checksum=node.prompt_checksum, model_policy=node.model_policy.model_dump(mode="json"),
+        deadline_epoch_ms=9_999_999_999_999, protocol_version=2, contract_hash="b" * 64,
+        schema_version="BackendDesignArtifact", tool_policy=node.tool_policy.model_dump(mode="json"),
+        agent_loop_policy=node.agent_loop_policy.model_dump(mode="json"),
+    )
+    context = ToolRuntimeContext(execution_id="v2-test", node_id="backend_engineer", attempt=1,
+                                 policy=node.tool_policy, deadline_epoch_ms=contract.deadline_epoch_ms,
+                                 contract_hash="b" * 64, schema_version="BackendDesignArtifact",
+                                 harness=ToolHarness(registry), workflow_run_id=1, node_run_id=2,
+                                 actor_user_id="1", project_id="1", fencing_token=1)
+    with bind_model_execution_contract(contract), bind_tool_runtime_context(context), capture_model_invocations(
+        execution_id="v2-test", max_model_calls=node.model_policy.max_calls
+    ) as invocations:
+        result = await run_backend_agent_loop(requirement=requirement, prd=prd,
+            architecture_design=architecture.model_dump(mode="json"), retrieved_sources=[], context_manifest={},
+            rework_directive=None, model_client=Model(), policy=node.agent_loop_policy)
+    assert result.completed is (not early_final), [(s.phase, s.reason_code) for s in result.steps]
+    if early_final:
+        assert result.steps[-1].reason_code == "TURN_PHASE_INVALID"
+    else:
+        assert len([i for i in invocations if i.call_type == "MODEL"]) == 5 + int(invalid_tool)
+        assert payloads[-1]["agent_loop"]["observations"][0]["tool"] == "contract.lookup"
+        assert all(s.model_call_ref in {i.call_id for i in invocations if i.call_type == "MODEL"}
+                   for s in result.steps if s.model_call_ref)
+        assert {s.phase.value for s in result.steps} >= {"TOOL_CALL", "OBSERVATION", "REPLAN", "FINISH"}
+
+
+def test_v2_rejects_unreachable_model_call_budget() -> None:
+    from schemas.agent_loop import validate_loop_budget
+    with pytest.raises(ValueError, match="at least 7"):
+        validate_loop_budget(LoopPolicy(version="agent-loop-v2", enabled=True, max_steps=7, max_replans=2), 2, True)
+
+
+@pytest.mark.asyncio
+async def test_repeated_issue_codes_preserve_each_problem_and_allow_repair() -> None:
+    requirement, prd, architecture = _inputs()
+    valid = BackendEngineerAgent().run(requirement, prd, architecture).model_dump(mode="json")
+    import copy
+    invalid = copy.deepcopy(valid)
+    assert len(invalid["apis"]) >= 2
+    for api in invalid["apis"]:
+        api["auth_required"] = True
+        api["required_roles"] = []
+    turns = 0
+    class Model:
+        def generate_json(self, _name, payload):
+            nonlocal turns
+            turns += 1
+            loop = payload["agent_loop"]
+            if turns == 1:
+                return {"turn_type": "PLAN", "goal": "repair roles", "steps": ["draft", "validate"]}
+            if turns == 2:
+                return {"turn_type": "FINAL_CANDIDATE", "candidate": invalid}
+            if turns == 3:
+                assert len([i for i in loop["validation_issues"] if i["code"] == "AUTH_ROLE_MISSING"]) >= 2
+                return {"turn_type": "REPLAN", "issue_codes": ["AUTH_ROLE_MISSING"],
+                        "required_changes": ["repair every API role"], "reason": "missing roles"}
+            assert len(loop["validation_issues"]) >= 2
+            return {"turn_type": "FINAL_CANDIDATE", "candidate": valid}
+    result = await run_backend_agent_loop(requirement=requirement, prd=prd,
+        architecture_design=architecture.model_dump(mode="json"), retrieved_sources=[], context_manifest={},
+        rework_directive=None, model_client=Model(),
+        policy=LoopPolicy(version="agent-loop-v2", enabled=True, max_steps=6, max_replans=2))
+    assert result.completed

@@ -1,0 +1,507 @@
+{
+  "schema_version": "isolated-eval-evidence-v1",
+  "date": "2026-09-17",
+  "environment": "autospec-p0-retry-20260916",
+  "execution_mode": "LIVE_CONTROL_PLANE",
+  "dataset_split": "smoke",
+  "case_ids": [
+    "crud_inventory"
+  ],
+  "decision": "NOT_EVALUATED",
+  "paid_model_requests": 5,
+  "total_tokens": 22892,
+  "budget": {
+    "authorization_id": "interview-live-20260916-cny10",
+    "currency": "CNY",
+    "authorized": 10.0,
+    "reserved": 10.0,
+    "reservations": 5,
+    "estimated_cost_upper": 0.14883472,
+    "provider_invoice_verified": false,
+    "policy": "Whole-run reservations are retained on failure; no release or new authorization was created."
+  },
+  "pricing_snapshot": {
+    "source": "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/",
+    "observed_at": "2026-09-16",
+    "currency": "CNY",
+    "version": "deepseek-flash-peak-20260916",
+    "models": {
+      "deepseek:deepseek-v4-flash": {
+        "input_per_million": 2,
+        "cached_input_per_million": 0.04,
+        "output_per_million": 8
+      }
+    }
+  },
+  "price_rechecked_at": "2026-09-17",
+  "limitations": [
+    "All five runs failed at Product Manager; no live Backend Loop, tool, or replan quality result was collected.",
+    "The v5 D diagnostic changed the model policy and worker code; it is not a paired ablation against v4.",
+    "The old wrapper hid the v5 schema error as HANDLER_ERROR. Raw metrics remain unchanged; audited diagnosis is separate.",
+    "Cost is a conservative peak-price estimate from provider token usage, not a verified charge or account balance delta.",
+    "One smoke case, no repetitions, no holdout or independent rubric review; no promotion or quality-improvement claim."
+  ],
+  "experiments": [
+    {
+      "experiment_id": "live-flash-smoke-20260916-r1",
+      "contract_family": "v4",
+      "source_fingerprint": "149d1ba2d2d68edfd15d4e22f18013ea23e7423fa779e661d9641cfe30949dd3",
+      "environment": {
+        "name": "autospec-p0-retry-20260916",
+        "model_mode": "live",
+        "agent_image": "sha256:64a9a7ffd33787855a1d65557880703e705260decc6b2f2f3e4e67d354a3f9d3",
+        "backend_image": "sha256:ab4caeb19522ac25c181940d29a102ca33d01738c4f6481cc3e8fb20d9664c34",
+        "corpus": "fresh-project-per-case"
+      },
+      "cases": [
+        {
+          "group": "A",
+          "run_id": "11",
+          "case_id": "crud_inventory",
+          "status": "FAILED",
+          "gate_pass": false,
+          "trace_id": "957d6338-b12b-4bb9-947b-789cc557eeb1",
+          "bundle_hash": "9c8ef0f0e75fbffcbb45d977dca3f4880bd1ac80896df0d4087faef69d34a6a7",
+          "journal_sha256": "ebfa7430f2c4a18e8aa92f3c7cb50d332a01c99a9d4ad59ddca7d04476844844",
+          "failure_codes_raw": [
+            "FAILED",
+            "HANDLER_ERROR",
+            "RUNTIMEERROR"
+          ],
+          "schema_invalid_count_raw": 0,
+          "diagnosis": "EMPTY_RESPONSE_AT_OUTPUT_TOKEN_CAP",
+          "schema_violation_audited": false,
+          "artifact_count": 0,
+          "tokens": 5098,
+          "usage": {
+            "inputTokens": 1098,
+            "outputTokens": 4000,
+            "cacheTokens": 0
+          },
+          "estimated_cost_upper_cny": 0.034196,
+          "duration_ms": 20796.99999999866,
+          "model_invocations": [
+            {
+              "providerKey": "deepseek",
+              "modelName": "deepseek-v4-flash",
+              "promptKey": "product_manager",
+              "promptVersion": "v1",
+              "status": "FAILED",
+              "errorCode": "RUNTIMEERROR",
+              "inputTokens": 1098,
+              "outputTokens": 4000,
+              "cacheTokens": 0,
+              "durationMs": 18175
+            }
+          ],
+          "nodes": [
+            {
+              "nodeId": "architect",
+              "status": "CANCELLED",
+              "errorCode": "FAILED",
+              "handlerKey": "ArchitectAgent",
+              "handlerVersion": "v1"
+            },
+            {
+              "nodeId": "backend_engineer",
+              "status": "CANCELLED",
+              "errorCode": "FAILED",
+              "handlerKey": "BackendEngineerAgent",
+              "handlerVersion": "v2"
+            },
+            {
+              "nodeId": "evaluator",
+              "status": "CANCELLED",
+              "errorCode": "FAILED",
+              "handlerKey": "EvaluatorAgent",
+              "handlerVersion": "v2"
+            },
+            {
+              "nodeId": "frontend_engineer",
+              "status": "CANCELLED",
+              "errorCode": "FAILED",
+              "handlerKey": "FrontendEngineerAgent",
+              "handlerVersion": "v1"
+            },
+            {
+              "nodeId": "product_manager",
+              "status": "FAILED",
+              "errorCode": "HANDLER_ERROR",
+              "handlerKey": "ProductManagerAgent",
+              "handlerVersion": "v1"
+            },
+            {
+              "nodeId": "reviewer",
+              "status": "CANCELLED",
+              "errorCode": "FAILED",
+              "handlerKey": "ReviewerAgent",
+              "handlerVersion": "v1"
+            }
+          ]
+        },
+        {
+          "group": "B",
+          "run_id": "12",
+          "case_id": "crud_inventory",
+          "status": "FAILED",
+          "gate_pass": false,
+          "trace_id": "bcb0b149-f467-475f-bbaf-3d91aa19a330",
+          "bundle_hash": "3658b68694f0706377f3b5e32e5cb5b8bbdd5490d969a60dbda167ad51fde343",
+          "journal_sha256": "58f991c02b30bb08ef7d02e0f71c814c91c584e260fb064240f897794980a3ec",
+          "failure_codes_raw": [
+            "FAILED",
+            "HANDLER_ERROR",
+            "RUNTIMEERROR"
+          ],
+          "schema_invalid_count_raw": 0,
+          "diagnosis": "EMPTY_RESPONSE_AT_OUTPUT_TOKEN_CAP",
+          "schema_violation_audited": false,
+          "artifact_count": 0,
+          "tokens": 5098,
+          "usage": {
+            "inputTokens": 1098,
+            "outputTokens": 4000,
+            "cacheTokens": 256
+          },
+          "estimated_cost_upper_cny": 0.03369424,
+          "duration_ms": 19045.999999998457,
+          "model_invocations": [
+            {
+              "providerKey": "deepseek",
+              "modelName": "deepseek-v4-flash",
+              "promptKey": "product_manager",
+              "promptVersion": "v1",
+              "status": "FAILED",
+              "errorCode": "RUNTIMEERROR",
+              "inputTokens": 1098,
+              "outputTokens": 4000,
+              "cacheTokens": 256,
+              "durationMs": 18456
+            }
+          ],
+          "nodes": [
+            {
+              "nodeId": "architect",
+              "status": "CANCELLED",
+              "errorCode": "FAILED",
+              "handlerKey": "ArchitectAgent",
+              "handlerVersion": "v1"
+            },
+            {
+              "nodeId": "backend_engineer",
+              "status": "CANCELLED",
+              "errorCode": "FAILED",
+              "handlerKey": "BackendEngineerAgent",
+              "handlerVersion": "v2"
+            },
+            {
+              "nodeId": "evaluator",
+              "status": "CANCELLED",
+              "errorCode": "FAILED",
+              "handlerKey": "EvaluatorAgent",
+              "handlerVersion": "v2"
+            },
+            {
+              "nodeId": "frontend_engineer",
+              "status": "CANCELLED",
+              "errorCode": "FAILED",
+              "handlerKey": "FrontendEngineerAgent",
+              "handlerVersion": "v1"
+            },
+            {
+              "nodeId": "product_manager",
+              "status": "FAILED",
+              "errorCode": "HANDLER_ERROR",
+              "handlerKey": "ProductManagerAgent",
+              "handlerVersion": "v1"
+            },
+            {
+              "nodeId": "reviewer",
+              "status": "CANCELLED",
+              "errorCode": "FAILED",
+              "handlerKey": "ReviewerAgent",
+              "handlerVersion": "v1"
+            }
+          ]
+        },
+        {
+          "group": "C",
+          "run_id": "13",
+          "case_id": "crud_inventory",
+          "status": "FAILED",
+          "gate_pass": false,
+          "trace_id": "0bb71e63-a093-40ce-88ef-ae2524e004b3",
+          "bundle_hash": "6cb025669cdd00707aec09d801c9c768a20a58c8574492b795601ef37b129965",
+          "journal_sha256": "15ee6e0caa886abf52b4a098ed92fd70e9ad5de8fa8d907942d851c1753e8420",
+          "failure_codes_raw": [
+            "FAILED",
+            "HANDLER_ERROR",
+            "RUNTIMEERROR"
+          ],
+          "schema_invalid_count_raw": 0,
+          "diagnosis": "EMPTY_RESPONSE_AT_OUTPUT_TOKEN_CAP",
+          "schema_violation_audited": false,
+          "artifact_count": 0,
+          "tokens": 5106,
+          "usage": {
+            "inputTokens": 1106,
+            "outputTokens": 4000,
+            "cacheTokens": 256
+          },
+          "estimated_cost_upper_cny": 0.03371024,
+          "duration_ms": 19530.99999999904,
+          "model_invocations": [
+            {
+              "providerKey": "deepseek",
+              "modelName": "deepseek-v4-flash",
+              "promptKey": "product_manager",
+              "promptVersion": "v1",
+              "status": "FAILED",
+              "errorCode": "RUNTIMEERROR",
+              "inputTokens": 1106,
+              "outputTokens": 4000,
+              "cacheTokens": 256,
+              "durationMs": 17522
+            }
+          ],
+          "nodes": [
+            {
+              "nodeId": "architect",
+              "status": "CANCELLED",
+              "errorCode": "FAILED",
+              "handlerKey": "ArchitectAgent",
+              "handlerVersion": "v1"
+            },
+            {
+              "nodeId": "backend_engineer",
+              "status": "CANCELLED",
+              "errorCode": "FAILED",
+              "handlerKey": "BackendEngineerAgent",
+              "handlerVersion": "v2"
+            },
+            {
+              "nodeId": "evaluator",
+              "status": "CANCELLED",
+              "errorCode": "FAILED",
+              "handlerKey": "EvaluatorAgent",
+              "handlerVersion": "v2"
+            },
+            {
+              "nodeId": "frontend_engineer",
+              "status": "CANCELLED",
+              "errorCode": "FAILED",
+              "handlerKey": "FrontendEngineerAgent",
+              "handlerVersion": "v1"
+            },
+            {
+              "nodeId": "product_manager",
+              "status": "FAILED",
+              "errorCode": "HANDLER_ERROR",
+              "handlerKey": "ProductManagerAgent",
+              "handlerVersion": "v1"
+            },
+            {
+              "nodeId": "reviewer",
+              "status": "CANCELLED",
+              "errorCode": "FAILED",
+              "handlerKey": "ReviewerAgent",
+              "handlerVersion": "v1"
+            }
+          ]
+        },
+        {
+          "group": "D",
+          "run_id": "14",
+          "case_id": "crud_inventory",
+          "status": "FAILED",
+          "gate_pass": false,
+          "trace_id": "ba90a3b7-7a4a-4299-a1ad-0443dba7975f",
+          "bundle_hash": "ada40faea6b18b72de47bd10fb35c8f845912e3125cd40e19da792e1649b16d6",
+          "journal_sha256": "f0556367f606e73b65e9f079ccfe03193ef42c7cfa2e092a879d577f53a76b0e",
+          "failure_codes_raw": [
+            "FAILED",
+            "HANDLER_ERROR",
+            "RUNTIMEERROR"
+          ],
+          "schema_invalid_count_raw": 0,
+          "diagnosis": "EMPTY_RESPONSE_AT_OUTPUT_TOKEN_CAP",
+          "schema_violation_audited": false,
+          "artifact_count": 0,
+          "tokens": 5105,
+          "usage": {
+            "inputTokens": 1105,
+            "outputTokens": 4000,
+            "cacheTokens": 256
+          },
+          "estimated_cost_upper_cny": 0.03370824,
+          "duration_ms": 20077.9999999977,
+          "model_invocations": [
+            {
+              "providerKey": "deepseek",
+              "modelName": "deepseek-v4-flash",
+              "promptKey": "product_manager",
+              "promptVersion": "v1",
+              "status": "FAILED",
+              "errorCode": "RUNTIMEERROR",
+              "inputTokens": 1105,
+              "outputTokens": 4000,
+              "cacheTokens": 256,
+              "durationMs": 18020
+            }
+          ],
+          "nodes": [
+            {
+              "nodeId": "architect",
+              "status": "CANCELLED",
+              "errorCode": "FAILED",
+              "handlerKey": "ArchitectAgent",
+              "handlerVersion": "v1"
+            },
+            {
+              "nodeId": "backend_engineer",
+              "status": "CANCELLED",
+              "errorCode": "FAILED",
+              "handlerKey": "BackendEngineerAgent",
+              "handlerVersion": "v2"
+            },
+            {
+              "nodeId": "evaluator",
+              "status": "CANCELLED",
+              "errorCode": "FAILED",
+              "handlerKey": "EvaluatorAgent",
+              "handlerVersion": "v2"
+            },
+            {
+              "nodeId": "frontend_engineer",
+              "status": "CANCELLED",
+              "errorCode": "FAILED",
+              "handlerKey": "FrontendEngineerAgent",
+              "handlerVersion": "v1"
+            },
+            {
+              "nodeId": "product_manager",
+              "status": "FAILED",
+              "errorCode": "HANDLER_ERROR",
+              "handlerKey": "ProductManagerAgent",
+              "handlerVersion": "v1"
+            },
+            {
+              "nodeId": "reviewer",
+              "status": "CANCELLED",
+              "errorCode": "FAILED",
+              "handlerKey": "ReviewerAgent",
+              "handlerVersion": "v1"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "experiment_id": "live-flash-diagnostic-20260916-r1",
+      "contract_family": "v5",
+      "source_fingerprint": "1d4ea9131385d60b7c20514924e7baa5899d82c1d768ecd62a5fc35761d96d49",
+      "environment": {
+        "name": "autospec-p0-retry-20260916",
+        "model_mode": "live",
+        "agent_image": "sha256:31fa44e87dd91e553665cfc46395b117a6a8c23c7cd82daa4d3b636cc89028b2",
+        "backend_image": "sha256:da8e977b521fa73376fba4b03996fb2b5aaedead38a0bf6fcf1a5b069ebdf3ff",
+        "corpus": "fresh-project-per-case"
+      },
+      "cases": [
+        {
+          "group": "D",
+          "run_id": "15",
+          "case_id": "crud_inventory",
+          "status": "FAILED",
+          "gate_pass": false,
+          "trace_id": "6f46ccd7-cdd2-4d0e-8a83-a774f0a8a8ab",
+          "bundle_hash": "7cc9c8c0ae9d70588639d2845ffe95df2bbda7a96091ab9affdfa767e927c276",
+          "journal_sha256": "9dfd2eb593692af955fe8aad4f07307ca63dc5117952b97d12b6357541d816f0",
+          "failure_codes_raw": [
+            "FAILED",
+            "HANDLER_ERROR"
+          ],
+          "schema_invalid_count_raw": 0,
+          "diagnosis": "PRD_ACCEPTANCE_CRITERIA_AT_ROOT",
+          "schema_violation_audited": true,
+          "artifact_count": 0,
+          "tokens": 2485,
+          "usage": {
+            "inputTokens": 1059,
+            "outputTokens": 1426,
+            "cacheTokens": 0
+          },
+          "estimated_cost_upper_cny": 0.013526,
+          "duration_ms": 7014.999999999418,
+          "model_invocations": [
+            {
+              "providerKey": "deepseek",
+              "modelName": "deepseek-v4-flash",
+              "promptKey": "product_manager",
+              "promptVersion": "v1",
+              "status": "SUCCEEDED",
+              "errorCode": null,
+              "inputTokens": 1059,
+              "outputTokens": 1426,
+              "cacheTokens": 0,
+              "durationMs": 5392
+            }
+          ],
+          "nodes": [
+            {
+              "nodeId": "architect",
+              "status": "CANCELLED",
+              "errorCode": "FAILED",
+              "handlerKey": "ArchitectAgent",
+              "handlerVersion": "v1"
+            },
+            {
+              "nodeId": "backend_engineer",
+              "status": "CANCELLED",
+              "errorCode": "FAILED",
+              "handlerKey": "BackendEngineerAgent",
+              "handlerVersion": "v2"
+            },
+            {
+              "nodeId": "evaluator",
+              "status": "CANCELLED",
+              "errorCode": "FAILED",
+              "handlerKey": "EvaluatorAgent",
+              "handlerVersion": "v2"
+            },
+            {
+              "nodeId": "frontend_engineer",
+              "status": "CANCELLED",
+              "errorCode": "FAILED",
+              "handlerKey": "FrontendEngineerAgent",
+              "handlerVersion": "v1"
+            },
+            {
+              "nodeId": "product_manager",
+              "status": "FAILED",
+              "errorCode": "HANDLER_ERROR",
+              "handlerKey": "ProductManagerAgent",
+              "handlerVersion": "v1"
+            },
+            {
+              "nodeId": "reviewer",
+              "status": "CANCELLED",
+              "errorCode": "FAILED",
+              "handlerKey": "ReviewerAgent",
+              "handlerVersion": "v1"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "followup_candidate": {
+    "version": "v5-agent-execution-v6-d",
+    "migration": "V101",
+    "product_manager_handler": "ProductManagerAgent:v2",
+    "prompt": "product_manager_schema:v1",
+    "live_executed": false,
+    "schema_unchanged": true,
+    "official_active_version_changed": false
+  }
+}

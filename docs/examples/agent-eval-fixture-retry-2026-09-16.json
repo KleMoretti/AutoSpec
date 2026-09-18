@@ -1,0 +1,191 @@
+{
+  "schema_version": "isolated-eval-evidence-v1",
+  "environment": "autospec-p0-retry-20260916",
+  "date": "2026-09-16",
+  "execution_mode": "FIXTURE_BASELINE",
+  "decision": "NOT_EVALUATED",
+  "dataset_split": "smoke",
+  "cases_per_group": 1,
+  "paid_model_requests": 0,
+  "budget": {
+    "currency": "CNY",
+    "authorized": 10,
+    "reserved": 0
+  },
+  "experiments": [
+    {
+      "experiment_id": "fixture-retry-20260916-r1",
+      "cases": [
+        {
+          "group": "A",
+          "run_id": "1",
+          "case_id": "crud_inventory",
+          "status": "FAILED",
+          "failure_codes": [
+            "QUALITY_GATE_BLOCKED"
+          ],
+          "trace_id": "eeebe8fc-7a69-4e05-ab82-34d005acec69",
+          "bundle_hash": "d5eeacfd3ed2a70a2c6ec1d596ee3eb9104c51d550adcdf1eb62511fd91abe8f",
+          "fixture_model_calls": 5,
+          "tools": [],
+          "schema_invalid_count": 0
+        },
+        {
+          "run_id": 2,
+          "journal_status": "RUNNING",
+          "operator_cancelled": true
+        }
+      ]
+    },
+    {
+      "experiment_id": "fixture-retry-20260916-r2",
+      "cases": [
+        {
+          "group": "A",
+          "run_id": "3",
+          "case_id": "crud_inventory",
+          "status": "FAILED",
+          "failure_codes": [
+            "QUALITY_GATE_BLOCKED"
+          ],
+          "trace_id": "b5d72ac5-4d2b-4a57-9eff-54c771d421f4",
+          "bundle_hash": "d5eeacfd3ed2a70a2c6ec1d596ee3eb9104c51d550adcdf1eb62511fd91abe8f",
+          "fixture_model_calls": 5,
+          "tools": [],
+          "schema_invalid_count": 0
+        },
+        {
+          "group": "B",
+          "run_id": "4",
+          "case_id": "crud_inventory",
+          "status": "FAILED",
+          "failure_codes": [
+            "QUALITY_GATE_BLOCKED"
+          ],
+          "trace_id": "518ddba1-41da-4e2b-9ee1-999e40ac83c9",
+          "bundle_hash": "ebd626301b71144137627b2db06808e6ef505c018183a5b28f86873c50a46b53",
+          "fixture_model_calls": 6,
+          "tools": [],
+          "schema_invalid_count": 0
+        },
+        {
+          "group": "C",
+          "run_id": "5",
+          "case_id": "crud_inventory",
+          "status": "FAILED",
+          "failure_codes": [
+            "FAILED",
+            "POLICY_HASH_MISMATCH",
+            "VALIDATION_FAILED"
+          ],
+          "trace_id": "22c1f722-5ce2-413c-bb67-4a4d0002460a",
+          "bundle_hash": "e5aff28ab3d4c68bb588f94262e2e1d7c8a87ea6f6541b95a586ce4d7dedcc37",
+          "fixture_model_calls": 4,
+          "tools": [
+            {
+              "name": "contract.lookup",
+              "status": "FAILED",
+              "error_code": "POLICY_HASH_MISMATCH"
+            }
+          ],
+          "schema_invalid_count": 0
+        },
+        {
+          "group": "D",
+          "run_id": "6",
+          "case_id": "crud_inventory",
+          "status": "FAILED",
+          "failure_codes": [
+            "FAILED",
+            "POLICY_HASH_MISMATCH",
+            "VALIDATION_FAILED"
+          ],
+          "trace_id": "bad1772e-4d7e-49d5-be07-bfbf5952436f",
+          "bundle_hash": "b861ffa859a58aaae988738cac2b3ef5f5e02e3ed4a3691389a55e2808fe4732",
+          "fixture_model_calls": 4,
+          "tools": [
+            {
+              "name": "contract.lookup",
+              "status": "FAILED",
+              "error_code": "POLICY_HASH_MISMATCH"
+            }
+          ],
+          "schema_invalid_count": 0
+        }
+      ]
+    },
+    {
+      "experiment_id": "fixture-retry-20260916-r3",
+      "cases": [
+        {
+          "group": "A",
+          "run_id": "7",
+          "case_id": "crud_inventory",
+          "status": "FAILED",
+          "failure_codes": [
+            "QUALITY_GATE_BLOCKED"
+          ],
+          "trace_id": "3d4f15fa-75f6-40c0-932e-751e78453dd5",
+          "bundle_hash": "d5eeacfd3ed2a70a2c6ec1d596ee3eb9104c51d550adcdf1eb62511fd91abe8f",
+          "fixture_model_calls": 5,
+          "tools": [],
+          "schema_invalid_count": 0
+        },
+        {
+          "group": "B",
+          "run_id": "8",
+          "case_id": "crud_inventory",
+          "status": "FAILED",
+          "failure_codes": [
+            "QUALITY_GATE_BLOCKED"
+          ],
+          "trace_id": "890f13d9-6f05-44f1-aa1a-8078199e5d49",
+          "bundle_hash": "ebd626301b71144137627b2db06808e6ef505c018183a5b28f86873c50a46b53",
+          "fixture_model_calls": 6,
+          "tools": [],
+          "schema_invalid_count": 0
+        },
+        {
+          "group": "C",
+          "run_id": "9",
+          "case_id": "crud_inventory",
+          "status": "FAILED",
+          "failure_codes": [
+            "QUALITY_GATE_BLOCKED"
+          ],
+          "trace_id": "e41daf96-89b9-41a2-9214-094bdd53ddfc",
+          "bundle_hash": "e5aff28ab3d4c68bb588f94262e2e1d7c8a87ea6f6541b95a586ce4d7dedcc37",
+          "fixture_model_calls": 7,
+          "tools": [
+            {
+              "name": "contract.lookup",
+              "status": "SUCCEEDED",
+              "error_code": null
+            }
+          ],
+          "schema_invalid_count": 0
+        },
+        {
+          "group": "D",
+          "run_id": "10",
+          "case_id": "crud_inventory",
+          "status": "FAILED",
+          "failure_codes": [
+            "QUALITY_GATE_BLOCKED"
+          ],
+          "trace_id": "47657fcc-c42e-4bca-a1c7-3b0b015cefa4",
+          "bundle_hash": "b861ffa859a58aaae988738cac2b3ef5f5e02e3ed4a3691389a55e2808fe4732",
+          "fixture_model_calls": 7,
+          "tools": [
+            {
+              "name": "contract.lookup",
+              "status": "SUCCEEDED",
+              "error_code": null
+            }
+          ],
+          "schema_invalid_count": 0
+        }
+      ]
+    }
+  ]
+}

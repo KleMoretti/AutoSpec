@@ -5,6 +5,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from schemas.traceability import RequirementId
+from schemas.workflow_spec import RetrievalPolicySpec
 
 
 EvaluationDimension = Literal[
@@ -62,12 +63,21 @@ class AutoSpecCaseResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     case_id: str = Field(min_length=1)
+    repetition: int = Field(default=1, ge=1)
+    workflow_run_id: str | None = None
+    trace_id: str | None = None
+    bundle_hash: str | None = None
+    rubric_ref: str | None = None
     status: Literal["SUCCEEDED", "PARTIAL", "FAILED", "NOT_EXECUTED"]
     gate_pass: bool | None = None
     must_trace_coverage: float | None = Field(default=None, ge=0.0, le=1.0)
     blocking_issue_count: int | None = Field(default=None, ge=0)
     unauthorized_tool_requests: int | None = Field(default=None, ge=0)
     invalid_tool_arguments: int | None = Field(default=None, ge=0)
+    tool_call_count: int | None = Field(default=None, ge=0)
+    unauthorized_tool_executions: int | None = Field(default=None, ge=0)
+    schema_invalid_count: int | None = Field(default=None, ge=0)
+    duration_ms: float | None = Field(default=None, ge=0)
     steps: int | None = Field(default=None, ge=0)
     replans: int | None = Field(default=None, ge=0)
     path_oscillations: int | None = Field(default=None, ge=0)
@@ -93,6 +103,10 @@ class AutoSpecEvalRun(BaseModel):
 
     run_id: str = Field(min_length=1)
     dataset_version: str = Field(min_length=1)
+    dataset_hash: str | None = None
+    dataset_split: str | None = None
+    environment_hash: str | None = None
+    pricing_snapshot: dict[str, Any] = Field(default_factory=dict)
     group: Literal["A", "B", "C", "D"]
     group_name: Literal[
         "single-shot",
@@ -231,6 +245,21 @@ class EvaluationInput(BaseModel):
     generated_files: list[dict | str] = Field(default_factory=list)
     retrieval_policy: str | None = None
     execution_policy: dict = Field(default_factory=dict)
+
+
+class EvaluationRuntimeInput(EvaluationInput):
+    """V2 worker input: preserve trusted control-plane retrieval provenance."""
+
+    retrieval_policy: RetrievalPolicySpec | str | None = None
+    retrieval_project_id: int | None = Field(default=None, ge=1)
+    retrieval_node_id: str | None = None
+    corpus_epoch: int | None = Field(default=None, ge=0)
+    actor_scope_hash: str | None = None
+    retrieval_cache_key: str | None = None
+    retrieval_cache: dict[str, Any] = Field(default_factory=dict)
+    retrieval_trace: dict[str, Any] = Field(default_factory=dict)
+    retrieval_snapshot: dict[str, Any] = Field(default_factory=dict)
+    rework_directive: dict[str, Any] | None = None
 
 
 class ExperimentRun(BaseModel):

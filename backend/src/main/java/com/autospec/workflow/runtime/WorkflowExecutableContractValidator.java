@@ -22,6 +22,7 @@ public final class WorkflowExecutableContractValidator {
             "route_key",
             "provider_key",
             "model_name",
+            "thinking_mode",
             "temperature",
             "context_window_tokens",
             "max_output_tokens",
@@ -156,6 +157,11 @@ public final class WorkflowExecutableContractValidator {
             }
         }
         int contextWindow = model.path("context_window_tokens").asInt(128_000);
+        if (model.hasNonNull("thinking_mode")
+                && (!Set.of("enabled", "disabled").contains(model.path("thinking_mode").asText())
+                || !"deepseek".equals(model.path("provider_key").asText()))) {
+            throw new IllegalArgumentException("thinking_mode requires a valid mode and the frozen deepseek provider");
+        }
         int maxOutput = model.path("max_output_tokens").asInt(4_096);
         int maxCalls = model.path("max_calls").asInt(1);
         if (contextWindow < 1_024 || maxOutput < 1 || maxOutput >= contextWindow) {
@@ -230,6 +236,15 @@ public final class WorkflowExecutableContractValidator {
         int maxSteps = policy.path("max_steps").asInt(4);
         int maxReplans = policy.path("max_replans").asInt(2);
         int noProgress = policy.path("no_progress_limit").asInt(1);
+        if (policy.path("enabled").asBoolean(false)
+                && "agent-loop-v2".equals(policy.path("version").asText())) {
+            int minimum = 2 + (node.toolPolicy().path("enabled").asBoolean(false) ? 1 : 0)
+                    + 2 * maxReplans;
+            if (maxSteps < minimum || node.modelPolicy().path("max_calls").asInt(1) < minimum) {
+                throw new IllegalArgumentException("agent-loop-v2 needs at least " + minimum
+                        + " steps and model calls: " + node.nodeId());
+            }
+        }
         if (maxSteps < 1 || maxSteps > 32
                 || maxReplans < 0 || maxReplans > 16
                 || noProgress < 0 || noProgress > 8

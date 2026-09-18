@@ -29,7 +29,7 @@ from runtime.tool_harness import (
     bind_tool_runtime_context,
 )
 from runtime.agent_loop_trace import capture_agent_loop_trace, current_agent_loop_trace
-from schemas.agent_loop import AgentStepRecord, LoopPolicy, StopReason
+from schemas.agent_loop import AgentStepRecord, LoopPolicy, StopReason, validate_loop_budget
 from schemas.workflow_spec import (
     ContextPolicy,
     FallbackPolicy,
@@ -190,7 +190,9 @@ class NodeCommand(TraceContextEnvelope):
         if self.tool_policy:
             ToolPolicy.model_validate(self.tool_policy)
         if self.agent_loop_policy:
-            LoopPolicy.model_validate(self.agent_loop_policy)
+            policy = LoopPolicy.model_validate(self.agent_loop_policy)
+            validate_loop_budget(policy, int(self.model_policy.get("max_calls", 1)),
+                                 bool(self.tool_policy.get("enabled", False)))
         if self.protocol_version == 0:
             if self.contract_hash is not None:
                 raise ValueError("contract_hash requires protocol_version 1")

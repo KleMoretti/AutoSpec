@@ -4,6 +4,8 @@ from dataclasses import dataclass, replace
 from time import perf_counter
 from typing import Any, Callable
 
+from pydantic import ValidationError
+
 from agents.architect import ArchitectAgent
 from agents.backend_engineer import BackendEngineerAgent
 from agents.base import ModelClient
@@ -23,6 +25,17 @@ SUPPORTED_AGENT_NODES = {
     "frontend_engineer",
     "reviewer",
 }
+
+
+class AgentNodeExecutionError(RuntimeError):
+    """Keep node context without discarding schema/provider failure categories."""
+
+    def __init__(self, node_name: str, cause: Exception):
+        self.error_code = (
+            "VALIDATION_ERROR" if isinstance(cause, ValidationError)
+            else getattr(cause, "error_code", "HANDLER_ERROR")
+        )
+        super().__init__(f"{node_name} execution failed: {cause}")
 
 
 @dataclass(frozen=True)
@@ -159,7 +172,7 @@ def _execute_node(
     try:
         output = run()
     except Exception as exc:
-        raise RuntimeError(f"{node_name} execution failed: {exc}") from exc
+        raise AgentNodeExecutionError(node_name, exc) from exc
 
     output_payload = output.model_dump() if hasattr(output, "model_dump") else output
     return output, AgentExecutionRecord(

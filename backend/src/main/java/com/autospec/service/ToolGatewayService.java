@@ -138,7 +138,12 @@ public class ToolGatewayService {
             return persistFailure(request, run, identityFailure.code, identityFailure.getMessage());
         }
 
-        ObjectNode policy = frozenToolPolicy(node);
+        ObjectNode policy;
+        try {
+            policy = frozenToolPolicy(run, node);
+        } catch (GatewayFailure failure) {
+            return persistFailure(request, run, failure.code, failure.getMessage());
+        }
         String expectedPolicyHash = CanonicalJson.sha256(policy.toString());
         if (!expectedPolicyHash.equals(request.policyHash())) {
             return persistFailure(request, run, "POLICY_HASH_MISMATCH", "tool policy does not match the execution bundle");
@@ -316,12 +321,28 @@ public class ToolGatewayService {
         return result;
     }
 
-    private ObjectNode frozenToolPolicy(WorkflowNodeRun node) {
+    private ObjectNode frozenToolPolicy(WorkflowRun run, WorkflowNodeRun node) {
+        String bundle = run.getExecutionBundleJson();
+        if (bundle == null || bundle.isBlank()) {
+            throw new GatewayFailure("BUNDLE_NOT_FOUND", "workflow execution bundle is missing");
+        }
         try {
-            JsonNode input = objectMapper.readTree(node.getInputJson());
-            return normalizeToolPolicy(input == null ? null : input.get("tool_policy"));
-        } catch (JsonProcessingException exception) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Workflow node input is invalid", exception);
+            if (!CanonicalJson.sha256(bundle).equals(run.getExecutionBundleHash())
+                    || !run.getExecutionBundleHash().equals(node.getExecutionBundleHash())) {
+                throw new GatewayFailure("BUNDLE_HASH_MISMATCH", "frozen execution bundle checksum mismatch");
+            }
+            JsonNode nodes = objectMapper.readTree(bundle).path("nodes");
+            if (!nodes.isArray()) {
+                throw new GatewayFailure("BUNDLE_INVALID", "workflow execution bundle has no node list");
+            }
+            for (JsonNode frozenNode : nodes) {
+                if (node.getNodeId().equals(frozenNode.path("node_id").asText())) {
+                    return normalizeToolPolicy(frozenNode.get("tool_policy"));
+                }
+            }
+            throw new GatewayFailure("CONTRACT_NOT_FOUND", "node contract is absent from the execution bundle");
+        } catch (JsonProcessingException | IllegalArgumentException exception) {
+            throw new GatewayFailure("BUNDLE_INVALID", "workflow execution bundle is invalid");
         }
     }
 

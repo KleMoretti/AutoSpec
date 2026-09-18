@@ -21,7 +21,7 @@ from runtime.model_telemetry import ModelInvocationTelemetry, record_model_invoc
 from schemas.architecture_design import ArchitectureDesignArtifact
 from schemas.agent_loop import LoopPolicy
 from schemas.backend_design import BackendDesignArtifact
-from schemas.evaluation import EvaluationInput, EvaluationReport
+from schemas.evaluation import EvaluationInput, EvaluationRuntimeInput, EvaluationReport
 from schemas.frontend_skeleton import FrontendSkeletonArtifact
 from schemas.prd import PrdArtifact
 from schemas.rework import ReworkDirective
@@ -122,6 +122,16 @@ def build_production_registry(model_client: ModelClient | None = None) -> Handle
         "reviewer",
         model_client,
     )
+    _register_agent_node(
+        registry, "BackendEngineerAgent", "v2", "backend_engineer",
+        BackendDesignInput, BackendDesignArtifact, "BackendDesignInput",
+        "BackendDesignArtifact", "backend_engineer_loop", model_client,
+    )
+    _register_agent_node(
+        registry, "ProductManagerAgent", "v2", "product_manager",
+        ProductManagerInput, PrdArtifact, "GenerateRequest",
+        "PrdArtifact", "product_manager_schema", model_client,
+    )
     registry.register(
         "EvaluatorAgent",
         "v1",
@@ -132,6 +142,12 @@ def build_production_registry(model_client: ModelClient | None = None) -> Handle
         output_schema="EvaluationReport",
         prompt_key="evaluator",
         prompt_version="v1",
+        prompt_checksum=_prompt_checksum("evaluator", "v1"),
+    )
+    registry.register(
+        "EvaluatorAgent", "v2", EvaluationRuntimeInput, EvaluationReport, _execute_evaluator,
+        input_schema="EvaluationRuntimeInput", output_schema="EvaluationReport",
+        prompt_key="evaluator", prompt_version="v1",
         prompt_checksum=_prompt_checksum("evaluator", "v1"),
     )
     return registry
@@ -370,9 +386,9 @@ def _execute_evaluator(input_payload: EvaluationInput) -> EvaluationReport:
         "evaluator",
         serialized,
         quality_profile,
-        EvaluationInput,
+        type(input_payload),
     )
-    return _evaluate(EvaluationInput.model_validate(compiled))
+    return _evaluate(type(input_payload).model_validate(compiled))
 
 
 def _evaluate(input_payload: EvaluationInput) -> EvaluationReport:

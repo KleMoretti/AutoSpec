@@ -1,0 +1,504 @@
+{
+  "experiment_id": "fixture-p0-20260915-r2",
+  "observed_at": "2026-09-16",
+  "execution_mode": "FIXTURE_BASELINE",
+  "collection_status": "INTERRUPTED",
+  "decision": "NOT_EVALUATED",
+  "note": "Raw journals retained locally under agent-engine/target. Not a complete four-group comparison; fixture approvals were simulated and are not human quality review. v3 contracts were created after this run and have not been deployed.",
+  "backend_image": "autospec-p0-fixture-backend:20260915-r2",
+  "agent_image": "autospec-p0-fixture-agent:20260915",
+  "cases": [
+    {
+      "case_id": "permission_clinic",
+      "workflow_run_id": "3",
+      "status": "FAILED",
+      "failure_codes": [
+        "VALIDATION_ERROR"
+      ],
+      "correlation_id": "888c936c-27be-4a4f-ba65-7058aeb76273",
+      "bundle_hash": "22718b941935c7aeefb5294d7d17523f475902299568de6c02637abf8d8a032d",
+      "nodes": [
+        {
+          "nodeId": "architect",
+          "status": "SUCCEEDED",
+          "handlerKey": "ArchitectAgent",
+          "handlerVersion": "v1",
+          "errorCode": null
+        },
+        {
+          "nodeId": "backend_engineer",
+          "status": "SUCCEEDED",
+          "handlerKey": "BackendEngineerAgent",
+          "handlerVersion": "v2",
+          "errorCode": null
+        },
+        {
+          "nodeId": "evaluator",
+          "status": "FAILED",
+          "handlerKey": "EvaluatorAgent",
+          "handlerVersion": "v1",
+          "errorCode": "VALIDATION_ERROR"
+        },
+        {
+          "nodeId": "frontend_engineer",
+          "status": "SUCCEEDED",
+          "handlerKey": "FrontendEngineerAgent",
+          "handlerVersion": "v1",
+          "errorCode": null
+        },
+        {
+          "nodeId": "product_manager",
+          "status": "SUCCEEDED",
+          "handlerKey": "ProductManagerAgent",
+          "handlerVersion": "v1",
+          "errorCode": null
+        },
+        {
+          "nodeId": "reviewer",
+          "status": "SUCCEEDED",
+          "handlerKey": "ReviewerAgent",
+          "handlerVersion": "v1",
+          "errorCode": null
+        }
+      ]
+    },
+    {
+      "case_id": "crud_inventory",
+      "workflow_run_id": "1",
+      "status": "FAILED",
+      "failure_codes": [
+        "RUN_CANCELLED"
+      ],
+      "correlation_id": "c84b2f38-ca35-4f89-a95c-6112bf2d992a",
+      "bundle_hash": "22718b941935c7aeefb5294d7d17523f475902299568de6c02637abf8d8a032d",
+      "nodes": [
+        {
+          "nodeId": "architect",
+          "status": "CANCELLED",
+          "handlerKey": "ArchitectAgent",
+          "handlerVersion": "v1",
+          "errorCode": "RUN_CANCELLED"
+        },
+        {
+          "nodeId": "backend_engineer",
+          "status": "CANCELLED",
+          "handlerKey": "BackendEngineerAgent",
+          "handlerVersion": "v2",
+          "errorCode": "RUN_CANCELLED"
+        },
+        {
+          "nodeId": "evaluator",
+          "status": "CANCELLED",
+          "handlerKey": "EvaluatorAgent",
+          "handlerVersion": "v1",
+          "errorCode": "RUN_CANCELLED"
+        },
+        {
+          "nodeId": "frontend_engineer",
+          "status": "CANCELLED",
+          "handlerKey": "FrontendEngineerAgent",
+          "handlerVersion": "v1",
+          "errorCode": "RUN_CANCELLED"
+        },
+        {
+          "nodeId": "product_manager",
+          "status": "CANCELLED",
+          "handlerKey": "ProductManagerAgent",
+          "handlerVersion": "v1",
+          "errorCode": "RUN_CANCELLED"
+        },
+        {
+          "nodeId": "reviewer",
+          "status": "CANCELLED",
+          "handlerKey": "ReviewerAgent",
+          "handlerVersion": "v1",
+          "errorCode": "RUN_CANCELLED"
+        }
+      ]
+    },
+    {
+      "case_id": "approval_expense",
+      "workflow_run_id": "2",
+      "status": "FAILED",
+      "failure_codes": [
+        "VALIDATION_ERROR"
+      ],
+      "correlation_id": "c0f887ea-1521-4004-b29e-5c8ef619e8c5",
+      "bundle_hash": "22718b941935c7aeefb5294d7d17523f475902299568de6c02637abf8d8a032d",
+      "nodes": [
+        {
+          "nodeId": "architect",
+          "status": "SUCCEEDED",
+          "handlerKey": "ArchitectAgent",
+          "handlerVersion": "v1",
+          "errorCode": null
+        },
+        {
+          "nodeId": "backend_engineer",
+          "status": "SUCCEEDED",
+          "handlerKey": "BackendEngineerAgent",
+          "handlerVersion": "v2",
+          "errorCode": null
+        },
+        {
+          "nodeId": "evaluator",
+          "status": "FAILED",
+          "handlerKey": "EvaluatorAgent",
+          "handlerVersion": "v1",
+          "errorCode": "VALIDATION_ERROR"
+        },
+        {
+          "nodeId": "frontend_engineer",
+          "status": "SUCCEEDED",
+          "handlerKey": "FrontendEngineerAgent",
+          "handlerVersion": "v1",
+          "errorCode": null
+        },
+        {
+          "nodeId": "product_manager",
+          "status": "SUCCEEDED",
+          "handlerKey": "ProductManagerAgent",
+          "handlerVersion": "v1",
+          "errorCode": null
+        },
+        {
+          "nodeId": "reviewer",
+          "status": "SUCCEEDED",
+          "handlerKey": "ReviewerAgent",
+          "handlerVersion": "v1",
+          "errorCode": null
+        }
+      ]
+    },
+    {
+      "case_id": "multi_entity_enrollment",
+      "workflow_run_id": "4",
+      "status": "FAILED",
+      "failure_codes": [
+        "VALIDATION_ERROR"
+      ],
+      "correlation_id": "48dd53da-32eb-4dcf-a10d-a3540aa039ad",
+      "bundle_hash": "22718b941935c7aeefb5294d7d17523f475902299568de6c02637abf8d8a032d",
+      "nodes": [
+        {
+          "nodeId": "architect",
+          "status": "SUCCEEDED",
+          "handlerKey": "ArchitectAgent",
+          "handlerVersion": "v1",
+          "errorCode": null
+        },
+        {
+          "nodeId": "backend_engineer",
+          "status": "SUCCEEDED",
+          "handlerKey": "BackendEngineerAgent",
+          "handlerVersion": "v2",
+          "errorCode": null
+        },
+        {
+          "nodeId": "evaluator",
+          "status": "FAILED",
+          "handlerKey": "EvaluatorAgent",
+          "handlerVersion": "v1",
+          "errorCode": "VALIDATION_ERROR"
+        },
+        {
+          "nodeId": "frontend_engineer",
+          "status": "SUCCEEDED",
+          "handlerKey": "FrontendEngineerAgent",
+          "handlerVersion": "v1",
+          "errorCode": null
+        },
+        {
+          "nodeId": "product_manager",
+          "status": "SUCCEEDED",
+          "handlerKey": "ProductManagerAgent",
+          "handlerVersion": "v1",
+          "errorCode": null
+        },
+        {
+          "nodeId": "reviewer",
+          "status": "SUCCEEDED",
+          "handlerKey": "ReviewerAgent",
+          "handlerVersion": "v1",
+          "errorCode": null
+        }
+      ]
+    },
+    {
+      "case_id": "ambiguous_marketplace",
+      "workflow_run_id": "6",
+      "status": "FAILED",
+      "failure_codes": [
+        "VALIDATION_ERROR"
+      ],
+      "correlation_id": "995a3480-d6fa-4bc4-90e5-78d9ae2ad343",
+      "bundle_hash": "22718b941935c7aeefb5294d7d17523f475902299568de6c02637abf8d8a032d",
+      "nodes": [
+        {
+          "nodeId": "architect",
+          "status": "SUCCEEDED",
+          "handlerKey": "ArchitectAgent",
+          "handlerVersion": "v1",
+          "errorCode": null
+        },
+        {
+          "nodeId": "backend_engineer",
+          "status": "SUCCEEDED",
+          "handlerKey": "BackendEngineerAgent",
+          "handlerVersion": "v2",
+          "errorCode": null
+        },
+        {
+          "nodeId": "evaluator",
+          "status": "FAILED",
+          "handlerKey": "EvaluatorAgent",
+          "handlerVersion": "v1",
+          "errorCode": "VALIDATION_ERROR"
+        },
+        {
+          "nodeId": "frontend_engineer",
+          "status": "SUCCEEDED",
+          "handlerKey": "FrontendEngineerAgent",
+          "handlerVersion": "v1",
+          "errorCode": null
+        },
+        {
+          "nodeId": "product_manager",
+          "status": "SUCCEEDED",
+          "handlerKey": "ProductManagerAgent",
+          "handlerVersion": "v1",
+          "errorCode": null
+        },
+        {
+          "nodeId": "reviewer",
+          "status": "SUCCEEDED",
+          "handlerKey": "ReviewerAgent",
+          "handlerVersion": "v1",
+          "errorCode": null
+        }
+      ]
+    },
+    {
+      "case_id": "conflict_scheduling",
+      "workflow_run_id": "7",
+      "status": "FAILED",
+      "failure_codes": [
+        "VALIDATION_ERROR"
+      ],
+      "correlation_id": "3f185b12-dcc3-4747-a004-e0f01329169e",
+      "bundle_hash": "22718b941935c7aeefb5294d7d17523f475902299568de6c02637abf8d8a032d",
+      "nodes": [
+        {
+          "nodeId": "architect",
+          "status": "SUCCEEDED",
+          "handlerKey": "ArchitectAgent",
+          "handlerVersion": "v1",
+          "errorCode": null
+        },
+        {
+          "nodeId": "backend_engineer",
+          "status": "SUCCEEDED",
+          "handlerKey": "BackendEngineerAgent",
+          "handlerVersion": "v2",
+          "errorCode": null
+        },
+        {
+          "nodeId": "evaluator",
+          "status": "FAILED",
+          "handlerKey": "EvaluatorAgent",
+          "handlerVersion": "v1",
+          "errorCode": "VALIDATION_ERROR"
+        },
+        {
+          "nodeId": "frontend_engineer",
+          "status": "SUCCEEDED",
+          "handlerKey": "FrontendEngineerAgent",
+          "handlerVersion": "v1",
+          "errorCode": null
+        },
+        {
+          "nodeId": "product_manager",
+          "status": "SUCCEEDED",
+          "handlerKey": "ProductManagerAgent",
+          "handlerVersion": "v1",
+          "errorCode": null
+        },
+        {
+          "nodeId": "reviewer",
+          "status": "SUCCEEDED",
+          "handlerKey": "ReviewerAgent",
+          "handlerVersion": "v1",
+          "errorCode": null
+        }
+      ]
+    },
+    {
+      "case_id": "external_payment",
+      "workflow_run_id": "5",
+      "status": "FAILED",
+      "failure_codes": [
+        "VALIDATION_ERROR"
+      ],
+      "correlation_id": "6436944f-5ed8-4a8e-b103-07188be89aa1",
+      "bundle_hash": "22718b941935c7aeefb5294d7d17523f475902299568de6c02637abf8d8a032d",
+      "nodes": [
+        {
+          "nodeId": "architect",
+          "status": "SUCCEEDED",
+          "handlerKey": "ArchitectAgent",
+          "handlerVersion": "v1",
+          "errorCode": null
+        },
+        {
+          "nodeId": "backend_engineer",
+          "status": "SUCCEEDED",
+          "handlerKey": "BackendEngineerAgent",
+          "handlerVersion": "v2",
+          "errorCode": null
+        },
+        {
+          "nodeId": "evaluator",
+          "status": "FAILED",
+          "handlerKey": "EvaluatorAgent",
+          "handlerVersion": "v1",
+          "errorCode": "VALIDATION_ERROR"
+        },
+        {
+          "nodeId": "frontend_engineer",
+          "status": "SUCCEEDED",
+          "handlerKey": "FrontendEngineerAgent",
+          "handlerVersion": "v1",
+          "errorCode": null
+        },
+        {
+          "nodeId": "product_manager",
+          "status": "SUCCEEDED",
+          "handlerKey": "ProductManagerAgent",
+          "handlerVersion": "v1",
+          "errorCode": null
+        },
+        {
+          "nodeId": "reviewer",
+          "status": "SUCCEEDED",
+          "handlerKey": "ReviewerAgent",
+          "handlerVersion": "v1",
+          "errorCode": null
+        }
+      ]
+    },
+    {
+      "case_id": "rework_traceability",
+      "workflow_run_id": "8",
+      "status": "FAILED",
+      "failure_codes": [
+        "VALIDATION_ERROR"
+      ],
+      "correlation_id": "264e8d5b-9a86-494c-8d1b-6065e85ff893",
+      "bundle_hash": "22718b941935c7aeefb5294d7d17523f475902299568de6c02637abf8d8a032d",
+      "nodes": [
+        {
+          "nodeId": "architect",
+          "status": "SUCCEEDED",
+          "handlerKey": "ArchitectAgent",
+          "handlerVersion": "v1",
+          "errorCode": null
+        },
+        {
+          "nodeId": "backend_engineer",
+          "status": "SUCCEEDED",
+          "handlerKey": "BackendEngineerAgent",
+          "handlerVersion": "v2",
+          "errorCode": null
+        },
+        {
+          "nodeId": "evaluator",
+          "status": "FAILED",
+          "handlerKey": "EvaluatorAgent",
+          "handlerVersion": "v1",
+          "errorCode": "VALIDATION_ERROR"
+        },
+        {
+          "nodeId": "frontend_engineer",
+          "status": "SUCCEEDED",
+          "handlerKey": "FrontendEngineerAgent",
+          "handlerVersion": "v1",
+          "errorCode": null
+        },
+        {
+          "nodeId": "product_manager",
+          "status": "SUCCEEDED",
+          "handlerKey": "ProductManagerAgent",
+          "handlerVersion": "v1",
+          "errorCode": null
+        },
+        {
+          "nodeId": "reviewer",
+          "status": "SUCCEEDED",
+          "handlerKey": "ReviewerAgent",
+          "handlerVersion": "v1",
+          "errorCode": null
+        }
+      ]
+    },
+    {
+      "case_id": "crud_inventory",
+      "workflow_run_id": "9",
+      "status": "FAILED",
+      "failure_codes": [
+        "RUN_CANCELLED"
+      ],
+      "correlation_id": "7cdd751d-221a-4cfa-b08b-97bc6107108a",
+      "bundle_hash": "02c1a546c061929e26d360e0e6b52ace9f86e3db0fc2f4df75aaafe6ec92fcb6",
+      "nodes": [
+        {
+          "nodeId": "architect",
+          "status": "SUCCEEDED",
+          "handlerKey": "ArchitectAgent",
+          "handlerVersion": "v1",
+          "errorCode": null
+        },
+        {
+          "nodeId": "backend_engineer",
+          "status": "CANCELLED",
+          "handlerKey": "BackendEngineerAgent",
+          "handlerVersion": "v2",
+          "errorCode": "RUN_CANCELLED"
+        },
+        {
+          "nodeId": "evaluator",
+          "status": "CANCELLED",
+          "handlerKey": "EvaluatorAgent",
+          "handlerVersion": "v1",
+          "errorCode": "RUN_CANCELLED"
+        },
+        {
+          "nodeId": "frontend_engineer",
+          "status": "CANCELLED",
+          "handlerKey": "FrontendEngineerAgent",
+          "handlerVersion": "v1",
+          "errorCode": "RUN_CANCELLED"
+        },
+        {
+          "nodeId": "product_manager",
+          "status": "SUCCEEDED",
+          "handlerKey": "ProductManagerAgent",
+          "handlerVersion": "v1",
+          "errorCode": null
+        },
+        {
+          "nodeId": "reviewer",
+          "status": "CANCELLED",
+          "handlerKey": "ReviewerAgent",
+          "handlerVersion": "v1",
+          "errorCode": "RUN_CANCELLED"
+        }
+      ]
+    },
+    {
+      "case_id": "approval_expense",
+      "workflow_run_id": "10",
+      "status": "COLLECTION_INTERRUPTED",
+      "last_journal_status": "RUNNING"
+    }
+  ]
+}

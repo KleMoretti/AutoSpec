@@ -5,7 +5,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from schemas.agent_loop import LoopPolicy
+from schemas.agent_loop import LoopPolicy, validate_loop_budget
 
 
 class ModelPolicy(BaseModel):
@@ -14,6 +14,7 @@ class ModelPolicy(BaseModel):
     route_key: str | None = Field(default=None, min_length=1)
     provider_key: str | None = Field(default=None, min_length=1)
     model_name: str | None = Field(default=None, min_length=1)
+    thinking_mode: Literal["enabled", "disabled"] | None = None
     temperature: float = Field(default=0.0, ge=0.0, le=2.0)
     context_window_tokens: int = Field(default=128_000, ge=1_024)
     max_output_tokens: int = Field(default=4_096, ge=1, le=128_000)
@@ -25,6 +26,8 @@ class ModelPolicy(BaseModel):
 
     @model_validator(mode="after")
     def validate_target(self) -> "ModelPolicy":
+        if self.thinking_mode is not None and self.provider_key != "deepseek":
+            raise ValueError("thinking_mode requires the frozen deepseek provider")
         if self.route_key is None and not (self.provider_key and self.model_name):
             raise ValueError(
                 "model_policy requires route_key or provider_key plus model_name"
@@ -229,6 +232,11 @@ class WorkflowNodeSpec(BaseModel):
     depends_on: list[str] = Field(default_factory=list)
     approval: ApprovalPolicy = Field(default_factory=ApprovalPolicy)
     fallback: FallbackPolicy = Field(default_factory=FallbackPolicy)
+
+    @model_validator(mode="after")
+    def validate_loop_feasibility(self) -> "WorkflowNodeSpec":
+        validate_loop_budget(self.agent_loop_policy, self.model_policy.max_calls, self.tool_policy.enabled)
+        return self
 
 
 class WorkflowEdgeSpec(BaseModel):
