@@ -5,10 +5,10 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from evaluation.case_catalog import list_evaluation_cases
+from evaluation.ablation import evaluate_release_gate
+from evaluation.autospec_case_catalog import list_autospec_cases
 from evaluation.retrieval import fixture_retrieval_evaluation
-from review.experiments import compare_experiment_runs
-from schemas.evaluation import ExperimentRun
+from schemas.evaluation import AutoSpecEvalRun
 
 
 app = FastAPI(title="AutoSpec Agent Engine", version="5.0.0")
@@ -31,8 +31,15 @@ async def authenticate_internal_requests(request: Request, call_next):
     return await call_next(request)
 
 
-class ExperimentCompareRequest(BaseModel):
-    runs: list[ExperimentRun] = Field(min_length=2)
+class ReleaseGateRequest(BaseModel):
+    baseline: AutoSpecEvalRun
+    candidate: AutoSpecEvalRun
+    max_p95_ratio: float = Field(default=1.25, ge=1)
+    max_token_ratio: float = Field(default=1.25, ge=1)
+    max_cost_ratio: float = Field(default=1.25, ge=1)
+    min_cases: int = Field(default=8, ge=1)
+    min_repetitions: int = Field(default=3, ge=1)
+    zero_baseline_limits: dict[str, float] = Field(default_factory=dict)
 
 
 @app.get("/health")
@@ -42,7 +49,7 @@ def health() -> dict[str, str]:
 
 @app.get("/evaluation/cases")
 def evaluation_cases() -> list[dict]:
-    return [case.model_dump() for case in list_evaluation_cases()]
+    return [case.model_dump() for case in list_autospec_cases()]
 
 
 @app.get("/evaluation/retrieval")
@@ -51,6 +58,15 @@ def retrieval_evaluation() -> dict:
     return fixture_retrieval_evaluation().model_dump(mode="json")
 
 
-@app.post("/experiments/compare")
-def compare_experiments(request: ExperimentCompareRequest) -> dict:
-    return compare_experiment_runs(request.runs).model_dump(by_alias=True)
+@app.post("/evaluation/release-gate")
+def release_gate(request: ReleaseGateRequest) -> dict:
+    return evaluate_release_gate(
+        request.baseline,
+        request.candidate,
+        max_p95_ratio=request.max_p95_ratio,
+        max_token_ratio=request.max_token_ratio,
+        max_cost_ratio=request.max_cost_ratio,
+        min_cases=request.min_cases,
+        min_repetitions=request.min_repetitions,
+        zero_baseline_limits=request.zero_baseline_limits,
+    ).model_dump(mode="json")

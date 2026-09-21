@@ -11,13 +11,13 @@
 - `agent-engine/schemas/agent_state.py`：版本化 `AgentState`、`RouteDecision`、节点步骤和终止策略；`runtime/agent_state.py` 提供预算/覆盖率/截止时间判断。
 - `runtime/agent_router.py`：把已通过 Schema 校验的 Reviewer/Evaluator 结果转换为带理由和证据的路由决定。
 - MySQL `workflow_node_run` 的成功输出继续作为事实检查点；`WorkflowReconciler` 从最近成功 revision 继续，Reviewer 返工决策写入 `workflow_transition` 并保留 issue、修改范围和理由。
-- `runtime/memory.py` 与 `runtime/context_builder.py`：短期原始消息、带用户隔离和证据引用的长期画像、可删除重建的版本化摘要，以及复用 V5 Context Policy 的上下文预算。
+- `runtime/memory.py` 与 `runtime/context_builder.py`：短期原始消息、project-scoped 的 Requirement/Decision/Constraint/Entity/API/Artifact facts、结构化增量摘要，以及复用 V5 Context Policy 的上下文预算。正式 facts 由 Spring Boot 控制面版本化持久化，进程内实现只用于 fixture。
 - `schemas/workflow_spec.py`、Java WorkflowSpec 解析/校验和 Redis 命令：增加可选的 `tool_policy`。未声明时工具关闭；声明后由 Worker 的 `ToolRegistry`/`ToolHarness` 执行 Schema、白名单、权限、幂等、超时、重试、熔断、限流和结果大小约束。
-- `schemas/evaluation.py`、`evaluation/runner.py` 和 `runtime/trace.py`：提供版本化 `EvalCase`/`EvalRun`、分层指标、离线 fixture baseline、节点级脱敏 Trace 和回放排序。运行方式：
+- `schemas/evaluation.py` 与 `evaluation/control_plane.py`：提供版本化 `AutoSpecEvalCase`/`AutoSpecEvalRun`、MUST 追踪覆盖、Tool 违规、延迟、Token、成本与确定性发布门禁。正式评测只经 `POST /api/workflow-runs` 收集事实：
 
   ```powershell
   Set-Location 'agent-engine'
-  python -m evaluation.runner --output ..\artifacts\autospec-p0-baseline.json
+  python -m evaluation.run_control_plane --config .\evaluation-config.json --output ..\artifacts
   ```
 
 评测输出只保存引用、版本、耗时、调用台账摘要和路由理由，不保存原始简历、需求或模型回答。RAG 指标在节点级检索能力完成后再填充，不以空数据冒充结果。

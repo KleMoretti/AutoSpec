@@ -6,6 +6,7 @@ import com.autospec.entity.ModelInvocation;
 import com.autospec.mapper.ModelInvocationMapper;
 import com.autospec.mapper.WorkflowNodeRunMapper;
 import com.autospec.service.KnowledgeIndexService;
+import com.autospec.service.ProjectMemoryService;
 import com.autospec.util.ContentHash;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
@@ -33,13 +34,14 @@ public class WorkflowNodeInputAssembler {
     private final ObjectMapper objectMapper;
     private final ModelInvocationMapper modelInvocationMapper;
     private final KnowledgeIndexService knowledgeIndexService;
+    private final ProjectMemoryService projectMemoryService;
 
     public WorkflowNodeInputAssembler(
             WorkflowNodeRunMapper nodeRunMapper,
             ObjectMapper objectMapper,
             ModelInvocationMapper modelInvocationMapper
     ) {
-        this(nodeRunMapper, objectMapper, modelInvocationMapper, null);
+        this(nodeRunMapper, objectMapper, modelInvocationMapper, null, null);
     }
 
     @Autowired
@@ -49,10 +51,21 @@ public class WorkflowNodeInputAssembler {
             ModelInvocationMapper modelInvocationMapper,
             KnowledgeIndexService knowledgeIndexService
     ) {
+        this(nodeRunMapper, objectMapper, modelInvocationMapper, knowledgeIndexService, null);
+    }
+
+    public WorkflowNodeInputAssembler(
+            WorkflowNodeRunMapper nodeRunMapper,
+            ObjectMapper objectMapper,
+            ModelInvocationMapper modelInvocationMapper,
+            KnowledgeIndexService knowledgeIndexService,
+            ProjectMemoryService projectMemoryService
+    ) {
         this.nodeRunMapper = nodeRunMapper;
         this.objectMapper = objectMapper;
         this.modelInvocationMapper = modelInvocationMapper;
         this.knowledgeIndexService = knowledgeIndexService;
+        this.projectMemoryService = projectMemoryService;
     }
 
     public void assemble(CompiledWorkflow graph, WorkflowNodeRun target) {
@@ -71,6 +84,7 @@ public class WorkflowNodeInputAssembler {
             input.set("model_invocations", trustedModelInvocations(target.getWorkflowRunId()));
             input.putArray("generated_files");
         }
+        recallProjectMemory(input, target);
         retrieveNodeSources(input, target);
         String assembled = input.toString();
         int updated = nodeRunMapper.update(null, new LambdaUpdateWrapper<WorkflowNodeRun>()
@@ -80,6 +94,23 @@ public class WorkflowNodeInputAssembler {
         if (updated == 1) {
             target.setInputJson(assembled);
         }
+    }
+
+    private void recallProjectMemory(ObjectNode input, WorkflowNodeRun target) {
+        if (projectMemoryService == null || "evaluator".equals(target.getNodeId())) {
+            return;
+        }
+        Long projectId = longMetadata(input, "_autospec_project_id");
+        if (projectId == null) {
+            input.set("project_memory", objectMapper.createArrayNode());
+            return;
+        }
+        input.set(
+                "project_memory",
+                objectMapper.valueToTree(
+                        projectMemoryService.recallForNode(projectId, target.getNodeId())
+                )
+        );
     }
 
     /**

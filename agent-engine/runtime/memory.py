@@ -1,11 +1,19 @@
 from __future__ import annotations
 
+import json
 import time
 import uuid
 from collections import defaultdict
 from typing import Iterable, Protocol
 
-from schemas.memory import ConversationSummary, MemoryMessage, MemoryRecord
+from schemas.memory import (
+    ConversationSummary,
+    MemoryMessage,
+    ProjectFactType,
+    ProjectMemoryFact,
+    SummaryEntry,
+    SummaryTopic,
+)
 
 
 class ShortTermMemory:
@@ -47,83 +55,169 @@ class ShortTermMemory:
         return {"messages": [message.model_dump(mode="json") for message in self._messages]}
 
 
-class LongTermMemory(Protocol):
-    def upsert(self, record: MemoryRecord) -> MemoryRecord: ...
+class ProjectMemory(Protocol):
+    def upsert(self, fact: ProjectMemoryFact) -> ProjectMemoryFact: ...
 
     def recall(
         self,
-        user_id: str,
+        project_id: int,
         *,
-        skill: str | None = None,
+        fact_types: set[ProjectFactType] | None = None,
         now_epoch_ms: int | None = None,
-    ) -> list[MemoryRecord]: ...
+    ) -> list[ProjectMemoryFact]: ...
 
 
-class InMemoryLongTermMemory:
-    """Fixture implementation with user isolation and evidence-preserving merges."""
+class InMemoryProjectMemory:
+    """Fixture adapter with project isolation and immutable fact versions."""
 
     def __init__(self) -> None:
-        self._records: dict[str, list[MemoryRecord]] = defaultdict(list)
+        self._facts: dict[int, list[ProjectMemoryFact]] = defaultdict(list)
 
-    def upsert(self, record: MemoryRecord) -> MemoryRecord:
-        values = self._records[record.user_id]
-        current = [item for item in values if item.skill == record.skill]
-        if current:
-            record = record.model_copy(
-                update={"version": max(item.version for item in current) + 1}
-            )
-        values.append(record)
-        return record
+    def upsert(self, fact: ProjectMemoryFact) -> ProjectMemoryFact:
+        values = self._facts[fact.project_id]
+        versions = [
+            item.version
+            for item in values
+            if item.fact_type == fact.fact_type and item.fact_key == fact.fact_key
+        ]
+        if versions:
+            fact = fact.model_copy(update={"version": max(versions) + 1})
+        values.append(fact)
+        return fact
 
     def recall(
         self,
-        user_id: str,
+        project_id: int,
         *,
-        skill: str | None = None,
+        fact_types: set[ProjectFactType] | None = None,
         now_epoch_ms: int | None = None,
-    ) -> list[MemoryRecord]:
+    ) -> list[ProjectMemoryFact]:
         now = round(time.time() * 1000) if now_epoch_ms is None else now_epoch_ms
-        records = [
-            record
-            for record in self._records.get(user_id, [])
-            if (skill is None or record.skill == skill)
-            and (record.expires_at_epoch_ms is None or record.expires_at_epoch_ms > now)
+        candidates = [
+            fact
+            for fact in self._facts.get(project_id, [])
+            if (fact_types is None or fact.fact_type in fact_types)
+            and fact.valid_from_epoch_ms <= now
+            and (fact.valid_until_epoch_ms is None or fact.valid_until_epoch_ms > now)
+            and (fact.expires_at_epoch_ms is None or fact.expires_at_epoch_ms > now)
+            and fact.conflict_status != "SUPERSEDED"
         ]
-        # One current observation per skill is enough for prompt context. Older
-        # conflicting observations stay stored and can be inspected by evidence_ref.
-        latest: dict[str, MemoryRecord] = {}
-        for record in sorted(records, key=lambda item: (item.version, item.created_at_epoch_ms)):
-            previous = latest.get(record.skill)
-            if previous is None or (record.confidence, record.version) >= (
-                previous.confidence,
-                previous.version,
-            ):
-                latest[record.skill] = record
-        return sorted(latest.values(), key=lambda item: item.skill)
+        latest: dict[tuple[str, str], ProjectMemoryFact] = {}
+        for fact in sorted(candidates, key=lambda item: (item.version, item.valid_from_epoch_ms)):
+            latest[(fact.fact_type, fact.fact_key)] = fact
+        return sorted(latest.values(), key=lambda item: (item.fact_type, item.fact_key))
 
 
 def rebuild_summary(
     messages: Iterable[MemoryMessage],
     *,
-    model_version: str = "deterministic-summary-v1",
-    summary_version: str = "summary-v1",
-    max_characters: int = 2_000,
+    previous: ConversationSummary | None = None,
+    model_version: str = "deterministic-structured-summary-v2",
+    summary_version: str = "summary-v2",
+    max_entries_per_topic: int = 8,
     now_epoch_ms: int | None = None,
 ) -> ConversationSummary | None:
-    """Create a replaceable summary while retaining message ids as its source range."""
+    """Incrementally merge typed summary entries without character truncation."""
 
     values = list(messages)
-    if not values:
+    if not values and previous is None:
         return None
-    content = "\n".join(f"{message.role}: {message.content}" for message in values)
-    if len(content) > max_characters:
-        content = content[: max_characters - 1].rstrip() + "…"
+    now = round(time.time() * 1000) if now_epoch_ms is None else now_epoch_ms
+    source_ids = list(previous.source_message_ids if previous is not None else [])
+    seen_sources = set(source_ids)
+    entries = list(previous.entries if previous is not None else [])
+    known_statements = {
+        (_normalize(entry.statement), entry.topic): index
+        for index, entry in enumerate(entries)
+    }
+
+    for message in values:
+        if message.message_id in seen_sources:
+            continue
+        seen_sources.add(message.message_id)
+        source_ids.append(message.message_id)
+        for statement in _statements(message.content):
+            topic = _topic(statement)
+            key = (_normalize(statement), topic)
+            existing_index = known_statements.get(key)
+            if existing_index is not None:
+                existing = entries[existing_index]
+                entries[existing_index] = existing.model_copy(
+                    update={
+                        "source_message_ids": [*existing.source_message_ids, message.message_id],
+                        "updated_at_epoch_ms": max(
+                            existing.updated_at_epoch_ms, message.created_at_epoch_ms
+                        ),
+                    }
+                )
+                continue
+            known_statements[key] = len(entries)
+            entries.append(
+                SummaryEntry(
+                    topic=topic,
+                    statement=statement,
+                    source_message_ids=[message.message_id],
+                    updated_at_epoch_ms=message.created_at_epoch_ms,
+                )
+            )
+
+    bounded: list[SummaryEntry] = []
+    for topic in (
+        "REQUIREMENT",
+        "DECISION",
+        "CONSTRAINT",
+        "OPEN_QUESTION",
+        "ACTION",
+        "EVIDENCE",
+        "GENERAL",
+    ):
+        selected = sorted(
+            (entry for entry in entries if entry.topic == topic),
+            key=lambda entry: entry.updated_at_epoch_ms,
+        )[-max_entries_per_topic:]
+        bounded.extend(selected)
+    if not bounded:
+        return None
     return ConversationSummary(
         summary_version=summary_version,
         model_version=model_version,
-        source_message_ids=[message.message_id for message in values],
-        content=content,
-        created_at_epoch_ms=(
-            round(time.time() * 1000) if now_epoch_ms is None else now_epoch_ms
-        ),
+        source_message_ids=source_ids,
+        entries=bounded,
+        created_at_epoch_ms=now,
     )
+
+
+def _statements(content: str) -> list[str]:
+    text = content.strip()
+    if not text:
+        return []
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError:
+        parsed = None
+    if isinstance(parsed, dict):
+        return [
+            f"{key}: {json.dumps(value, ensure_ascii=False, sort_keys=True)}"
+            for key, value in sorted(parsed.items())
+        ]
+    return [line.strip(" -\t") for line in text.splitlines() if line.strip(" -\t")]
+
+
+def _topic(statement: str) -> SummaryTopic:
+    normalized = statement.casefold()
+    rules: tuple[tuple[SummaryTopic, tuple[str, ...]], ...] = (
+        ("OPEN_QUESTION", ("?", "？", "待确认", "open question", "unknown")),
+        ("DECISION", ("决定", "decision", "采用", "choose", "selected")),
+        ("CONSTRAINT", ("必须", "禁止", "constraint", "must", "cannot", "limit")),
+        ("REQUIREMENT", ("需求", "requirement", "需要", "should", "user wants")),
+        ("ACTION", ("todo", "下一步", "action", "follow up", "implement")),
+        ("EVIDENCE", ("证据", "evidence", "source", "trace", "artifact")),
+    )
+    for topic, markers in rules:
+        if any(marker in normalized for marker in markers):
+            return topic
+    return "GENERAL"
+
+
+def _normalize(value: str) -> str:
+    return " ".join(value.casefold().split())

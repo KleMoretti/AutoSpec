@@ -30,6 +30,7 @@ public class ArtifactVersionService {
     private final ArtifactApprovalOutboxService approvalOutboxService;
     private final ObjectMapper objectMapper;
     private final ArtifactTraceGraphService traceGraphService;
+    private final ProjectMemoryService projectMemoryService;
 
     @Autowired
     public ArtifactVersionService(
@@ -37,13 +38,32 @@ public class ArtifactVersionService {
             ProjectService projectService,
             ArtifactApprovalOutboxService approvalOutboxService,
             ObjectMapper objectMapper,
-            ArtifactTraceGraphService traceGraphService
+            ArtifactTraceGraphService traceGraphService,
+            ProjectMemoryService projectMemoryService
     ) {
         this.artifactService = artifactService;
         this.projectService = projectService;
         this.approvalOutboxService = approvalOutboxService;
         this.objectMapper = objectMapper;
         this.traceGraphService = traceGraphService;
+        this.projectMemoryService = projectMemoryService;
+    }
+
+    public ArtifactVersionService(
+            ArtifactService artifactService,
+            ProjectService projectService,
+            ArtifactApprovalOutboxService approvalOutboxService,
+            ObjectMapper objectMapper,
+            ArtifactTraceGraphService traceGraphService
+    ) {
+        this(
+                artifactService,
+                projectService,
+                approvalOutboxService,
+                objectMapper,
+                traceGraphService,
+                null
+        );
     }
 
     public ArtifactVersionService(
@@ -52,7 +72,7 @@ public class ArtifactVersionService {
             ArtifactApprovalOutboxService approvalOutboxService,
             ObjectMapper objectMapper
     ) {
-        this(artifactService, projectService, approvalOutboxService, objectMapper, null);
+        this(artifactService, projectService, approvalOutboxService, objectMapper, null, null);
     }
 
     @Transactional(isolation = Isolation.READ_COMMITTED)
@@ -203,6 +223,9 @@ public class ArtifactVersionService {
         artifact.setUpdatedAt(now);
         artifact.setLockVersion(artifact.getLockVersion() + 1);
         approvalOutboxService.enqueue(artifact);
+        if (projectMemoryService != null) {
+            projectMemoryService.projectArtifact(artifact, null, null);
+        }
         if ("PRD".equals(artifact.getType())) {
             Project project = requireProject(projectId);
             project.setStatus("PRD_APPROVED");

@@ -6,7 +6,7 @@ This repository now contains a versioned AutoSpec-specific evaluation set and an
 
 `agent-engine/evaluation/autospec_case_catalog.py` contains eight deterministic cases covering CRUD, approval, permission, multi-entity relationships, external integrations, ambiguous requirements, conflicting constraints, and reviewer-directed rework. Each case declares MUST evidence across API, data, UI, and acceptance criteria, plus allowed/prohibited tools and failure conditions.
 
-The case contract is independent from the historical interview-oriented `EvalCase`. Existing fixture regression remains available through `run_fixture_baseline`; the AutoSpec case set is used by the ablation runner.
+The case contract is `AutoSpecEvalCase`; the historical interview-oriented `EvalCase`, fixture runner, case catalog, and generic experiment comparison compatibility layer have been removed. The FastAPI surface now exposes this catalog and the same deterministic `AutoSpecEvalRun` release gate used by the control-plane collector.
 
 ## Ablation matrix
 
@@ -26,3 +26,5 @@ Run the planner/collector from `agent-engine`:
 Without a live control-plane adapter, every group is returned as `NOT_EXECUTED` and its metrics remain explicitly unmeasured. Fixture output is never relabeled as live tool, cost, retrieval, or recovery evidence. A deployment runner must execute the same case list through `POST /api/workflow-runs` and collect Trace/Artifact results before returning measured `AutoSpecEvalRun` records.
 
 The candidate must pass deterministic schema, authorization, citation, budget, and traceability gates before it can replace the active `autospec-v5:v5` workflow.
+
+The Agent API exposes `POST /evaluation/release-gate` for a reviewed A/D pair. It never promotes fixture or incomplete evidence.

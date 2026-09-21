@@ -94,12 +94,22 @@ def main() -> int:
     )
     if candidate_error is not None:
         return 1
-    contracts = [CONTRACT, CANDIDATE_CONTRACT, *sorted(
+    experiment_contracts = sorted(
         CONTRACT.parent.glob("autospec-v5-agent-execution-v[23456]-*.workflow.json")
-    )]
-    if len(contracts) != 16:
-        print("Missing v2/v3/v4 experiments or v5/v6 diagnostic contracts", file=sys.stderr)
+    )
+    required_diagnostics = {
+        "autospec-v5-agent-execution-v5-d.workflow.json",
+        "autospec-v5-agent-execution-v6-d.workflow.json",
+    }
+    present_names = {path.name for path in experiment_contracts}
+    missing_diagnostics = sorted(required_diagnostics - present_names)
+    if missing_diagnostics:
+        print(
+            "Missing current diagnostic contracts: " + ", ".join(missing_diagnostics),
+            file=sys.stderr,
+        )
         return 1
+    contracts = [CONTRACT, CANDIDATE_CONTRACT, *experiment_contracts]
     for path in contracts[2:]:
         document = json.loads(path.read_text(encoding="utf-8"))
         if verify_seeded_contract(path, document["version"]) is not None:

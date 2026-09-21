@@ -17,13 +17,6 @@ def check_termination(
     now = round(time.time() * 1000) if now_epoch_ms is None else now_epoch_ms
     if state.step_count >= policy.max_steps:
         return TerminationDecision(should_end=True, reason="STEP_LIMIT")
-    questions = sum(
-        1
-        for item in state.qa_history
-        if isinstance(item, dict) and item.get("role") == "assistant"
-    )
-    if policy.max_questions and questions >= policy.max_questions:
-        return TerminationDecision(should_end=True, reason="QUESTION_LIMIT")
     if policy.max_tokens and state.consumed_tokens >= policy.max_tokens:
         return TerminationDecision(should_end=True, reason="TOKEN_LIMIT")
     deadlines = [
@@ -38,9 +31,11 @@ def check_termination(
     ]
     if deadlines and now >= min(deadlines):
         return TerminationDecision(should_end=True, reason="DEADLINE")
-    if policy.min_coverage and state.coverage:
-        covered = sum(1 for value in state.coverage.values() if value >= 1)
-        if covered / len(state.coverage) >= policy.min_coverage:
+    if policy.min_coverage and state.requirement_coverage:
+        covered = sum(
+            1 for value in state.requirement_coverage.values() if value >= 1
+        )
+        if covered / len(state.requirement_coverage) >= policy.min_coverage:
             return TerminationDecision(should_end=True, reason="COVERAGE_REACHED")
     return TerminationDecision(should_end=False, reason="NO_LIMIT_REACHED")
 
@@ -66,19 +61,13 @@ def state_from_workflow_payload(
         workflow_version=workflow_version,
         session_id=session_id,
         project_id=_positive_int(payload.get("project_id")),
-        resume_profile={"artifact_refs": artifact_ids},
-        interview_plan=[current_stage],
+        artifact_refs=artifact_ids,
+        active_plan=[current_stage],
         current_stage=current_stage,
-        qa_history=list(payload.get("qa_history", []))
-        if isinstance(payload.get("qa_history"), list)
-        else [],
-        weakness_profile=dict(payload.get("weakness_profile", {}))
-        if isinstance(payload.get("weakness_profile"), dict)
-        else {},
         tool_results=list(payload.get("tool_results", []))
         if isinstance(payload.get("tool_results"), list)
         else [],
-        score=_score(payload.get("score")),
+        quality_score=_score(payload.get("quality_score")),
         token_budget=_positive_int(payload.get("token_budget")) or 0,
         consumed_tokens=_positive_int(payload.get("consumed_tokens")) or 0,
         started_at_epoch_ms=(

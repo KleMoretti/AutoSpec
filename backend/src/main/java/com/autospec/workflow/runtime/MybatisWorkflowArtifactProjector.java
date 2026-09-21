@@ -11,6 +11,7 @@ import com.autospec.mapper.ReviewIssueMapper;
 import com.autospec.mapper.WorkflowNodeRunMapper;
 import com.autospec.mapper.WorkflowRunMapper;
 import com.autospec.service.ArtifactTraceGraphService;
+import com.autospec.service.ProjectMemoryService;
 import com.autospec.workflow.spec.WorkflowNodeDocument;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
@@ -43,6 +44,7 @@ public class MybatisWorkflowArtifactProjector implements WorkflowArtifactProject
     private final DagCompiler dagCompiler;
     private final ObjectMapper objectMapper;
     private final ArtifactTraceGraphService traceGraphService;
+    private final ProjectMemoryService projectMemoryService;
 
     public MybatisWorkflowArtifactProjector(
             ArtifactMapper artifactMapper,
@@ -53,7 +55,8 @@ public class MybatisWorkflowArtifactProjector implements WorkflowArtifactProject
             WorkflowSnapshotParser snapshotParser,
             DagCompiler dagCompiler,
             ObjectMapper objectMapper,
-            ArtifactTraceGraphService traceGraphService
+            ArtifactTraceGraphService traceGraphService,
+            ProjectMemoryService projectMemoryService
     ) {
         this.artifactMapper = artifactMapper;
         this.runMapper = runMapper;
@@ -64,6 +67,7 @@ public class MybatisWorkflowArtifactProjector implements WorkflowArtifactProject
         this.dagCompiler = dagCompiler;
         this.objectMapper = objectMapper;
         this.traceGraphService = traceGraphService;
+        this.projectMemoryService = projectMemoryService;
     }
 
     @Override
@@ -121,6 +125,7 @@ public class MybatisWorkflowArtifactProjector implements WorkflowArtifactProject
         artifact.setUpdatedAt(now);
         artifactMapper.insert(artifact);
         traceGraphService.project(artifact, run.getId());
+        projectMemoryService.projectArtifact(artifact, nodeRun, run.getId());
         persistReviewIssues(artifact, outputJson, now);
         return artifact;
     }
