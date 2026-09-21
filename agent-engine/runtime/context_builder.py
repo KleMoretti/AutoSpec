@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Mapping
 
 from runtime.context_policy import apply_context_policy
-from runtime.memory import ShortTermMemory, LongTermMemory, rebuild_summary
+from runtime.memory import ProjectMemory, ShortTermMemory, rebuild_summary
 from schemas.memory import ConversationSummary
 
 
@@ -13,15 +13,16 @@ class ContextBuilder:
     def __init__(
         self,
         short_term: ShortTermMemory,
-        long_term: LongTermMemory | None = None,
+        project_memory: ProjectMemory | None = None,
     ) -> None:
         self._short_term = short_term
-        self._long_term = long_term
+        self._project_memory = project_memory
 
     def build(
         self,
         *,
-        user_id: str,
+        project_id: int,
+        node_id: str,
         task: Mapping[str, Any],
         structured_profile: Mapping[str, Any] | None = None,
         plan: list[str] | None = None,
@@ -30,11 +31,16 @@ class ContextBuilder:
         recent_turns: int = 5,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         memory = (
-            [record.model_dump(mode="json") for record in self._long_term.recall(user_id)]
-            if self._long_term is not None
+            [
+                fact.model_dump(mode="json")
+                for fact in self._project_memory.recall(
+                    project_id, fact_types=_fact_types_for_node(node_id)
+                )
+            ]
+            if self._project_memory is not None
             else []
         )
-        summary = summary or rebuild_summary(self._short_term.all())
+        summary = rebuild_summary(self._short_term.all(), previous=summary)
         payload: dict[str, Any] = {
             "task": dict(task),
             "structured_profile": dict(structured_profile or {}),
@@ -44,6 +50,21 @@ class ContextBuilder:
                 for message in self._short_term.recent(recent_turns)
             ],
             "summary": summary.model_dump(mode="json") if summary is not None else None,
-            "long_term_memory": memory,
+            "project_memory": memory,
         }
         return apply_context_policy("agent_context", payload, "BALANCED", policy)
+
+
+def _fact_types_for_node(node_id: str) -> set[str]:
+    return {
+        "product_manager": {"REQUIREMENT", "CONSTRAINT", "ARTIFACT"},
+        "architect": {"REQUIREMENT", "CONSTRAINT", "DECISION", "ARTIFACT"},
+        "backend_engineer": {
+            "REQUIREMENT", "DECISION", "CONSTRAINT", "ENTITY", "API", "ARTIFACT"
+        },
+        "frontend_engineer": {
+            "REQUIREMENT", "DECISION", "CONSTRAINT", "ENTITY", "API", "ARTIFACT"
+        },
+        "reviewer": {"REQUIREMENT", "DECISION", "CONSTRAINT", "ENTITY", "API", "ARTIFACT"},
+        "evaluator": {"REQUIREMENT", "DECISION", "CONSTRAINT", "ENTITY", "API", "ARTIFACT"},
+    }.get(node_id, {"REQUIREMENT", "DECISION", "CONSTRAINT", "ARTIFACT"})
