@@ -148,32 +148,6 @@ async def run_backend_agent_loop(
             continue
 
         if isinstance(turn, ToolCallTurn):
-            tool_policy = _tool_policy()
-            if not tool_policy.get("enabled", False):
-                _append_step(
-                    state,
-                    StepPhase.TOOL_CALL,
-                    StepStatus.FAILED,
-                    reason_code="TOOL_NOT_ALLOWED",
-                    plan_hash=_plan_hash(state),
-                    model_call_ref=model_call_ref,
-                )
-                return _result(state, StopReason.VALIDATION_FAILED)
-            allowed = {
-                (item.get("name"), item.get("version"))
-                for item in tool_policy.get("allowed_tools", [])
-                if isinstance(item, dict)
-            }
-            if (turn.name, turn.version) not in allowed:
-                _append_step(
-                    state,
-                    StepPhase.TOOL_CALL,
-                    StepStatus.FAILED,
-                    reason_code="TOOL_NOT_ALLOWED",
-                    plan_hash=_plan_hash(state),
-                    model_call_ref=model_call_ref,
-                )
-                return _result(state, StopReason.VALIDATION_FAILED)
             request = {
                 "name": turn.name,
                 "version": turn.version,
