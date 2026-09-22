@@ -1,0 +1,73 @@
+<svg width="1400" height="560" viewBox="0 0 1400 560" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1400" y2="560" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#07111F"/>
+      <stop offset="0.55" stop-color="#0B1B32"/>
+      <stop offset="1" stop-color="#102B45"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="310" y1="160" x2="1040" y2="470" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#6EE7F9"/>
+      <stop offset="1" stop-color="#7C8CFF"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="12" stdDeviation="18" flood-color="#000000" flood-opacity="0.28"/>
+    </filter>
+  </defs>
+  <rect width="1400" height="560" rx="28" fill="url(#bg)"/>
+  <circle cx="1190" cy="110" r="220" fill="#2E67FF" opacity="0.08"/>
+  <circle cx="160" cy="510" r="260" fill="#30D5C8" opacity="0.06"/>
+
+  <g transform="translate(92 78)">
+    <rect x="0" y="0" width="72" height="72" rx="18" fill="url(#accent)"/>
+    <path d="M20 23H52V31H20V23ZM20 41H43V49H20V41Z" fill="#081321"/>
+    <circle cx="51" cy="45" r="8" fill="#081321"/>
+  </g>
+
+  <text x="92" y="210" fill="#F8FAFC" font-size="64" font-family="Inter,Segoe UI,Arial,sans-serif" font-weight="760">AutoSpec</text>
+  <text x="92" y="262" fill="#A9BDD4" font-size="26" font-family="Inter,Segoe UI,Arial,sans-serif">Auditable multi-Agent software specification and delivery platform</text>
+  <text x="92" y="318" fill="#E6EEF8" font-size="22" font-family="Inter,Segoe UI,Arial,sans-serif">Turn one requirement into structured, reviewable and traceable artifacts.</text>
+
+  <g transform="translate(92 370)" font-family="Inter,Segoe UI,Arial,sans-serif">
+    <rect width="220" height="50" rx="25" fill="#112E46" stroke="#2D5978"/>
+    <circle cx="28" cy="25" r="7" fill="#5EEAD4"/>
+    <text x="48" y="32" fill="#DDEAF7" font-size="18">6-Agent workflow</text>
+
+    <g transform="translate(238 0)">
+      <rect width="220" height="50" rx="25" fill="#112E46" stroke="#2D5978"/>
+      <circle cx="28" cy="25" r="7" fill="#60A5FA"/>
+      <text x="48" y="32" fill="#DDEAF7" font-size="18">Human approval</text>
+    </g>
+
+    <g transform="translate(476 0)">
+      <rect width="220" height="50" rx="25" fill="#112E46" stroke="#2D5978"/>
+      <circle cx="28" cy="25" r="7" fill="#A78BFA"/>
+      <text x="48" y="32" fill="#DDEAF7" font-size="18">Traceable delivery</text>
+    </g>
+  </g>
+
+  <g transform="translate(850 94)" filter="url(#shadow)" font-family="Inter,Segoe UI,Arial,sans-serif">
+    <rect width="454" height="378" rx="28" fill="#0E2137" stroke="#264762"/>
+    <text x="34" y="48" fill="#96ABC1" font-size="15" font-weight="700" letter-spacing="1.5">AUTOSPEC V5 · PARALLEL DAG</text>
+
+    <g>
+      <rect x="145" y="76" width="164" height="48" rx="12" fill="#173854" stroke="#3C698A"/>
+      <text x="227" y="106" text-anchor="middle" fill="#EAF5FF" font-size="16">Product Manager</text>
+      <path d="M227 124V150" stroke="#5B7893" stroke-width="2"/>
+
+      <rect x="145" y="150" width="164" height="48" rx="12" fill="#173854" stroke="#3C698A"/>
+      <text x="227" y="180" text-anchor="middle" fill="#EAF5FF" font-size="16">Architect</text>
+      <path d="M227 198V225M227 225H108M227 225H346M108 225V244M346 225V244" stroke="#5B7893" stroke-width="2"/>
+
+      <rect x="28" y="244" width="160" height="48" rx="12" fill="#123F4C" stroke="#2A7C7A"/>
+      <text x="108" y="274" text-anchor="middle" fill="#E8FFFC" font-size="16">Backend</text>
+      <rect x="266" y="244" width="160" height="48" rx="12" fill="#23375C" stroke="#536CB0"/>
+      <text x="346" y="274" text-anchor="middle" fill="#EEF2FF" font-size="16">Frontend</text>
+
+      <path d="M108 292V316H227M346 292V316H227M227 316V330" stroke="#5B7893" stroke-width="2"/>
+      <rect x="145" y="330" width="164" height="48" rx="12" fill="url(#accent)"/>
+      <text x="227" y="360" text-anchor="middle" fill="#06131F" font-size="16" font-weight="700">Review + Evaluate</text>
+    </g>
+  </g>
+
+  <text x="92" y="498" fill="#68839D" font-size="16" font-family="Inter,Segoe UI,Arial,sans-serif">Spring Boot · Python · React · MySQL · Redis Streams · Docker · OpenTelemetry</text>
+</svg>

@@ -1,0 +1,76 @@
+<svg width="1480" height="640" viewBox="0 0 1480 640" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1480" y2="640">
+      <stop stop-color="#07111F"/>
+      <stop offset="1" stop-color="#10253A"/>
+    </linearGradient>
+    <marker id="arr" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#7692AA"/>
+    </marker>
+  </defs>
+  <rect width="1480" height="640" rx="24" fill="url(#bg)"/>
+  <text x="62" y="68" fill="#F8FAFC" font-size="30" font-family="Inter,Segoe UI,Arial,sans-serif" font-weight="740">System architecture</text>
+  <text x="62" y="102" fill="#93A9BD" font-size="17" font-family="Inter,Segoe UI,Arial,sans-serif">Control plane owns durable state; workers execute frozen contracts through an authenticated stream protocol.</text>
+
+  <g font-family="Inter,Segoe UI,Arial,sans-serif">
+    <g transform="translate(62 154)">
+      <rect width="280" height="150" rx="20" fill="#102B44" stroke="#2D5877"/>
+      <text x="28" y="42" fill="#7DD3FC" font-size="15" font-weight="700">PRODUCT WORKSPACE</text>
+      <text x="28" y="79" fill="#F8FAFC" font-size="23" font-weight="700">React + TypeScript</text>
+      <text x="28" y="111" fill="#A8BDD0" font-size="14">Intake · Generate · Review · Deliver</text>
+      <text x="28" y="133" fill="#A8BDD0" font-size="14">Artifacts · Diff · Usage · Trace</text>
+    </g>
+
+    <path d="M342 229H410" stroke="#7692AA" stroke-width="2.5" marker-end="url(#arr)"/>
+
+    <g transform="translate(420 134)">
+      <rect width="390" height="190" rx="22" fill="#122F49" stroke="#3A6685"/>
+      <text x="30" y="42" fill="#93C5FD" font-size="15" font-weight="700">CONTROL PLANE</text>
+      <text x="30" y="80" fill="#F8FAFC" font-size="24" font-weight="700">Spring Boot</text>
+      <text x="30" y="112" fill="#A8BDD0" font-size="14">WorkflowSpec · DAG reconciliation · Outbox</text>
+      <text x="30" y="136" fill="#A8BDD0" font-size="14">Approval · rework · replay · delivery gate</text>
+      <text x="30" y="160" fill="#A8BDD0" font-size="14">Auth · artifacts · audit · OpenAPI</text>
+    </g>
+
+    <g transform="translate(470 390)">
+      <rect width="290" height="118" rx="18" fill="#0D2639" stroke="#31546D"/>
+      <text x="24" y="36" fill="#6EE7B7" font-size="15" font-weight="700">SOURCE OF TRUTH</text>
+      <text x="24" y="69" fill="#F8FAFC" font-size="21" font-weight="700">MySQL + Flyway</text>
+      <text x="24" y="94" fill="#9BB0C3" font-size="14">runs · artifacts · budgets · audit</text>
+    </g>
+    <path d="M615 324V382" stroke="#7692AA" stroke-width="2.5" marker-end="url(#arr)"/>
+
+    <path d="M810 229H875" stroke="#7692AA" stroke-width="2.5" marker-end="url(#arr)"/>
+    <g transform="translate(885 154)">
+      <rect width="240" height="150" rx="20" fill="#113343" stroke="#2D6874"/>
+      <text x="26" y="42" fill="#5EEAD4" font-size="15" font-weight="700">TRANSPORT</text>
+      <text x="26" y="78" fill="#F8FAFC" font-size="23" font-weight="700">Redis Streams</text>
+      <text x="26" y="110" fill="#A8BDD0" font-size="14">commands · events · heartbeat</text>
+      <text x="26" y="132" fill="#A8BDD0" font-size="14">at-least-once delivery</text>
+    </g>
+
+    <path d="M1125 229H1190" stroke="#7692AA" stroke-width="2.5" marker-end="url(#arr)"/>
+    <g transform="translate(1200 134)">
+      <rect width="220" height="190" rx="22" fill="#1C2948" stroke="#5369A4"/>
+      <text x="26" y="42" fill="#C4B5FD" font-size="15" font-weight="700">AGENT RUNTIME</text>
+      <text x="26" y="78" fill="#F8FAFC" font-size="23" font-weight="700">Python Workers</text>
+      <text x="26" y="108" fill="#A8BDD0" font-size="14">Pydantic contracts</text>
+      <text x="26" y="132" fill="#A8BDD0" font-size="14">Model gateway + RAG</text>
+      <text x="26" y="156" fill="#A8BDD0" font-size="14">Tool harness + telemetry</text>
+    </g>
+
+    <g transform="translate(885 390)">
+      <rect width="535" height="118" rx="18" fill="#0D2639" stroke="#31546D"/>
+      <text x="24" y="36" fill="#FBBF24" font-size="15" font-weight="700">OBSERVABILITY</text>
+      <text x="24" y="69" fill="#F8FAFC" font-size="21" font-weight="700">Prometheus · Grafana · Tempo</text>
+      <text x="24" y="94" fill="#9BB0C3" font-size="14">metrics · traces · worker backlog · model invocation ledger</text>
+    </g>
+
+    <path d="M1005 304V382" stroke="#7692AA" stroke-width="2" stroke-dasharray="6 6" marker-end="url(#arr)"/>
+    <path d="M1310 324V382" stroke="#7692AA" stroke-width="2" stroke-dasharray="6 6" marker-end="url(#arr)"/>
+  </g>
+
+  <g transform="translate(62 552)" font-family="Inter,Segoe UI,Arial,sans-serif">
+    <text x="0" y="0" fill="#718AA1" font-size="14">Optional live model provider via OpenAI-compatible API · project-scoped retrieval · authenticated internal tool gateway</text>
+  </g>
+</svg>
