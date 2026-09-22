@@ -1,6 +1,6 @@
 # AutoSpec V5 Dynamic Workflow — Sanitized Run
 
-This example contains no user identifiers, credentials, provider payloads, or proprietary requirements. It records the deterministic integration scenario exercised by `DynamicWorkflowLifecycleTest` and links each failure behavior to its focused regression.
+This example contains no user identifiers, credentials, provider payloads, or proprietary requirements. It records the synthetic integration scenario exercised by `DynamicWorkflowLifecycleTest`, not the published `autospec-v5:v5` seed. The published historical v5 graph is serial; the new `autospec-v5:v5-parallel` graph is the parallel production version.
 
 ## Frozen run
 

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import math
 import re
 import time
@@ -18,6 +17,7 @@ from runtime.cache_keys import (
     canonical_hash,
     rag_query_cache_key,
 )
+from runtime.embedding_provider import EmbeddingProvider, configured_embedding_provider
 
 
 class CorpusType(StrEnum):
@@ -68,7 +68,7 @@ class RetrievalPolicy(BaseModel):
     max_per_document: int = Field(default=2, ge=1, le=10)
     rrf_constant: int = Field(default=60, ge=1, le=500)
     query_rewrite_version: str = Field(default="query-rewrite-v1", min_length=1)
-    embedding_version: str = Field(default="hashing-ngram-v1", min_length=1)
+    embedding_version: str | None = None
     reranker_version: str = Field(default="deterministic-rerank-v1", min_length=1)
     access_policy_version: str = Field(default="project-user-v1", min_length=1)
     actor_scope_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
@@ -143,27 +143,28 @@ _TOKEN = re.compile(r"[\u3400-\u9fff]|[A-Za-z0-9_]+")
 
 
 class HybridRetriever:
-    """Small deterministic hybrid retriever used by fixtures and local runtime.
+    """Tenant-filtered BM25/vector/RRF retriever with pluggable embeddings.
 
     Each corpus has its own index map. Retrieval filters authorization and document
     lifecycle before scoring, then combines lexical and vector ranks with RRF and
-    applies a bounded deterministic reranker. A production vector provider can
-    replace `_embedding` without changing the result or trace contract.
+    applies a bounded deterministic reranker. No forbidden or expired text is sent
+    to the provider.
     """
 
     RETRIEVER_VERSION = "hybrid-rrf-rerank-v1"
-    EMBEDDING_DIMENSIONS = 128
 
     def __init__(
         self,
         documents: Iterable[RagDocument] = (),
         *,
         cache: InMemoryResultCache | None = None,
+        embedding_provider: EmbeddingProvider | None = None,
     ) -> None:
         self._indexes: dict[CorpusType, dict[str, RagDocument]] = {
             corpus: {} for corpus in CorpusType
         }
         self._cache = cache
+        self._embedding_provider = embedding_provider or configured_embedding_provider()
         for document in documents:
             self.upsert(document)
 
@@ -182,6 +183,9 @@ class HybridRetriever:
         source_execution_id: str | None = None,
     ) -> RetrievalResult:
         resolved_policy = policy or RetrievalPolicy()
+        if resolved_policy.embedding_version not in (None, self._embedding_provider.model_version):
+            raise ValueError("Retrieval embedding version does not match the configured provider")
+        resolved_policy = resolved_policy.model_copy(update={"embedding_version": self._embedding_provider.model_version})
         cache_key = self._cache_key(query, resolved_policy)
         cached_entry = self._cached_result(cache_key, resolved_policy)
         if cached_entry is not None and resolved_policy.cache_mode == CacheMode.ENABLED:
@@ -242,12 +246,13 @@ class HybridRetriever:
             _document_key(document): _bm25_score(rewrite.queries, document.content, eligible)
             for document in eligible
         }
+        vectors = self._embedding_provider.embed([*rewrite.queries, *(document.content for document in eligible)])
+        if len(vectors) != len(rewrite.queries) + len(eligible):
+            raise ValueError("Embedding provider returned an invalid vector count")
+        query_vectors = vectors[:len(rewrite.queries)]
         vector_scores = {
-            _document_key(document): max(
-                (_cosine(_embedding(variant), _embedding(document.content)) for variant in rewrite.queries),
-                default=0.0,
-            )
-            for document in eligible
+            _document_key(document): max((_cosine(query_vector, vectors[len(rewrite.queries) + index]) for query_vector in query_vectors), default=0.0)
+            for index, document in enumerate(eligible)
         }
         lexical_rank = _rank(eligible, lexical_scores)
         vector_rank = _rank(eligible, vector_scores)
@@ -497,26 +502,12 @@ def _rank(documents: list[RagDocument], scores: dict[str, float]) -> dict[str, i
     return {_document_key(document): index + 1 for index, document in enumerate(ordered)}
 
 
-def _embedding(value: str) -> list[float]:
-    vector = [0.0] * HybridRetriever.EMBEDDING_DIMENSIONS
-    for token in _tokens(unicodedata.normalize("NFKC", value or "").lower()):
-        features = [f"token:{token}"]
-        features.extend(
-            f"ngram:{token[index:index + width]}"
-            for width in (2, 3)
-            for index in range(max(0, len(token) - width + 1))
-        )
-        for feature in features:
-            digest = hashlib.sha256(feature.encode("utf-8")).digest()
-            index = int.from_bytes(digest[:2], "big") % len(vector)
-            sign = 1.0 if digest[2] % 2 == 0 else -1.0
-            vector[index] += sign * (1.5 if feature.startswith("token:") else 0.8)
-    norm = math.sqrt(sum(value * value for value in vector))
-    return [value / norm for value in vector] if norm else vector
-
-
 def _cosine(left: list[float], right: list[float]) -> float:
-    return max(-1.0, min(1.0, sum(a * b for a, b in zip(left, right))))
+    if not left or len(left) != len(right):
+        raise ValueError("Embedding dimensions differ")
+    left_norm = math.sqrt(sum(value * value for value in left))
+    right_norm = math.sqrt(sum(value * value for value in right))
+    return max(-1.0, min(1.0, sum(a * b for a, b in zip(left, right)) / (left_norm * right_norm))) if left_norm and right_norm else 0.0
 
 
 def _phrase_bonus(queries: list[str], content: str) -> float:

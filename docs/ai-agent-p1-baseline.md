@@ -2,6 +2,8 @@
 
 更新时间：2026-09-04
 
+> 本文是 2026-09-04 的 fixture-only 历史基线，不代表当前语义检索或并行图。当前实现与配置见 [P1 更新](autospec-v5-p1-embedding-parallel.md)。
+
 本基线对应 `docs/AI-Agent项目优化计划.md` 中的 AGT-P1-01、AGT-P1-02 和 AGT-P1-03。实现继续使用 AutoSpec V5 的六节点冻结 WorkflowSpec；没有新增独立的面试流水线，也没有改变正式入口 `POST /api/workflow-runs`。
 
 ## P1-01 Hybrid RAG

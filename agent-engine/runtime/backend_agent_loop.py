@@ -19,7 +19,7 @@ from runtime.model_telemetry import (
 )
 from runtime.tool_harness import ToolRuntimeError, execute_current_tool, current_tool_harness
 from review.backend_validator import BackendValidationIssue, validate_backend_candidate
-from schemas.architecture_design import ArchitectureDesignArtifact
+from schemas.architecture_design import ArchitectureDesignArtifact, ArchitectureDesignArtifactV2
 from schemas.agent_loop import (
     AgentLoopResult,
     AgentStepRecord,
@@ -396,7 +396,8 @@ def _fixture_turn(
     candidate = BackendEngineerAgent().run(
         requirement,
         prd,
-        architecture_design=ArchitectureDesignArtifact.model_validate(architecture_design),
+        architecture_design=(ArchitectureDesignArtifactV2 if "shared_contract" in architecture_design else ArchitectureDesignArtifact).model_validate(architecture_design),
+        shared_contract_required="shared_contract" in architecture_design,
         retrieved_sources=retrieved_sources,
         context_manifest=context_manifest,
         rework_directive=rework_directive,

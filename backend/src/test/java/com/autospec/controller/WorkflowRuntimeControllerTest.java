@@ -68,6 +68,7 @@ class WorkflowRuntimeControllerTest {
     void startOverwritesClientSourcesWithActorAccessibleTrustedCitationsAndFreezesPolicy()
             throws Exception {
         when(projectAccessService.resolveUserId("session")).thenReturn(42L);
+        when(knowledgeIndexService.embeddingVersion()).thenReturn("openai-compatible:test-semantic:0123456789ab");
         when(knowledgeIndexService.retrieveForProject("Build a clinic", 5, 7L, 42L)).thenReturn(List.of(
                 new KnowledgeSourceResponse(
                         7L,
@@ -145,6 +146,8 @@ class WorkflowRuntimeControllerTest {
                 .isEqualTo("PROJECT_KNOWLEDGE_BM25_EMBEDDING_RRF_RERANK_V2");
         assertThat(input.path("retrieval_trace").path("reranker_version").asText())
                 .isEqualTo("deterministic-rerank-v1");
+        assertThat(input.path("retrieval_trace").path("embedding_version").asText())
+                .isEqualTo("openai-compatible:test-semantic:0123456789ab");
         assertThat(input.path("retrieval_trace").path("filters").path("status").asText())
                 .isEqualTo("ACTIVE");
         verify(knowledgeIndexService).retrieveForProject("Build a clinic", 5, 7L, 42L);

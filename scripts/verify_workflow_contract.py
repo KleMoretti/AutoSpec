@@ -9,6 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 AGENT_ENGINE = ROOT / "agent-engine"
 CONTRACT = ROOT / "agent-engine" / "contracts" / "autospec-v5.workflow.json"
+PARALLEL_CONTRACT = ROOT / "agent-engine" / "contracts" / "autospec-v5-parallel.workflow.json"
 CANDIDATE_CONTRACT = ROOT / "agent-engine" / "contracts" / "autospec-v5-agent-execution.workflow.json"
 MIGRATION_DIR = ROOT / "backend" / "src" / "main" / "resources" / "db" / "migration"
 MIGRATION_PATTERN = re.compile(r"^V(?P<version>\d+)_.*\.sql$")
@@ -80,6 +81,8 @@ def main() -> int:
     if seeded_contract is None:
         print("Unable to locate a seeded autospec-v5 workflow contract", file=sys.stderr)
         return 1
+    if verify_seeded_contract(PARALLEL_CONTRACT, "v5-parallel") is not None:
+        return 1
     migration, seeded = seeded_contract
     if seeded != canonical:
         print(
@@ -109,8 +112,8 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
-    contracts = [CONTRACT, CANDIDATE_CONTRACT, *experiment_contracts]
-    for path in contracts[2:]:
+    contracts = [CONTRACT, PARALLEL_CONTRACT, CANDIDATE_CONTRACT, *experiment_contracts]
+    for path in contracts[3:]:
         document = json.loads(path.read_text(encoding="utf-8"))
         if verify_seeded_contract(path, document["version"]) is not None:
             return 1
@@ -123,7 +126,11 @@ def main() -> int:
     documents = [json.loads(path.read_text(encoding="utf-8")) for path in contracts]
     for document in documents:
         WorkflowSpec.model_validate(document)
-    for prompt_name in ("backend_engineer_loop_v1.md", "product_manager_schema_v1.md"):
+    for prompt_name in (
+        "backend_engineer_loop_v1.md", "product_manager_schema_v1.md",
+        "architect_shared_v1.md", "backend_engineer_shared_v1.md",
+        "frontend_engineer_shared_v1.md", "reviewer_shared_v1.md",
+    ):
         prompt_path = AGENT_ENGINE / "prompts" / prompt_name
         if prompt_path.read_text(encoding="utf-8") != (ROOT / "backend/src/main/resources/prompts" / prompt_name).read_text(encoding="utf-8"):
             print(f"Prompt resource drift: {prompt_name}", file=sys.stderr)

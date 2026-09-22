@@ -23,17 +23,20 @@ public class ArtifactApprovalOutboxService {
     private final ObjectMapper objectMapper;
     private final KnowledgeDocumentService knowledgeDocumentService;
     private final KnowledgeCorpusEpochService corpusEpochService;
+    private final KnowledgeEmbeddingService embeddingService;
 
     public ArtifactApprovalOutboxService(
             WorkflowOutboxMapper outboxMapper,
             ObjectMapper objectMapper,
             KnowledgeDocumentService knowledgeDocumentService,
-            KnowledgeCorpusEpochService corpusEpochService
+            KnowledgeCorpusEpochService corpusEpochService,
+            KnowledgeEmbeddingService embeddingService
     ) {
         this.outboxMapper = outboxMapper;
         this.objectMapper = objectMapper;
         this.knowledgeDocumentService = knowledgeDocumentService;
         this.corpusEpochService = corpusEpochService;
+        this.embeddingService = embeddingService;
     }
 
     @Transactional
@@ -132,7 +135,7 @@ public class ArtifactApprovalOutboxService {
         payload.put("artifact_version", artifact.getVersion());
         payload.put("content_hash", contentHash);
         payload.put("chunker_version", KnowledgeIndexService.CHUNKER_VERSION);
-        payload.put("embedding_model", KnowledgeEmbeddingService.MODEL_VERSION);
+        payload.put("embedding_model", embeddingService.modelVersion());
         payload.put("index_key", indexKey);
         try {
             return objectMapper.writeValueAsString(payload);
@@ -146,7 +149,7 @@ public class ArtifactApprovalOutboxService {
                 artifact.getId() + "|" + contentHash + "|"
                         + KnowledgeCorpus.fromArtifactType(artifact.getType()).name() + "|"
                         + KnowledgeIndexService.CHUNKER_VERSION + "|"
-                        + KnowledgeEmbeddingService.MODEL_VERSION
+                        + embeddingService.modelVersion()
         );
     }
 }

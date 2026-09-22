@@ -1,95 +1,236 @@
+<div align="center">
+
+<img src="docs/assets/readme/autospec-hero.svg" alt="AutoSpec" width="100%" />
+
 # AutoSpec
 
-AutoSpec is an auditable requirements-to-contract platform. A user submits a software requirement and a durable multi-Agent workflow produces structured PRD, architecture, backend, frontend, review, evaluation, and code-scaffold artifacts with approval, replay, and recovery support.
+**From one software requirement to auditable, reviewable and deliverable engineering artifacts.**
 
-## Canonical V5 workflow
+[![Quality](https://github.com/KleMoretti/AutoSpec/actions/workflows/quality.yml/badge.svg)](https://github.com/KleMoretti/AutoSpec/actions/workflows/quality.yml)
+![Java](https://img.shields.io/badge/Java-17%2B-ED8B00?logo=openjdk&logoColor=white)
+![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.x-6DB33F?logo=springboot&logoColor=white)
+![Python](https://img.shields.io/badge/Python-Agent%20Runtime-3776AB?logo=python&logoColor=white)
+![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=111827)
+![Redis](https://img.shields.io/badge/Redis-Streams-DC382D?logo=redis&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
 
-The product UI now exposes one generation path: the published `autospec-v5:v5` workflow.
+AutoSpec is a multi-Agent software specification and delivery platform. It turns a natural-language requirement into a versioned PRD, architecture, backend design, frontend skeleton, review report, evaluation report and buildable code scaffold, while keeping the entire run traceable and recoverable.
 
-- Spring Boot owns immutable workflow versions, frozen run snapshots, DAG reconciliation, transactional Outbox, approval, targeted rework, cancellation, recovery, replay, and artifact history.
-- Redis Streams transports at-least-once node commands and terminal or heartbeat events to Python Workers.
-- Python handlers load versioned prompts, validate every role output with Pydantic, and can use an OpenAI-compatible live model gateway.
-- Backend and frontend engineering run in parallel after architecture; Reviewer joins both branches and Evaluator applies the final delivery gate.
-- The canonical graph lives in `agent-engine/contracts/autospec-v5.workflow.json`; CI verifies that it is identical to the immutable database seed.
+[Quick Start](#quick-start) · [Workflow](#workflow) · [Architecture](#architecture) · [Development](#development) · [Docs](#documentation)
 
-The local `fixture` model mode is deterministic and intended only for development and tests. Production rejects fixture mode and requires explicit live-model configuration.
+</div>
 
-## Trust and delivery boundaries
+## Why AutoSpec?
 
-- Demo login is opt-in; the backend no longer creates `owner / owner-pass` during login.
-- Browser sessions use an `HttpOnly`, `SameSite` cookie; reusable session credentials are never placed in URLs.
-- Agent API diagnostics require a service token, and Worker traffic uses authenticated Redis connections plus bounded node deadlines.
-- Compose binds published ports to `127.0.0.1` by default and protects Redis with a password.
-- Production components fail closed when demo login is enabled, cookies are not Secure/Strict, the database user is root, required secrets are blank, fixture model mode is selected, or database/Redis TLS is not explicitly enabled.
-- Retrieval is restricted to the current project, so an editor cannot pull knowledge from the owner's other projects.
-- Reruns preserve artifact history. Cancelling a run closes pending commands and prevents late Worker events from projecting artifacts.
-- Evaluator builds a `REQ-* -> story/acceptance -> API -> data -> UI` trace matrix. Missing MUST coverage or any HIGH/CRITICAL issue blocks completion and delivery.
-- Markdown/PDF/ZIP export and code generation are permitted only after the latest V5 run and its own evaluation report pass the gate.
-- Generated code ZIPs derive routes, tables, pages, and project metadata from the latest artifacts and contain Maven/Vite buildable scaffolds.
+Typical LLM coding demos stop at "generate some text." AutoSpec treats generation as an engineering workflow with explicit contracts, durable state and delivery gates.
 
-## P1 product capabilities
+- **Structured artifacts** — every Agent output is validated by Pydantic / JSON Schema instead of stored as free-form text.
+- **Frozen workflow contracts** — workflow topology, prompts, schemas, context policy, model routing and budgets are versioned for reproducible runs.
+- **Parallel multi-Agent execution** — Backend and Frontend branches run from the same Architect-owned shared contract and join at review.
+- **Human-in-the-loop** — approval, edit-and-approve, rejection and targeted rework are first-class workflow operations.
+- **Reliable runtime** — Redis Streams, idempotency, fencing tokens, heartbeat, retry, dead-letter handling, cancellation, recovery and replay.
+- **Grounded generation** — project-scoped RAG, citation validation and a controlled read-only tool harness.
+- **Evaluation before delivery** — deterministic checks plus semantic review, requirement traceability and hard delivery gates.
+- **Operational visibility** — per-call model/tool ledger, token and cost accounting, Prometheus metrics and OpenTelemetry traces.
 
-- Artifact history now distinguishes latest, approved, and candidate versions. Every artifact records its parent/upstream versions, content hash, schema and prompt version, selected model route, context policy, and exact knowledge citations; users can inspect field-level diffs and restore an older version as a new candidate without rewriting history.
-- Review findings are actionable records with a stable issue key, artifact path, requirement evidence, owner, resolution, and resolved artifact version. High-severity findings must be resolved or explicitly ignored with a reason before approval.
-- Every V5 run freezes a Fast, Balanced, or Deep execution policy. Provider/model decisions, fallback reason, input/output/cache tokens, model calls, estimated cost, and compacted-context manifest are persisted, while atomic token/cost/call/time budgets stop over-budget runs.
-- Project knowledge retrieval combines lexical and stored-vector ranking with reciprocal-rank fusion, remains project-scoped, and returns exact chunk identifiers and excerpts. Evaluation rejects unknown or unfaithful citations.
-- The frontend now provides a searchable project dashboard and a staged Intake -> Generate -> Review & fix -> Deliver workspace, with specialized PRD, architecture, API/data, frontend, evaluation, provenance, version-diff, and runtime-usage views.
-- The evaluation catalog contains 20 cross-domain cases and experiment comparison supports automatic metrics, human scores, and prompt/model A/B deltas.
+## Workflow
+
+The default published workflow is <code>autospec-v5:v5-parallel</code>. The historical <code>v5</code> workflow remains available for reproducible replay.
+
+<p align="center">
+  <img src="docs/assets/readme/workflow.svg" alt="AutoSpec V5 workflow" width="100%" />
+</p>
+
+The six-node workflow is:
+
+1. **Product Manager** — converts intake into PRD, user stories and acceptance criteria.
+2. **Architect** — produces architecture and freezes the shared contract consumed downstream.
+3. **Backend Engineer** — designs APIs, data model and backend services.
+4. **Frontend Engineer** — designs pages, routes and frontend skeleton in parallel with Backend.
+5. **Reviewer** — performs deterministic consistency checks plus model-assisted semantic review.
+6. **Evaluator** — builds the traceability matrix and blocks delivery when MUST coverage or severe findings fail.
+
+Reviewer findings can route targeted rework back to Architect, Backend or Frontend without restarting the entire pipeline.
 
 ## Architecture
 
-```text
-React frontend
-  -> Spring Boot control plane + MySQL source of truth
-    -> Redis command/event Streams
-      -> Python Product Manager / Architect / Backend / Frontend / Reviewer / Evaluator Workers
-    -> approval / rework / recovery / replay / delivery gate
-```
+<p align="center">
+  <img src="docs/assets/readme/architecture.svg" alt="AutoSpec system architecture" width="100%" />
+</p>
 
-Key locations:
+| Layer | Responsibility |
+| --- | --- |
+| <code>frontend/</code> | React + TypeScript + Ant Design workspace for Intake → Generate → Review & fix → Deliver |
+| <code>backend/</code> | Spring Boot control plane, MySQL source of truth, auth, DAG reconciliation, approvals, replay, artifacts and delivery gates |
+| <code>agent-engine/</code> | Python Agents, Redis Worker runtime, Pydantic contracts, model gateway, RAG, tool harness, review and evaluation |
+| Redis Streams | At-least-once command/event transport between the control plane and Workers |
+| MySQL + Flyway | Durable workflow state, artifact versions, budgets, audit trail and execution ledger |
+| <code>observability/</code> | Prometheus, Grafana and Tempo configuration |
 
-- `backend/src/main/java/com/autospec/workflow`: V5 state machine, reconciliation, transport, recovery, and replay.
-- `agent-engine/model_gateway.py`: live OpenAI-compatible JSON model client and production configuration checks.
-- `agent-engine/review/evaluator.py`: deterministic traceability and hard quality-gate rules.
-- `frontend/src/components/WorkflowReplayPanel.tsx`: generation, approval, attempts, metrics, and replay workspace.
-- `.github/workflows/quality.yml`: full-stack release gate.
+The product entry point is:
 
-## Local startup
+~~~http
+POST /api/workflow-runs
+~~~
 
-Copy `.env.example` to an untracked `.env` and replace at least these local secrets:
+The FastAPI process is used for health checks and evaluation/experiment endpoints. Business workflow nodes are executed asynchronously by Redis Workers.
 
-```dotenv
-MYSQL_PASSWORD=...
-MYSQL_ROOT_PASSWORD=...
-REDIS_PASSWORD=...
-AGENT_ENGINE_SERVICE_TOKEN=...
-AUTH_DEMO_USER_PASSWORD=...
-```
+## Core capabilities
 
-Then start the local development stack:
+### Durable orchestration
 
-```powershell
-docker compose up --build
-```
+- Dynamic DAG execution from immutable WorkflowSpec versions
+- Transactional Outbox and idempotent event projection
+- Node timeout, retry, dead-letter, recovery and replay
+- Cancellation that prevents late Worker events from mutating completed state
+- Historical workflow versions retained for deterministic replay
 
-The frontend is available at `http://localhost:5173`. Backend and Agent API ports are also published on localhost for diagnostics. The supplied Compose file is a local-development topology, not a production deployment manifest.
+### Artifact lifecycle
 
-To exercise real model output, set:
+- Latest / approved / candidate artifact versions
+- Parent and upstream version lineage
+- Prompt, schema and model-route provenance
+- Field-level diff and restore-as-new-candidate
+- Markdown / PDF / ZIP export after delivery gates pass
+- Buildable Maven + Vite code scaffold generation
 
-```dotenv
+### Agent runtime
+
+- Versioned prompts and structured Pydantic outputs
+- Fast / Balanced / Deep model routes
+- Per-run token, call, time and estimated-cost budgets
+- Project-scoped hybrid retrieval with exact citation metadata
+- Controlled tool runtime with declared schemas and policies
+- Context manifests for truncation, compression and source tracking
+
+### Review and evaluation
+
+- Deterministic rule checks plus semantic review
+- Stable review issue keys with owner, evidence and resolution
+- Requirement → story / acceptance → API → data → UI trace matrix
+- HIGH / CRITICAL findings and missing MUST coverage block delivery
+- Evaluation datasets and experiment comparison for prompt/model changes
+
+## Quick Start
+
+### Prerequisites
+
+- Docker Desktop + Docker Compose
+- Or, for local component development: Java 17+, Maven, Python 3 and Node.js 22
+
+### 1. Configure environment
+
+Copy <code>.env.example</code> to <code>.env</code> and provide local secrets:
+
+~~~dotenv
+MYSQL_PASSWORD=change-me
+MYSQL_ROOT_PASSWORD=change-me
+REDIS_PASSWORD=change-me
+AGENT_ENGINE_SERVICE_TOKEN=change-me
+AUTH_DEMO_USER_PASSWORD=change-me
+~~~
+
+Fixture mode is deterministic and does not call an external LLM:
+
+~~~dotenv
+AUTOSPEC_ENV=development
+AUTH_DEMO_USER_ENABLED=true
+AGENT_MODEL_MODE=fixture
+AUTOSPEC_EMBEDDING_MODE=fixture
+~~~
+
+### 2. Start the stack
+
+~~~powershell
+docker compose config --quiet
+docker compose up --build -d
+docker compose ps
+~~~
+
+Open:
+
+- Frontend: <code>http://localhost:5173</code>
+- Backend readiness: <code>http://localhost:8080/actuator/health/readiness</code>
+- Agent API health: <code>http://localhost:8000/health</code>
+
+To follow the execution path:
+
+~~~powershell
+docker compose logs --tail=200 -f backend agent-worker-1 agent-worker-2
+~~~
+
+### 3. Enable a live model
+
+AutoSpec accepts an OpenAI-compatible model endpoint:
+
+~~~dotenv
 AGENT_MODEL_MODE=live
 MODEL_API_KEY=...
 MODEL_BASE_URL=https://your-openai-compatible-endpoint/v1
 MODEL_NAME=...
-```
+MODEL_FAST_NAME=...
+MODEL_DEEP_NAME=...
+~~~
 
-For production, also use `AUTOSPEC_ENV=production`, disable the demo user, enable Secure/Strict cookies, use a non-root database user, supply a TLS-enabled `DB_URL` (for example with `sslMode=VERIFY_IDENTITY`), enable Redis TLS, and deploy data/internal services on private networks.
+Project knowledge embeddings are configured independently:
+
+~~~dotenv
+AUTOSPEC_EMBEDDING_MODE=live
+EMBEDDING_BASE_URL=https://your-embedding-endpoint/v1
+EMBEDDING_API_KEY=...
+EMBEDDING_MODEL=...
+EMBEDDING_DIMENSIONS=...
+~~~
+
+## Repository layout
+
+~~~text
+AutoSpec/
+├─ backend/                     # Spring Boot control plane
+├─ agent-engine/
+│  ├─ agents/                   # Product / Architect / Backend / Frontend / Reviewer
+│  ├─ runtime/                  # Worker, context, RAG, tools, telemetry
+│  ├─ review/                   # Deterministic review + evaluator
+│  ├─ schemas/                  # Pydantic contracts
+│  └─ contracts/                # Versioned WorkflowSpec files
+├─ frontend/                    # React product workspace
+├─ observability/               # Prometheus / Grafana / Tempo
+├─ performance/                 # k6 scenarios and performance reports
+├─ scripts/                     # Contract and release verification
+├─ docs/                        # Design docs, ADRs and examples
+└─ docker-compose.yml           # Full local topology
+~~~
+
+## Development
+
+### Backend
+
+~~~powershell
+cd backend
+mvn spring-boot:run
+~~~
+
+### Agent Engine
+
+~~~powershell
+cd agent-engine
+python -m pip install -r requirements.txt
+python -m pytest -q
+~~~
+
+### Frontend
+
+~~~powershell
+cd frontend
+npm ci
+npm run dev
+~~~
 
 ## Verification
 
-Run the same core checks as the repository quality workflow:
+Run the release-oriented checks after cross-module contract, schema, dependency or database changes:
 
-```powershell
+~~~powershell
 cd backend
 mvn test
 
@@ -104,6 +245,59 @@ cd ..
 python scripts/verify_workflow_contract.py
 docker compose config --quiet
 docker compose --profile monitoring config --quiet
-```
+~~~
 
-CI additionally runs Testcontainers integration tests and builds the backend, Agent, and frontend images. Fixed legacy generation APIs are removed; the published V5 workflow is the only product generation path.
+The GitHub Actions quality workflow additionally runs integration checks and builds the application images.
+
+## Reliability and security boundaries
+
+- Browser sessions use <code>HttpOnly</code> cookies and production configuration fails closed on insecure settings.
+- Redis and internal Agent traffic are authenticated.
+- Published ports bind to localhost by default in the development Compose topology.
+- Retrieval is scoped to the current project and citation references are validated.
+- Production rejects fixture model mode, demo login, root database users and missing security configuration.
+- Secrets remain environment-only; prompts, workflow contracts, events and logs never need to contain API keys.
+
+## Observability
+
+The optional monitoring profile provides:
+
+- **Prometheus** for runtime and backlog metrics
+- **Grafana** dashboards
+- **Tempo** distributed tracing
+- persisted node/model/tool execution metadata for drill-down diagnostics
+
+Start it with:
+
+~~~powershell
+docker compose --profile monitoring up --build -d
+~~~
+
+## Documentation
+
+- [Runtime orchestration ADR](docs/adr/ADR-001-runtime-orchestration.md)
+- [V5 design plan](docs/autospec-v5-plan.md)
+- [Backend service contracts](docs/backend-service-contracts.md)
+- [Parallel workflow and embedding notes](docs/autospec-v5-p1-embedding-parallel.md)
+- [Failure drills](docs/backend-failure-drills.md)
+- [Dynamic workflow example](docs/examples/v5-dynamic-workflow-run.md)
+
+## Contributing
+
+Issues and pull requests are welcome. When changing OpenAPI, WorkflowSpec, database migrations or cross-language schemas, update the corresponding consumers, tests and documentation together.
+
+Use Conventional Commits where possible:
+
+~~~text
+feat: add workflow approval
+fix: reject stale worker event
+refactor: consolidate autospec v5 runtime
+docs: improve local startup guide
+test: cover evaluator delivery gate
+~~~
+
+---
+
+<div align="center">
+  <sub>AutoSpec V5 · auditable multi-Agent engineering from requirement to verified delivery.</sub>
+</div>

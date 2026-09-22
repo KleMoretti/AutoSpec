@@ -20,6 +20,8 @@ _ISSUE_TARGETS = {
     "CODE_EXPORT_SECRET": "backend_engineer",
     "RAG_SOURCE_CITATION": "architect",
     "CITATION_INVALID": "architect",
+    "SHARED_CONTRACT_BACKEND_DRIFT": "backend_engineer",
+    "SHARED_CONTRACT_FRONTEND_DRIFT": "frontend_engineer",
 }
 
 
@@ -39,6 +41,7 @@ class ReviewerAgent:
         generated_files: list[dict[str, Any] | str] | None = None,
         model_invocations: list[dict[str, Any]] | None = None,
         context_manifest: dict[str, Any] | None = None,
+        shared_contract_required: bool = False,
     ) -> ReviewReport:
         rule_issues = run_current_rule_checks(
             prd=prd,
@@ -68,7 +71,7 @@ class ReviewerAgent:
             input_payload["context_manifest"] = context_manifest or {}
 
             semantic_report = ReviewReport.model_validate(
-                self.model_client.generate_json(self.prompt_name, input_payload)
+                self.model_client.generate_json("ReviewerAgent_v2" if shared_contract_required else self.prompt_name, input_payload)
             )
             combined_issues = self._with_stable_issue_ids(
                 [*rule_issues, *semantic_report.issues]

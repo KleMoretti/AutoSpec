@@ -1,5 +1,6 @@
 package com.autospec.service;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.text.Normalizer;
@@ -13,12 +14,46 @@ import java.util.regex.Pattern;
  * index without changing retrieval or provenance contracts.
  */
 @Service
-public class KnowledgeEmbeddingService {
+public class KnowledgeEmbeddingService implements EmbeddingProvider {
     public static final String MODEL_VERSION = "autospec-hashing-ngram-v1";
     public static final int DIMENSIONS = 192;
     private static final Pattern TOKEN_PATTERN = Pattern.compile("[\\p{IsHan}]+|[\\p{Alnum}]+");
 
+    private final EmbeddingProvider delegate;
+
+    public KnowledgeEmbeddingService(
+            @Value("${autospec.environment:development}") String environment,
+            @Value("${autospec.knowledge.embedding.mode:fixture}") String mode,
+            @Value("${autospec.knowledge.embedding.base-url:}") String baseUrl,
+            @Value("${autospec.knowledge.embedding.api-key:}") String apiKey,
+            @Value("${autospec.knowledge.embedding.model:}") String model,
+            @Value("${autospec.knowledge.embedding.dimensions:0}") int dimensions
+    ) {
+        if ("live".equalsIgnoreCase(mode)) {
+            delegate = new OpenAiEmbeddingProvider(baseUrl, apiKey, model, dimensions);
+        } else if ("fixture".equalsIgnoreCase(mode)
+                && !"production".equalsIgnoreCase(environment)
+                && !"prod".equalsIgnoreCase(environment)) {
+            delegate = this;
+        } else {
+            throw new IllegalStateException("Production knowledge retrieval requires a live embedding provider");
+        }
+    }
+
+    @Override
+    public String modelVersion() {
+        return delegate == this ? MODEL_VERSION : delegate.modelVersion();
+    }
+
+    @Override
+    public int dimensions() {
+        return delegate == this ? DIMENSIONS : delegate.dimensions();
+    }
+
     public double[] embed(String value) {
+        if (delegate != this) {
+            return delegate.embed(value);
+        }
         double[] vector = new double[DIMENSIONS];
         String normalized = normalize(value);
         Matcher matcher = TOKEN_PATTERN.matcher(normalized);

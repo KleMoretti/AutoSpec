@@ -21,6 +21,7 @@ class BackendEngineerAgent:
         retrieved_sources: list[dict[str, Any]] | None = None,
         context_manifest: dict[str, Any] | None = None,
         rework_directive: dict[str, Any] | None = None,
+        shared_contract_required: bool = False,
     ) -> BackendDesignArtifact:
         input_payload: Mapping[str, Any] = {
             "requirement": requirement,
@@ -43,7 +44,7 @@ class BackendEngineerAgent:
             }
         if self.model_client is not None:
             return BackendDesignArtifact.model_validate(
-                self.model_client.generate_json(self.prompt_name, input_payload)
+                self.model_client.generate_json("BackendEngineerAgent_v3" if shared_contract_required else self.prompt_name, input_payload)
             )
 
         fallback = {

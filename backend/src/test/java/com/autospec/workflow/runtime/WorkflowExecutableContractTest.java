@@ -12,6 +12,20 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class WorkflowExecutableContractTest {
+    @Test
+    void parallelSharedContractVersionHasIndependentEngineeringBranches() throws Exception {
+        var mapper = new ObjectMapper();
+        var snapshot = Files.readString(Path.of("..", "agent-engine", "contracts",
+                "autospec-v5-parallel.workflow.json"));
+        var spec = new WorkflowSnapshotParser(mapper).parse(snapshot);
+        WorkflowExecutableContractValidator.validate(spec);
+        var graph = new DagCompiler().compile(spec);
+        assertThat(graph.topologicalLayers()).contains(java.util.List.of("backend_engineer", "frontend_engineer"));
+        assertThat(graph.predecessors().get("frontend_engineer")).containsExactly("architect");
+        assertThat(graph.predecessors().get("reviewer"))
+                .containsExactlyInAnyOrder("backend_engineer", "frontend_engineer");
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"v5", "v6"})
     void diagnosticPinsThinkingModeAndRejectsInvalidValues(String version) throws Exception {

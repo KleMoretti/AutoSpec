@@ -14,7 +14,6 @@ import com.autospec.entity.WorkflowRun;
 import com.autospec.mapper.WorkflowNodeRunMapper;
 import com.autospec.mapper.WorkflowRunMapper;
 import com.autospec.service.ProjectAccessService;
-import com.autospec.service.KnowledgeEmbeddingService;
 import com.autospec.service.KnowledgeIndexService;
 import com.autospec.service.KnowledgeQueryRewriter;
 import com.autospec.service.WorkflowReplayService;
@@ -215,7 +214,7 @@ public class WorkflowRuntimeController {
         trusted.put("retrieval_trace", Map.of(
                 "retriever_version", KnowledgeIndexService.RETRIEVAL_STRATEGY,
                 "query_rewrite_version", KnowledgeQueryRewriter.VERSION,
-                "embedding_version", KnowledgeEmbeddingService.MODEL_VERSION,
+                "embedding_version", knowledgeIndexService.embeddingVersion(),
                 "reranker_version", KnowledgeIndexService.RERANKER_VERSION,
                 "access_policy_version", KnowledgeIndexService.ACCESS_POLICY_VERSION,
                 "filters", Map.of(

@@ -18,7 +18,7 @@ from runtime.handler_registry import HandlerRegistry
 from runtime.context_policy import ContextPolicyError, apply_context_policy
 from runtime.execution_context import current_model_execution_contract
 from runtime.model_telemetry import ModelInvocationTelemetry, record_model_invocation
-from schemas.architecture_design import ArchitectureDesignArtifact
+from schemas.architecture_design import ArchitectureDesignArtifact, ArchitectureDesignArtifactV2
 from schemas.agent_loop import LoopPolicy
 from schemas.backend_design import BackendDesignArtifact
 from schemas.evaluation import EvaluationInput, EvaluationRuntimeInput, EvaluationReport
@@ -26,6 +26,7 @@ from schemas.frontend_skeleton import FrontendSkeletonArtifact
 from schemas.prd import PrdArtifact
 from schemas.rework import ReworkDirective
 from schemas.review import ReviewReport
+from review.shared_contract import validate_backend_contract
 
 
 class ProductManagerInput(BaseModel):
@@ -50,6 +51,17 @@ class FrontendNodeInput(PrdNodeInput):
 
 
 class ReviewerNodeInput(FrontendNodeInput):
+    backend_design: dict[str, Any]
+    frontend_skeleton: dict[str, Any]
+    generated_files: list[dict[str, Any] | str] = Field(default_factory=list)
+    model_invocations: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class FrontendNodeInputV2(PrdNodeInput):
+    architecture_design: dict[str, Any]
+
+
+class ReviewerNodeInputV2(FrontendNodeInputV2):
     backend_design: dict[str, Any]
     frontend_skeleton: dict[str, Any]
     generated_files: list[dict[str, Any] | str] = Field(default_factory=list)
@@ -122,6 +134,13 @@ def build_production_registry(model_client: ModelClient | None = None) -> Handle
         "reviewer",
         model_client,
     )
+    for handler_key, version, node_name, input_model, output_model, input_name, output_name, prompt_key in (
+        ("ArchitectAgent", "v2", "architect", PrdNodeInput, ArchitectureDesignArtifactV2, "ArchitectureInput", "ArchitectureDesignArtifactV2", "architect_shared"),
+        ("BackendEngineerAgent", "v3", "backend_engineer", BackendDesignInput, BackendDesignArtifact, "BackendDesignInput", "BackendDesignArtifact", "backend_engineer_shared"),
+        ("FrontendEngineerAgent", "v2", "frontend_engineer", FrontendNodeInputV2, FrontendSkeletonArtifact, "FrontendSkeletonInputV2", "FrontendSkeletonArtifact", "frontend_engineer_shared"),
+        ("ReviewerAgent", "v2", "reviewer", ReviewerNodeInputV2, ReviewReport, "ReviewInputV2", "ReviewReport", "reviewer_shared"),
+    ):
+        _register_agent_node(registry, handler_key, version, node_name, input_model, output_model, input_name, output_name, prompt_key, model_client)
     _register_agent_node(
         registry, "BackendEngineerAgent", "v2", "backend_engineer",
         BackendDesignInput, BackendDesignArtifact, "BackendDesignInput",
@@ -183,6 +202,8 @@ def _register_agent_node(
 
     def execute_single_shot(input_payload: BaseModel) -> dict[str, Any]:
         compacted_input, quality_profile = compact_input(input_payload)
+        if prompt_key.endswith("_shared"):
+            compacted_input["shared_contract_required"] = True
         with model_routing_request(quality_profile, node_name):
             record = run_agent_node(
                 node_name,
@@ -202,6 +223,8 @@ def _register_agent_node(
 
     async def execute_backend(input_payload: BaseModel) -> dict[str, Any]:
         compacted_input, quality_profile = compact_input(input_payload)
+        if handler_version == "v3":
+            compacted_input["shared_contract_required"] = True
         contract = current_model_execution_contract()
         policy = LoopPolicy.model_validate(
             contract.agent_loop_policy if contract is not None else {}
@@ -224,6 +247,11 @@ def _register_agent_node(
             raise BackendAgentLoopError(
                 f"Backend Engineer loop stopped with {result.stop_reason.value}",
                 result.stop_reason.value,
+            )
+        if prompt_key.endswith("_shared"):
+            validate_backend_contract(
+                ArchitectureDesignArtifactV2.model_validate(compacted_input["architecture_design"]),
+                BackendDesignArtifact.model_validate(result.candidate),
             )
         return result.candidate
 
@@ -316,6 +344,8 @@ def _validate_artifact_context(payload: dict[str, Any]) -> None:
         "review_report": ReviewReport,
     }
     parsed: dict[str, BaseModel] = {}
+    if isinstance(payload.get("architecture_design"), dict) and "shared_contract" in payload["architecture_design"]:
+        artifact_models["architecture_design"] = ArchitectureDesignArtifactV2
     for field, model in artifact_models.items():
         value = payload.get(field)
         if value is not None:
@@ -395,7 +425,7 @@ def _evaluate(input_payload: EvaluationInput) -> EvaluationReport:
     report = evaluate_artifacts(
         requirement=input_payload.requirement,
         prd=PrdArtifact.model_validate(input_payload.prd),
-        architecture_design=ArchitectureDesignArtifact.model_validate(
+        architecture_design=(ArchitectureDesignArtifactV2 if "shared_contract" in input_payload.architecture_design else ArchitectureDesignArtifact).model_validate(
             input_payload.architecture_design
         ),
         backend_design=BackendDesignArtifact.model_validate(input_payload.backend_design),
