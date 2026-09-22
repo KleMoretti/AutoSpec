@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import math
+import json
+from pathlib import Path
 from typing import Iterable
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -22,6 +24,8 @@ class RetrievalEvalCase(BaseModel):
     user_id: str = Field(min_length=1)
     corpus: CorpusType
     gold_document_ids: list[str] = Field(min_length=1)
+    forbidden_document_ids: list[str] = Field(default_factory=list)
+    expired_document_ids: list[str] = Field(default_factory=list)
     top_k: int = Field(default=5, ge=1, le=50)
 
 
@@ -33,6 +37,8 @@ class RetrievalCaseResult(BaseModel):
     reciprocal_rank: float = Field(ge=0.0, le=1.0)
     ndcg_at_k: float = Field(ge=0.0, le=1.0)
     rerank_hit: bool
+    acl_leak_count: int = Field(ge=0)
+    expired_hit_count: int = Field(ge=0)
     returned_document_ids: list[str] = Field(default_factory=list)
     failure_reason: str | None = None
 
@@ -45,17 +51,20 @@ class RetrievalEvaluation(BaseModel):
     mrr: float = Field(ge=0.0, le=1.0)
     ndcg_at_k: float = Field(ge=0.0, le=1.0)
     rerank_hit_rate: float = Field(ge=0.0, le=1.0)
+    acl_leakage_rate: float = Field(ge=0.0, le=1.0)
+    expired_document_hit_rate: float = Field(ge=0.0, le=1.0)
     failure_cases: list[RetrievalCaseResult] = Field(default_factory=list)
     case_results: list[RetrievalCaseResult] = Field(default_factory=list)
 
 
-RETRIEVAL_DATASET_VERSION = "autospec-rag-eval-v1"
+RETRIEVAL_DATASET_VERSION = "autospec-retrieval-gold-v2"
 
 
 def run_retrieval_evaluation(
     retriever: HybridRetriever,
     cases: Iterable[RetrievalEvalCase],
 ) -> RetrievalEvaluation:
+    cases = list(cases)
     results: list[RetrievalCaseResult] = []
     for case in cases:
         result = retriever.retrieve(
@@ -89,6 +98,8 @@ def run_retrieval_evaluation(
             reciprocal_rank=round(reciprocal_rank, 6),
             ndcg_at_k=round(ndcg, 6),
             rerank_hit=bool(relevant_positions),
+            acl_leak_count=len(set(returned) & set(case.forbidden_document_ids)),
+            expired_hit_count=len(set(returned) & set(case.expired_document_ids)),
             returned_document_ids=returned,
             failure_reason=failure_reason,
         )
@@ -100,8 +111,19 @@ def run_retrieval_evaluation(
         mrr=round(sum(item.reciprocal_rank for item in results) / count, 6) if count else 0.0,
         ndcg_at_k=round(sum(item.ndcg_at_k for item in results) / count, 6) if count else 0.0,
         rerank_hit_rate=round(sum(item.rerank_hit for item in results) / count, 6) if count else 0.0,
+        acl_leakage_rate=round(sum(item.acl_leak_count for item in results) / max(1, sum(len(case.forbidden_document_ids) for case in cases)), 6),
+        expired_document_hit_rate=round(sum(item.expired_hit_count for item in results) / max(1, sum(len(case.expired_document_ids) for case in cases)), 6),
         failure_cases=[item for item in results if item.failure_reason is not None],
         case_results=results,
+)
+
+
+def load_gold_dataset() -> tuple[list[RagDocument], list[RetrievalEvalCase]]:
+    path = Path(__file__).parent / "datasets" / "autospec_retrieval_gold_v2.json"
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    return (
+        [RagDocument.model_validate(item) for item in payload["documents"]],
+        [RetrievalEvalCase.model_validate(item) for item in payload["cases"]],
     )
 
 

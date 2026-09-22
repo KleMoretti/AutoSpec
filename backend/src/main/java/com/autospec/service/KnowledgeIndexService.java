@@ -76,6 +76,10 @@ public class KnowledgeIndexService {
         return corpusEpochService.current(projectId);
     }
 
+    public String embeddingVersion() {
+        return embeddingService.modelVersion();
+    }
+
     public String actorScopeHash(Long projectId, Long userId) {
         if (projectId == null || userId == null) {
             return null;
@@ -104,7 +108,7 @@ public class KnowledgeIndexService {
         String queryHash = ContentHash.sha256(query == null ? "" : query.trim());
         String policyHash = ContentHash.sha256(
                 RETRIEVAL_STRATEGY + "|" + KnowledgeQueryRewriter.VERSION + "|"
-                        + KnowledgeEmbeddingService.MODEL_VERSION + "|" + RERANKER_VERSION + "|"
+                        + embeddingService.modelVersion() + "|" + RERANKER_VERSION + "|"
                         + ACCESS_POLICY_VERSION + "|ALL_PROJECT_CORPORA"
         );
         int safeLimit = Math.max(1, Math.min(limit, 50));
@@ -127,7 +131,7 @@ public class KnowledgeIndexService {
                 && STATUS_ACTIVE.equals(document.getStatus())
                 && contentHash.equals(document.getContentHash())
                 && CHUNKER_VERSION.equals(document.getChunkerVersion())
-                && KnowledgeEmbeddingService.MODEL_VERSION.equals(document.getEmbeddingModel())
+                && embeddingService.modelVersion().equals(document.getEmbeddingModel())
                 && KnowledgeCorpus.fromArtifactType(artifact.getType()).name()
                 .equals(KnowledgeCorpus.normalize(document.getCorpusType()))
                 && hasHealthyChunks(document)) {
@@ -146,7 +150,7 @@ public class KnowledgeIndexService {
             document.setStatus(STATUS_INDEXING);
             document.setContentHash(contentHash);
             document.setChunkerVersion(CHUNKER_VERSION);
-            document.setEmbeddingModel(KnowledgeEmbeddingService.MODEL_VERSION);
+            document.setEmbeddingModel(embeddingService.modelVersion());
             document.setCreatedAt(now);
             document.setUpdatedAt(now);
             try {
@@ -177,7 +181,7 @@ public class KnowledgeIndexService {
             chunk.setTokenHint(Math.max(1, content.length() / 4));
             chunk.setRetrievalTerms(extractTerms(content));
             chunk.setContentHash(ContentHash.sha256(content));
-            chunk.setEmbeddingModel(KnowledgeEmbeddingService.MODEL_VERSION);
+            chunk.setEmbeddingModel(embeddingService.modelVersion());
             chunk.setEmbeddingDimensions(embedding.length);
             chunk.setEmbeddingJson(writeEmbedding(embedding));
             chunk.setVectorRef("knowledge_chunk:" + ContentHash.sha256(content));
@@ -252,7 +256,7 @@ public class KnowledgeIndexService {
                 .set(KnowledgeDocument::getStatus, STATUS_FAILED)
                 .set(KnowledgeDocument::getContentHash, contentHash)
                 .set(KnowledgeDocument::getChunkerVersion, CHUNKER_VERSION)
-                .set(KnowledgeDocument::getEmbeddingModel, KnowledgeEmbeddingService.MODEL_VERSION)
+                .set(KnowledgeDocument::getEmbeddingModel, embeddingService.modelVersion())
                 .set(KnowledgeDocument::getCorpusType,
                         KnowledgeCorpus.fromArtifactType(artifact.getType()).name())
                 .set(KnowledgeDocument::getFailureMessage, failureMessage(failure))
@@ -347,7 +351,7 @@ public class KnowledgeIndexService {
                 || document.getContentHash() == null
                 || !document.getContentHash().matches("^[0-9a-f]{64}$")
                 || !CHUNKER_VERSION.equals(document.getChunkerVersion())
-                || !KnowledgeEmbeddingService.MODEL_VERSION.equals(document.getEmbeddingModel())
+                || !embeddingService.modelVersion().equals(document.getEmbeddingModel())
                 || !hasHealthyChunks(document);
     }
 
@@ -393,7 +397,7 @@ public class KnowledgeIndexService {
         for (KnowledgeDocument document : documents) {
             if (!STATUS_ACTIVE.equals(document.getStatus())
                     || !CHUNKER_VERSION.equals(document.getChunkerVersion())
-                    || !KnowledgeEmbeddingService.MODEL_VERSION.equals(document.getEmbeddingModel())) {
+                    || !embeddingService.modelVersion().equals(document.getEmbeddingModel())) {
                 continue;
             }
             Set<String> titleTerms = terms(document.getTitle() + " " + document.getArtifactType());
@@ -576,9 +580,9 @@ public class KnowledgeIndexService {
     }
 
     private double[] readStoredEmbedding(KnowledgeChunk chunk) {
-        if (KnowledgeEmbeddingService.MODEL_VERSION.equals(chunk.getEmbeddingModel())
+        if (embeddingService.modelVersion().equals(chunk.getEmbeddingModel())
                 && chunk.getEmbeddingDimensions() != null
-                && chunk.getEmbeddingDimensions() == KnowledgeEmbeddingService.DIMENSIONS
+                && chunk.getEmbeddingDimensions() == embeddingService.dimensions()
                 && chunk.getEmbeddingJson() != null) {
             try {
                 return objectMapper.readValue(chunk.getEmbeddingJson(), double[].class);
@@ -624,7 +628,7 @@ public class KnowledgeIndexService {
                 .set(KnowledgeDocument::getStatus, STATUS_INDEXING)
                 .set(KnowledgeDocument::getContentHash, contentHash)
                 .set(KnowledgeDocument::getChunkerVersion, CHUNKER_VERSION)
-                .set(KnowledgeDocument::getEmbeddingModel, KnowledgeEmbeddingService.MODEL_VERSION)
+                .set(KnowledgeDocument::getEmbeddingModel, embeddingService.modelVersion())
                 .set(KnowledgeDocument::getFailureMessage, null)
                 .set(KnowledgeDocument::getUpdatedAt, now)
                 .update();

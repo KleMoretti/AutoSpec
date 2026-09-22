@@ -2,7 +2,8 @@ from typing import Any
 
 from schemas.backend_design import BackendDesignArtifact
 from schemas.prd import PrdArtifact
-from schemas.architecture_design import ArchitectureDesignArtifact
+from schemas.architecture_design import ArchitectureDesignArtifact, ArchitectureDesignArtifactV2
+from review.shared_contract import validate_backend_contract, validate_frontend_contract
 from schemas.frontend_skeleton import FrontendSkeletonArtifact
 from schemas.review import ReviewIssue
 from review.citation_gate import validate_citations
@@ -69,6 +70,17 @@ def run_current_rule_checks(
     generated_files: list[dict[str, Any] | str] | None = None,
 ) -> list[ReviewIssue]:
     issues = run_rule_checks(prd, backend_design)
+    if isinstance(architecture_design, ArchitectureDesignArtifactV2):
+        for check, target in ((validate_backend_contract, "backend_engineer"), (validate_frontend_contract, "frontend_engineer")):
+            try:
+                check(architecture_design, backend_design if target == "backend_engineer" else frontend_skeleton)
+            except ValueError as exception:
+                issues.append(_issue(
+                    severity="HIGH",
+                    issue_type="SHARED_CONTRACT_BACKEND_DRIFT" if target == "backend_engineer" else "SHARED_CONTRACT_FRONTEND_DRIFT",
+                    description=str(exception),
+                    suggestion=f"Rework {target} against the Architect Shared Contract without changing its stable API ids.",
+                ))
     issues.extend(
         _run_cross_artifact_checks(
             prd,

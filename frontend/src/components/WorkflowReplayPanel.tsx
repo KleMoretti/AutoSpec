@@ -91,7 +91,7 @@ function WorkflowReplayPanel({
 
   useEffect(() => {
     if (!startVersionId && publishedVersions.length > 0) {
-      setStartVersionId(publishedVersions[0]?.id);
+      setStartVersionId(preferredStartVersionId(publishedVersions));
     }
   }, [publishedVersions, startVersionId]);
 
@@ -548,6 +548,11 @@ function WorkflowReplayPanel({
       </Space>
     </section>
   );
+}
+
+export function preferredStartVersionId(versions: WorkflowVersionResponse[]): number | undefined {
+  return versions.find((version) => version.status === 'PUBLISHED' && version.version === 'v5-parallel')?.id
+    ?? versions.find((version) => version.status === 'PUBLISHED')?.id;
 }
 
 export function buildReplayPayload(

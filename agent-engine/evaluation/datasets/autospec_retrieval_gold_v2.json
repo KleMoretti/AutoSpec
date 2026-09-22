@@ -1,0 +1,16 @@
+{
+  "dataset_version": "autospec-retrieval-gold-v2",
+  "documents": [
+    {"document_id":"prd-pagination","corpus":"PROJECT_ARTIFACT","project_id":"campus","version":"v2","content":"Cursor pagination must preserve ordering and avoid duplicate delivery for product search."},
+    {"document_id":"api-permission","corpus":"PROJECT_ARTIFACT","project_id":"campus","version":"v1","content":"Product audit API requires ADMIN role and records the decision reason."},
+    {"document_id":"frontend-empty-state","corpus":"PROJECT_ARTIFACT","project_id":"campus","version":"v1","content":"Search page shows loading, empty result, and error states."},
+    {"document_id":"other-project-secret","corpus":"PROJECT_ARTIFACT","project_id":"other","version":"v1","content":"Cursor pagination private schema and API secrets."},
+    {"document_id":"other-user-private","corpus":"PROJECT_ARTIFACT","project_id":"campus","allowed_user_ids":["bob"],"version":"v1","content":"Product audit API private ADMIN decision reason."},
+    {"document_id":"expired-spec","corpus":"PROJECT_ARTIFACT","project_id":"campus","version":"v0","expires_at_epoch_ms":1,"content":"Cursor pagination obsolete product search guidance."}
+  ],
+  "cases": [
+    {"case_id":"cursor-pagination","query":"cursor pagination duplicate delivery","project_id":"campus","user_id":"alice","corpus":"PROJECT_ARTIFACT","gold_document_ids":["prd-pagination"],"forbidden_document_ids":["other-project-secret","other-user-private"],"expired_document_ids":["expired-spec"],"top_k":1},
+    {"case_id":"audit-authorization","query":"product audit ADMIN decision reason","project_id":"campus","user_id":"alice","corpus":"PROJECT_ARTIFACT","gold_document_ids":["api-permission"],"forbidden_document_ids":["other-project-secret","other-user-private"],"expired_document_ids":["expired-spec"],"top_k":1},
+    {"case_id":"frontend-states","query":"search page empty loading error","project_id":"campus","user_id":"alice","corpus":"PROJECT_ARTIFACT","gold_document_ids":["frontend-empty-state"],"forbidden_document_ids":["other-project-secret","other-user-private"],"expired_document_ids":["expired-spec"],"top_k":1}
+  ]
+}

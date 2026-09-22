@@ -4,13 +4,13 @@ AutoSpec is an auditable requirements-to-contract platform. A user submits a sof
 
 ## Canonical V5 workflow
 
-The product UI now exposes one generation path: the published `autospec-v5:v5` workflow.
+The product UI exposes one generation path and defaults new runs to published `autospec-v5:v5-parallel`. The original `autospec-v5:v5` remains selectable for reproducible historical runs.
 
 - Spring Boot owns immutable workflow versions, frozen run snapshots, DAG reconciliation, transactional Outbox, approval, targeted rework, cancellation, recovery, replay, and artifact history.
 - Redis Streams transports at-least-once node commands and terminal or heartbeat events to Python Workers.
 - Python handlers load versioned prompts, validate every role output with Pydantic, and can use an OpenAI-compatible live model gateway.
-- Backend and frontend engineering run in parallel after architecture; Reviewer joins both branches and Evaluator applies the final delivery gate.
-- The canonical graph lives in `agent-engine/contracts/autospec-v5.workflow.json`; CI verifies that it is identical to the immutable database seed.
+- In `v5-parallel`, Architect freezes a typed Shared Contract; Backend and Frontend each depend only on Architect, and Reviewer joins both branches. The original `v5` graph remains serial.
+- Both versioned graphs live in `agent-engine/contracts/`; CI verifies each against its immutable database seed.
 
 The local `fixture` model mode is deterministic and intended only for development and tests. Production rejects fixture mode and requires explicit live-model configuration.
 
@@ -32,7 +32,7 @@ The local `fixture` model mode is deterministic and intended only for developmen
 - Artifact history now distinguishes latest, approved, and candidate versions. Every artifact records its parent/upstream versions, content hash, schema and prompt version, selected model route, context policy, and exact knowledge citations; users can inspect field-level diffs and restore an older version as a new candidate without rewriting history.
 - Review findings are actionable records with a stable issue key, artifact path, requirement evidence, owner, resolution, and resolved artifact version. High-severity findings must be resolved or explicitly ignored with a reason before approval.
 - Every V5 run freezes a Fast, Balanced, or Deep execution policy. Provider/model decisions, fallback reason, input/output/cache tokens, model calls, estimated cost, and compacted-context manifest are persisted, while atomic token/cost/call/time budgets stop over-budget runs.
-- Project knowledge retrieval combines lexical and stored-vector ranking with reciprocal-rank fusion, remains project-scoped, and returns exact chunk identifiers and excerpts. Evaluation rejects unknown or unfaithful citations.
+- Project knowledge retrieval combines lexical and stored-vector ranking with reciprocal-rank fusion, remains project-scoped, and returns exact chunk identifiers and excerpts. Live mode uses a dedicated OpenAI-compatible EmbeddingProvider; hashing vectors remain a development fixture. Evaluation rejects unknown or unfaithful citations.
 - The frontend now provides a searchable project dashboard and a staged Intake -> Generate -> Review & fix -> Deliver workspace, with specialized PRD, architecture, API/data, frontend, evaluation, provenance, version-diff, and runtime-usage views.
 - The evaluation catalog contains 20 cross-domain cases and experiment comparison supports automatic metrics, human scores, and prompt/model A/B deltas.
 
@@ -82,6 +82,18 @@ MODEL_API_KEY=...
 MODEL_BASE_URL=https://your-openai-compatible-endpoint/v1
 MODEL_NAME=...
 ```
+
+For semantic project-knowledge retrieval, independently configure the embeddings endpoint (the chat endpoint may not support embeddings):
+
+```dotenv
+AUTOSPEC_EMBEDDING_MODE=live
+EMBEDDING_BASE_URL=https://your-embedding-endpoint/v1
+EMBEDDING_API_KEY=...
+EMBEDDING_MODEL=...
+EMBEDDING_DIMENSIONS=...
+```
+
+Changing the embedding model triggers a version-based reindex through the enabled knowledge recovery job; until reindex finishes, old-model chunks are excluded rather than mixed into scores. See [P1 implementation notes](docs/autospec-v5-p1-embedding-parallel.md) and [runtime ADR](docs/adr/ADR-001-runtime-orchestration.md).
 
 For production, also use `AUTOSPEC_ENV=production`, disable the demo user, enable Secure/Strict cookies, use a non-root database user, supply a TLS-enabled `DB_URL` (for example with `sslMode=VERIFY_IDENTITY`), enable Redis TLS, and deploy data/internal services on private networks.
 

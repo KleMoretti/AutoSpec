@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import type { WorkflowRunResponse, WorkflowVersionResponse } from '../api/workflow';
-import WorkflowReplayPanel, { buildReplayPayload, buildStartPayload, formatDuration } from './WorkflowReplayPanel';
+import WorkflowReplayPanel, { buildReplayPayload, buildStartPayload, formatDuration, preferredStartVersionId } from './WorkflowReplayPanel';
 
 const run: WorkflowRunResponse = {
   id: 12,
@@ -23,6 +23,11 @@ const version: WorkflowVersionResponse = {
 };
 
 describe('WorkflowReplayPanel', () => {
+  it('defaults new runs to the published parallel version', () => {
+    expect(preferredStartVersionId([version, { ...version, id: 8, version: 'v5-parallel' }])).toBe(8);
+    expect(preferredStartVersionId([version, { ...version, id: 8, version: 'v5-parallel', status: 'DRAFT' }])).toBe(7);
+  });
+
   it('shows source runs, replay modes, and timeline entry points', () => {
     const html = renderToStaticMarkup(
       <WorkflowReplayPanel
