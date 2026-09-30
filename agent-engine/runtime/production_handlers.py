@@ -234,7 +234,9 @@ def _register_agent_node(
 
     def execute_single_shot(input_payload: BaseModel) -> dict[str, Any]:
         compacted_input, quality_profile = compact_input(input_payload)
-        if prompt_key.endswith("_shared"):
+        if prompt_key.endswith("_shared") or (
+            handler_key == "ArchitectAgent" and handler_version == "v3"
+        ):
             compacted_input["shared_contract_required"] = True
         if rule_profile is not None:
             compacted_input["rule_profile"] = rule_profile

@@ -98,6 +98,28 @@ async def test_frontend_handler_consumes_backend_contract_output() -> None:
     assert rejected.error_code == "VALIDATION_ERROR"
 
 
+@pytest.mark.asyncio
+async def test_architect_schema_handler_selects_shared_contract_output() -> None:
+    executor = NodeExecutor(build_production_registry())
+    product = await executor.execute(
+        command(
+            "ProductManagerAgent",
+            {"requirement": "Build an inventory workspace"},
+            node_id="product_manager",
+        )
+    )
+    architect = await executor.execute(
+        command(
+            "ArchitectAgent",
+            {"requirement": "Build an inventory workspace", "prd": product.output_payload},
+            node_id="architect",
+        ).model_copy(update={"handler_version": "v3"})
+    )
+
+    assert architect.event_type == "NODE_SUCCEEDED"
+    assert "shared_contract" in architect.output_payload
+
+
 def _requirement_refs(value: object) -> set[str]:
     if isinstance(value, dict):
         direct = set(value.get("requirement_refs", []))
