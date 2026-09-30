@@ -206,6 +206,25 @@ class WorkflowExecutableContractTest {
                 .isEqualTo("spec-full-v2");
     }
 
+    @Test
+    void pmSchemaRepairV11CandidatePreservesEvaluatorRetrievalProvenance() throws Exception {
+        var mapper = new ObjectMapper();
+        var snapshot = Files.readString(Path.of("..", "agent-engine", "contracts",
+                "autospec-pm-schema-repair-v11.workflow.json"));
+        var spec = new WorkflowSnapshotParser(mapper).parse(snapshot);
+        WorkflowExecutableContractValidator.validate(spec);
+
+        var evaluator = spec.nodes().stream()
+                .filter(value -> "evaluator".equals(value.nodeId()))
+                .findFirst()
+                .orElseThrow();
+
+        assertThat(evaluator.agentName()).isEqualTo("EvaluatorAgent_v4");
+        assertThat(evaluator.inputSchema()).isEqualTo("EvaluationInputV3");
+        assertThat(evaluator.inputSchemaHash())
+                .isEqualTo("2dcdb7bff37b4c1638210ce0e3d35b125eb7d9cc670243d8e1b6b4c0397cab83");
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"v5", "v6"})
     void diagnosticPinsThinkingModeAndRejectsInvalidValues(String version) throws Exception {

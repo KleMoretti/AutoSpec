@@ -264,6 +264,21 @@ class EvaluationInputV2(EvaluationInput):
     verification_fact: dict[str, Any] | None = None
 
 
+class EvaluationInputV3(EvaluationInputV2):
+    """Candidate evaluator input with trusted control-plane retrieval provenance."""
+
+    retrieval_policy: RetrievalPolicySpec | str | None = None
+    retrieval_project_id: int | None = Field(default=None, ge=1)
+    retrieval_node_id: str | None = None
+    corpus_epoch: int | None = Field(default=None, ge=0)
+    actor_scope_hash: str | None = None
+    retrieval_cache_key: str | None = None
+    retrieval_cache: dict[str, Any] = Field(default_factory=dict)
+    retrieval_trace: dict[str, Any] = Field(default_factory=dict)
+    retrieval_snapshot: dict[str, Any] = Field(default_factory=dict)
+    rework_directive: dict[str, Any] | None = None
+
+
 class EvaluationRuntimeInput(EvaluationInput):
     """V2 worker input: preserve trusted control-plane retrieval provenance."""
 

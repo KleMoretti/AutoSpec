@@ -25,6 +25,7 @@ from schemas.backend_design import BackendDesignArtifact
 from schemas.evaluation import (
     EvaluationInput,
     EvaluationInputV2,
+    EvaluationInputV3,
     EvaluationRuntimeInput,
     EvaluationReport,
     EvaluationReportV2,
@@ -203,6 +204,12 @@ def build_production_registry(model_client: ModelClient | None = None) -> Handle
     registry.register(
         "EvaluatorAgent", "v3", EvaluationInputV2, EvaluationReportV2, _execute_evaluator,
         input_schema="EvaluationInputV2", output_schema="EvaluationReportV2",
+        prompt_key="evaluator", prompt_version="v1",
+        prompt_checksum=_prompt_checksum("evaluator", "v1"),
+    )
+    registry.register(
+        "EvaluatorAgent", "v4", EvaluationInputV3, EvaluationReportV2, _execute_evaluator,
+        input_schema="EvaluationInputV3", output_schema="EvaluationReportV2",
         prompt_key="evaluator", prompt_version="v1",
         prompt_checksum=_prompt_checksum("evaluator", "v1"),
     )

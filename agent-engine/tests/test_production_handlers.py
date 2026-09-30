@@ -41,6 +41,7 @@ def test_registry_contains_all_builtin_v5_handlers() -> None:
     assert registry.resolve("FrontendEngineerAgent", "v3")
     assert registry.resolve("ReviewerAgent", "v4")
     assert registry.resolve("ReviewerAgent", "v5")
+    assert registry.resolve("EvaluatorAgent", "v4")
 
 
 @pytest.mark.asyncio
@@ -98,6 +99,10 @@ async def test_frontend_handler_consumes_backend_contract_output() -> None:
         update={"handler_version": "v2"}))
     assert new.error_code == "QUALITY_GATE_BLOCKED", new.error_message
     assert "RUNTIME_EVIDENCE_MISSING" in new.error_message  # reaches the real evaluator, still fails closed
+    candidate = await executor.execute(command("EvaluatorAgent", runtime_input, node_id="evaluator").model_copy(
+        update={"handler_version": "v4"}))
+    assert candidate.error_code == "QUALITY_GATE_BLOCKED", candidate.error_message
+    assert "RUNTIME_EVIDENCE_MISSING" in candidate.error_message
     runtime_input["unknown_business_field"] = "must not be silently accepted"
     rejected = await executor.execute(command("EvaluatorAgent", runtime_input, node_id="evaluator").model_copy(
         update={"handler_version": "v2"}))

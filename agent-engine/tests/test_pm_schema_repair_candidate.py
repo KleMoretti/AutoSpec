@@ -18,6 +18,7 @@ CANDIDATE_V7 = ENGINE / "contracts/autospec-pm-schema-repair-v7.workflow.json"
 CANDIDATE_V8 = ENGINE / "contracts/autospec-pm-schema-repair-v8.workflow.json"
 CANDIDATE_V9 = ENGINE / "contracts/autospec-pm-schema-repair-v9.workflow.json"
 CANDIDATE_V10 = ENGINE / "contracts/autospec-pm-schema-repair-v10.workflow.json"
+CANDIDATE_V11 = ENGINE / "contracts/autospec-pm-schema-repair-v11.workflow.json"
 
 
 def _document() -> dict:
@@ -217,3 +218,13 @@ def test_candidate_v10_uses_narrow_historical_reuse_gate() -> None:
     assert reviewer["agent_name"] == "ReviewerAgent_v5"
     assert reviewer["prompt_key"] == "reviewer_schema_v2"
     assert reviewer["verification_policy"]["rule_profile"] == "spec-full-v2"
+
+
+def test_candidate_v11_preserves_retrieval_provenance_for_evaluator() -> None:
+    document = json.loads(CANDIDATE_V11.read_text(encoding="utf-8"))
+    WorkflowSpec.model_validate(document)
+    evaluator = next(node for node in document["nodes"] if node["node_id"] == "evaluator")
+    assert document["version"] == "pm-schema-repair-v11"
+    assert evaluator["agent_name"] == "EvaluatorAgent_v4"
+    assert evaluator["input_schema"] == "EvaluationInputV3"
+    assert evaluator["input_schema_hash"] == "2dcdb7bff37b4c1638210ce0e3d35b125eb7d9cc670243d8e1b6b4c0397cab83"
