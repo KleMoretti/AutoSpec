@@ -69,7 +69,14 @@ public class SpecVerificationClient {
                     .build();
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() >= 400) {
-                throw new IllegalStateException("spec verifier rejected the request: HTTP " + response.statusCode());
+                String responseBody = response.body() == null ? "" : response.body().trim();
+                if (responseBody.length() > 512) {
+                    responseBody = responseBody.substring(0, 512);
+                }
+                throw new IllegalStateException(
+                        "spec verifier rejected the request: HTTP " + response.statusCode()
+                                + (responseBody.isBlank() ? "" : ": " + responseBody)
+                );
             }
             return objectMapper.readTree(response.body());
         } catch (JsonProcessingException exception) {
