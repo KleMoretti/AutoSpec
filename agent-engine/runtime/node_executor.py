@@ -36,6 +36,7 @@ from schemas.workflow_spec import (
     ModelPolicy,
     RetryPolicy,
     ToolPolicy,
+    VerificationPolicy,
 )
 
 
@@ -179,6 +180,7 @@ class NodeCommand(TraceContextEnvelope):
     fallback: dict[str, Any] = Field(default_factory=dict)
     tool_policy: dict[str, Any] = Field(default_factory=dict)
     agent_loop_policy: dict[str, Any] = Field(default_factory=dict)
+    verification_policy: dict[str, Any] = Field(default_factory=dict)
     budget_reservation: BudgetReservation | None = None
     deadline_epoch_ms: int = Field(default=0, ge=0)
     execution_bundle_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
@@ -193,6 +195,8 @@ class NodeCommand(TraceContextEnvelope):
             policy = LoopPolicy.model_validate(self.agent_loop_policy)
             validate_loop_budget(policy, int(self.model_policy.get("max_calls", 1)),
                                  bool(self.tool_policy.get("enabled", False)))
+        if self.verification_policy:
+            VerificationPolicy.model_validate(self.verification_policy)
         if self.protocol_version == 0:
             if self.contract_hash is not None:
                 raise ValueError("contract_hash requires protocol_version 1")
@@ -610,6 +614,7 @@ class NodeExecutor:
             schema_version=command.output_schema,
             tool_policy=dict(command.tool_policy),
             agent_loop_policy=dict(command.agent_loop_policy),
+            verification_policy=dict(command.verification_policy),
         )
 
     def _execution_metadata(
@@ -670,6 +675,8 @@ def contract_fingerprint(command: NodeCommand) -> str:
             material["tool_policy"] = command.tool_policy
         if command.agent_loop_policy:
             material["agent_loop_policy"] = command.agent_loop_policy
+        if command.verification_policy:
+            material["verification_policy"] = command.verification_policy
     canonical = json.dumps(
         material,
         ensure_ascii=False,

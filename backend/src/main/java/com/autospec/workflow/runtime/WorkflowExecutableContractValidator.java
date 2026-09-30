@@ -31,6 +31,7 @@ public final class WorkflowExecutableContractValidator {
             "cached_input_cost_per_million",
             "output_cost_per_million",
             "required_capabilities"
+            , "structured_output_repair"
     );
     private static final Set<String> CONTEXT_FIELDS = Set.of(
             "version",
@@ -130,6 +131,12 @@ public final class WorkflowExecutableContractValidator {
         rejectUnknown(node.modelPolicy(), MODEL_FIELDS, "model_policy", node.nodeId());
         rejectUnknown(node.retryPolicy(), RETRY_FIELDS, "retry_policy", node.nodeId());
         rejectUnknown(node.fallback(), FALLBACK_FIELDS, "fallback", node.nodeId());
+        rejectUnknown(node.verificationPolicy(), Set.of(
+                "enabled", "scope", "required_level", "rule_profile",
+                "verifier_version", "compiler_version", "timeout_ms"
+        ), "verification_policy", node.nodeId());
+        validateStructuredOutputRepair(node);
+        validateVerificationPolicy(node, protocolVersion);
         if (protocolVersion < 2 && !node.toolPolicy().isEmpty()) {
             throw new IllegalArgumentException(
                     "Node tool_policy requires protocol version 2: " + node.nodeId()
@@ -255,6 +262,49 @@ public final class WorkflowExecutableContractValidator {
         }
     }
 
+    private static void validateStructuredOutputRepair(WorkflowNodeDocument node) {
+        JsonNode repair = node.modelPolicy().path("structured_output_repair");
+        if (repair.isMissingNode() || repair.isNull()) {
+            return;
+        }
+        if (!repair.isObject()) {
+            throw new IllegalArgumentException("structured_output_repair must be an object: " + node.nodeId());
+        }
+        rejectUnknown(repair, Set.of("enabled", "max_repairs", "error_codes"),
+                "model_policy.structured_output_repair", node.nodeId());
+        int maxRepairs = repair.path("max_repairs").asInt(0);
+        if (maxRepairs < 0 || maxRepairs > 1
+                || (repair.path("enabled").asBoolean(false) && maxRepairs != 1)
+                || !repair.path("error_codes").isArray()) {
+            throw new IllegalArgumentException("structured output repair quota is invalid: " + node.nodeId());
+        }
+    }
+
+    private static void validateVerificationPolicy(WorkflowNodeDocument node, int protocolVersion) {
+        JsonNode policy = node.verificationPolicy();
+        if (policy == null || policy.isEmpty()) {
+            return;
+        }
+        if (protocolVersion < 2) {
+            throw new IllegalArgumentException("verification_policy requires protocol version 2: " + node.nodeId());
+        }
+        String scope = policy.path("scope").asText("FULL");
+        String required = policy.path("required_level").asText("NONE");
+        if (!Set.of("BACKEND", "FULL").contains(scope)
+                || !Set.of("NONE", "L1", "L2").contains(required)
+                || (policy.path("enabled").asBoolean(false) && "NONE".equals(required))
+                || (!policy.path("enabled").asBoolean(false) && !"NONE".equals(required))) {
+            throw new IllegalArgumentException("verification_policy level or scope is invalid: " + node.nodeId());
+        }
+        int timeout = policy.path("timeout_ms").asInt(30_000);
+        if (timeout < 1_000 || timeout > 900_000
+                || text(policy, "rule_profile") == null
+                || text(policy, "verifier_version") == null
+                || text(policy, "compiler_version") == null) {
+            throw new IllegalArgumentException("verification_policy metadata is invalid: " + node.nodeId());
+        }
+    }
+
     private static void validateToolPolicy(WorkflowNodeDocument node) {
         JsonNode policy = node.toolPolicy();
         if (policy == null || policy.isEmpty()) {
@@ -306,7 +356,7 @@ public final class WorkflowExecutableContractValidator {
             }
             effects.forEach(effect -> {
                 if (!effect.isTextual()
-                        || !Set.of("READ_ONLY", "DETERMINISTIC", "WRITE")
+                        || !Set.of("READ_ONLY", "DETERMINISTIC", "SANDBOXED", "WRITE")
                         .contains(effect.asText())) {
                     throw new IllegalArgumentException(
                             "Node tool_policy contains an unsupported side effect: " + node.nodeId()

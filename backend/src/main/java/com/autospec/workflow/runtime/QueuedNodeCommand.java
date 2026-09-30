@@ -41,6 +41,7 @@ public record QueuedNodeCommand(
         @JsonProperty("fallback") JsonNode fallback,
         @JsonProperty("tool_policy") JsonNode toolPolicy,
         @JsonProperty("agent_loop_policy") JsonNode agentLoopPolicy,
+        @JsonProperty("verification_policy") JsonNode verificationPolicy,
         @JsonProperty("budget_reservation") WorkflowBudgetReservation budgetReservation,
         @JsonProperty("deadline_epoch_ms") long deadlineEpochMs,
         @JsonProperty("execution_bundle_hash") String executionBundleHash
@@ -55,6 +56,7 @@ public record QueuedNodeCommand(
         fallback = objectOrEmpty(fallback, "fallback");
         toolPolicy = objectOrEmpty(toolPolicy, "toolPolicy");
         agentLoopPolicy = objectOrEmpty(agentLoopPolicy, "agentLoopPolicy");
+        verificationPolicy = objectOrEmpty(verificationPolicy, "verificationPolicy");
         if (!inputPayload.isObject()) {
             throw new IllegalArgumentException("inputPayload must be a JSON object");
         }
@@ -107,6 +109,53 @@ public record QueuedNodeCommand(
         } else if (protocolVersion < 0 || protocolVersion > 2) {
             throw new IllegalArgumentException("unsupported protocolVersion: " + protocolVersion);
         }
+    }
+
+    /** Compatibility constructor for protocol snapshots created before verification_policy. */
+    public QueuedNodeCommand(
+            String eventId,
+            long workflowRunId,
+            long nodeRunId,
+            String nodeId,
+            int revision,
+            int attempt,
+            String executionId,
+            String handlerKey,
+            String handlerVersion,
+            int timeoutMs,
+            JsonNode inputPayload,
+            String correlationId,
+            String traceparent,
+            String tracestate,
+            int protocolVersion,
+            String contractHash,
+            String inputSchema,
+            String inputSchemaHash,
+            String outputSchema,
+            String outputSchemaHash,
+            String promptKey,
+            String promptVersion,
+            String promptChecksum,
+            JsonNode contextPolicy,
+            JsonNode modelPolicy,
+            JsonNode retryPolicy,
+            JsonNode fallback,
+            JsonNode toolPolicy,
+            JsonNode agentLoopPolicy,
+            WorkflowBudgetReservation budgetReservation,
+            long deadlineEpochMs,
+            String executionBundleHash
+    ) {
+        this(
+                eventId, workflowRunId, nodeRunId, nodeId, revision, attempt,
+                executionId, handlerKey, handlerVersion, timeoutMs, inputPayload,
+                correlationId, traceparent, tracestate, protocolVersion,
+                contractHash, inputSchema, inputSchemaHash, outputSchema,
+                outputSchemaHash, promptKey, promptVersion, promptChecksum,
+                contextPolicy, modelPolicy, retryPolicy, fallback, toolPolicy,
+                agentLoopPolicy, null, budgetReservation, deadlineEpochMs,
+                executionBundleHash
+        );
     }
 
     public QueuedNodeCommand(
@@ -205,6 +254,7 @@ public record QueuedNodeCommand(
                 null,
                 null,
                 null,
+                null,
                 0,
                 null
         );
@@ -269,6 +319,7 @@ public record QueuedNodeCommand(
                 modelPolicy,
                 retryPolicy,
                 fallback,
+                null,
                 null,
                 null,
                 budgetReservation,
@@ -400,6 +451,7 @@ public record QueuedNodeCommand(
                     contract == null ? null : contract.fallback(),
                     contract == null ? null : contract.toolPolicy(),
                     contract == null ? null : contract.agentLoopPolicy(),
+                    contract == null ? null : contract.verificationPolicy(),
                     reservation,
                     deadline,
                     nodeRun.getExecutionBundleHash()

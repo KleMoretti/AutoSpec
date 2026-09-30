@@ -106,7 +106,7 @@ class ToolRegistry:
         key = (name, version)
         if key in self._registrations:
             raise ValueError(f"tool already registered: {name}:{version}")
-        if side_effect not in {"READ_ONLY", "DETERMINISTIC", "WRITE"}:
+        if side_effect not in {"READ_ONLY", "DETERMINISTIC", "SANDBOXED", "WRITE"}:
             raise ValueError(f"unsupported tool side effect: {side_effect}")
         self._registrations[key] = ToolRegistration(
             name,

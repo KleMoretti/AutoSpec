@@ -8,6 +8,7 @@ import com.autospec.mapper.WorkflowNodeRunMapper;
 import com.autospec.service.KnowledgeIndexService;
 import com.autospec.service.ProjectMemoryService;
 import com.autospec.util.ContentHash;
+import com.autospec.workflow.spec.WorkflowNodeDocument;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -83,6 +84,26 @@ public class WorkflowNodeInputAssembler {
             input.set("records", trustedRecords(latest, ancestorIds));
             input.set("model_invocations", trustedModelInvocations(target.getWorkflowRunId()));
             input.putArray("generated_files");
+            WorkflowNodeDocument reviewerSpec = graph.nodes().get("reviewer");
+            JsonNode verificationPolicy = reviewerSpec == null
+                    ? null
+                    : reviewerSpec.verificationPolicy();
+            if (verificationPolicy != null
+                    && verificationPolicy.isObject()
+                    && verificationPolicy.path("enabled").asBoolean(false)) {
+                input.set("verification_policy", verificationPolicy.deepCopy());
+                WorkflowNodeRun reviewerRun = latest.get("reviewer");
+                if (reviewerRun != null
+                        && "SUCCEEDED".equals(reviewerRun.getStatus())
+                        && reviewerRun.getOutputJson() != null) {
+                    JsonNode reviewerOutput = json(reviewerRun.getOutputJson());
+                    if (reviewerOutput.isObject()
+                            && reviewerOutput.path("verification_fact").isObject()) {
+                        input.set("verification_fact",
+                                reviewerOutput.path("verification_fact").deepCopy());
+                    }
+                }
+            }
         }
         recallProjectMemory(input, target);
         retrieveNodeSources(input, target);
