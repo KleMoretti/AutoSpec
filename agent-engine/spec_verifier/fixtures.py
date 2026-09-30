@@ -57,6 +57,7 @@ def spec_contract_from_artifacts(
     tables = []
     for table in backend.tables:
         fields = []
+        primary_key_name = _primary_key_name(table.name, table.fields, table_names)
         for old_field in table.fields:
             field_type = _field_type(old_field.type)
             foreign_key = _infer_foreign_key(old_field.name, table.name, table_names)
@@ -66,7 +67,7 @@ def spec_contract_from_artifacts(
                     name=old_field.name,
                     type=field_type,
                     nullable=old_field.nullable,
-                    primary_key=old_field.name == "id",
+                    primary_key=old_field.name == primary_key_name,
                     foreign_key=foreign_key,
                     requirement_refs=list(old_field.requirement_refs),
                 )
@@ -231,6 +232,43 @@ def _infer_foreign_key(name: str, table_name: str, table_names: set[str]) -> Spe
         if candidate in table_names and candidate != table_name:
             return SpecForeignKey(table=candidate, field="id")
     return None
+
+
+def _primary_key_name(
+    table_name: str,
+    fields: list[Any],
+    table_names: set[str],
+) -> str | None:
+    """Infer the stable entity identifier exposed by the backend artifact.
+
+    BackendDesignArtifact predates an explicit ``primary_key`` flag. Keep the
+    adapter deterministic while accepting conventional names such as
+    ``member_id`` and ``document_id``; foreign-key-shaped fields that resolve
+    to another declared table are excluded from the fallback.
+    """
+
+    normalized = table_name.strip().lower()
+    stems = {normalized, normalized.rsplit("_", 1)[-1]}
+    if normalized.endswith("s"):
+        stems.add(normalized[:-1])
+    for stem in list(stems):
+        if stem.endswith("s"):
+            stems.add(stem[:-1])
+    candidates = {"id", *(f"{stem}_id" for stem in stems)}
+    matches = [field.name for field in fields if field.name.strip().lower() in candidates]
+    exact_id = next((field.name for field in fields if field.name.strip().lower() == "id"), None)
+    if exact_id is not None:
+        return exact_id
+    if len(matches) == 1:
+        return matches[0]
+
+    fallback = [
+        field.name
+        for field in fields
+        if field.name.strip().lower().endswith("_id")
+        and _infer_foreign_key(field.name, table_name, table_names) is None
+    ]
+    return fallback[0] if len(fallback) == 1 else None
 
 
 def _contract_id(key: str) -> str:

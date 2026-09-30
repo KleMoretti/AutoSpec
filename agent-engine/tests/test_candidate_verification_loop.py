@@ -14,6 +14,7 @@ from runtime.tool_harness import (
 )
 from schemas.tool_gateway import ToolGatewayResult
 from schemas.workflow_spec import ToolPolicy
+from spec_verifier.fixtures import spec_contract_from_artifacts
 from spec_verifier.validators import validate_l1
 
 
@@ -101,3 +102,17 @@ async def test_candidate_reviewer_passes_trusted_verification_fact_to_report() -
     assert result["verification_fact"]["status"] == "PASSED"
     assert result["verification_fact"]["achieved_level"] == "L1"
     assert result["verification_fact"]["workflow_run_id"] == 1
+
+
+def test_backend_contract_infers_conventional_entity_primary_key_names() -> None:
+    fixture = get_fixture("campus_marketplace")
+    backend = fixture.backend.model_copy(deep=True)
+    table = backend.tables[0]
+    table.fields[0].name = f"{table.name.rsplit('_', 1)[-1]}_id"
+
+    contract = spec_contract_from_artifacts(fixture.prd, backend)
+    converted = next(item for item in contract.tables if item.name == table.name)
+
+    assert [field.name for field in converted.fields if field.primary_key] == [
+        table.fields[0].name
+    ]
