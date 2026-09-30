@@ -60,7 +60,11 @@ def spec_contract_from_artifacts(
         primary_key_name = _primary_key_name(table.name, table.fields, table_names)
         for old_field in table.fields:
             field_type = _field_type(old_field.type)
-            foreign_key = _infer_foreign_key(old_field.name, table.name, table_names)
+            foreign_key = (
+                None
+                if old_field.name == primary_key_name
+                else _infer_foreign_key(old_field.name, table.name, table_names)
+            )
             fields.append(
                 SpecField(
                     field_id=old_field.field_id,

@@ -132,3 +132,20 @@ def test_backend_contract_uses_explicit_field_id_when_table_name_is_composite() 
     converted = next(item for item in contract.tables if item.name == table.name)
 
     assert [field.name for field in converted.fields if field.primary_key] == ["activity_id"]
+
+
+def test_backend_contract_does_not_treat_entity_primary_key_as_foreign_key() -> None:
+    fixture = get_fixture("campus_marketplace")
+    backend = fixture.backend.model_copy(deep=True)
+    entity_table = backend.tables[0]
+    entity_table.name = "delivery_report"
+    entity_table.fields[0].name = "report_id"
+    entity_table.fields[0].field_id = "FIELD-REP-ID"
+    backend.tables[1].name = "report_item"
+
+    contract = spec_contract_from_artifacts(fixture.prd, backend)
+    converted = next(item for item in contract.tables if item.name == "delivery_report")
+    primary_key = next(field for field in converted.fields if field.primary_key)
+
+    assert primary_key.name == "report_id"
+    assert primary_key.foreign_key is None
