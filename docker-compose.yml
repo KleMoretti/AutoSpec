@@ -81,6 +81,7 @@ services:
       MODEL_FALLBACK_CACHED_INPUT_COST_PER_1M: ${MODEL_FALLBACK_CACHED_INPUT_COST_PER_1M:-0}
       MODEL_FALLBACK_OUTPUT_COST_PER_1M: ${MODEL_FALLBACK_OUTPUT_COST_PER_1M:-0}
       AGENT_ENGINE_SERVICE_TOKEN: ${AGENT_ENGINE_SERVICE_TOKEN:?AGENT_ENGINE_SERVICE_TOKEN is required}
+      AUTOSPEC_SPEC_VERIFIER_URL: ${AUTOSPEC_SPEC_VERIFIER_URL:-http://spec-verifier:8010}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)"]
       interval: 10s
@@ -134,6 +135,9 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    networks:
+      - default
+      - verification_internal
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/actuator/health/readiness"]
       interval: 10s
@@ -281,6 +285,55 @@ services:
       timeout: 5s
       retries: 10
 
+  verify-mysql:
+    image: mysql:8.4
+    profiles: ["verification"]
+    restart: "no"
+    logging: *default-logging
+    environment:
+      MYSQL_DATABASE: autospec_verify
+      MYSQL_USER: verify
+      # The verification profile must be started with explicit passwords; the
+      # empty defaults keep the ordinary compose config check side-effect free.
+      MYSQL_PASSWORD: ${VERIFY_MYSQL_PASSWORD:-}
+      MYSQL_ROOT_PASSWORD: ${VERIFY_MYSQL_ROOT_PASSWORD:-}
+    volumes:
+      - autospec_verify_mysql_data:/var/lib/mysql
+    networks:
+      - verification_internal
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uverify -p$$MYSQL_PASSWORD --silent"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  spec-verifier:
+    build:
+      context: ./agent-engine
+      dockerfile: spec_verifier/Dockerfile
+    profiles: ["verification"]
+    restart: "no"
+    logging: *default-logging
+    environment:
+      AGENT_ENGINE_SERVICE_TOKEN: ${AGENT_ENGINE_SERVICE_TOKEN:?AGENT_ENGINE_SERVICE_TOKEN is required}
+      AUTOSPEC_VERIFY_MYSQL_DSN: mysql://verify:${VERIFY_MYSQL_PASSWORD:-}@verify-mysql:3306/autospec_verify
+      AUTOSPEC_TSC_PATH: tsc
+    networks:
+      - verification_internal
+    depends_on:
+      verify-mysql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8010/health', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 768M
+
   prometheus:
     image: prom/prometheus:v3.5.0
     profiles: ["monitoring"]
@@ -361,3 +414,8 @@ volumes:
   autospec_prometheus_data:
   autospec_grafana_data:
   autospec_tempo_data:
+  autospec_verify_mysql_data:
+
+networks:
+  verification_internal:
+    internal: true
