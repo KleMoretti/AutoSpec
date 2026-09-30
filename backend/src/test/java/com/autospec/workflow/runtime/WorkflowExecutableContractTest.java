@@ -76,6 +76,24 @@ class WorkflowExecutableContractTest {
         assertThat(frontend.contextPolicy().path("prompt_token_reserve").asInt()).isEqualTo(2048);
     }
 
+    @Test
+    void pmSchemaRepairV4CandidateUsesSchemaReviewer() throws Exception {
+        var mapper = new ObjectMapper();
+        var snapshot = Files.readString(Path.of("..", "agent-engine", "contracts",
+                "autospec-pm-schema-repair-v4.workflow.json"));
+        var spec = new WorkflowSnapshotParser(mapper).parse(snapshot);
+        WorkflowExecutableContractValidator.validate(spec);
+
+        var reviewer = spec.nodes().stream()
+                .filter(value -> "reviewer".equals(value.nodeId()))
+                .findFirst()
+                .orElseThrow();
+
+        assertThat(reviewer.agentName()).isEqualTo("ReviewerAgent_v4");
+        assertThat(reviewer.promptKey()).isEqualTo("reviewer_schema");
+        assertThat(reviewer.contextPolicy().path("prompt_token_reserve").asInt()).isEqualTo(2048);
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"v5", "v6"})
     void diagnosticPinsThinkingModeAndRejectsInvalidValues(String version) throws Exception {

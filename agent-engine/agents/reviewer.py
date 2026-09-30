@@ -34,8 +34,13 @@ _ISSUE_TARGETS = {
 class ReviewerAgent:
     prompt_name = "ReviewerAgent_v1"
 
-    def __init__(self, model_client: ModelClient | None = None):
+    def __init__(
+        self,
+        model_client: ModelClient | None = None,
+        prompt_name: str | None = None,
+    ):
         self.model_client = model_client
+        self.prompt_name = prompt_name or self.prompt_name
 
     def run(
         self,
@@ -79,9 +84,12 @@ class ReviewerAgent:
                 input_payload["model_invocations"] = model_invocations
             input_payload["context_manifest"] = context_manifest or {}
 
+            semantic_prompt = self.prompt_name
+            if shared_contract_required and semantic_prompt == "ReviewerAgent_v1":
+                semantic_prompt = "ReviewerAgent_v2"
             semantic_report = generate_structured_output(
                 self.model_client,
-                "ReviewerAgent_v2" if shared_contract_required else self.prompt_name,
+                semantic_prompt,
                 input_payload,
                 ReviewReport,
             )

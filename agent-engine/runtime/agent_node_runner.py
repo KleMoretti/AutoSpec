@@ -164,7 +164,10 @@ def _run_node_output(
     frontend_skeleton = FrontendSkeletonArtifact.model_validate(
         payload["frontend_skeleton"]
     )
-    return ReviewerAgent(model_client).run(
+    return ReviewerAgent(
+        model_client,
+        prompt_name=payload.get("reviewer_prompt_name"),
+    ).run(
         prd,
         backend_design,
         architecture_design,
