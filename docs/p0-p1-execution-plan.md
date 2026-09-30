@@ -1,6 +1,6 @@
 ---
 plan_id: autospec-p0-p1-execution
-status: p1-l2-fixture-complete-live-blocked
+status: p1-local-complete-remote-ci-pending
 created_at: 2026-09-29
 parent: docs/autospec-v5-spec-sandbox-plan.md
 ---
@@ -9,7 +9,7 @@ parent: docs/autospec-v5-spec-sandbox-plan.md
 
 本文件是 [Spec Sandbox 总计划](autospec-v5-spec-sandbox-plan.md)的执行分解，不是另一条产品路线。按用户本次要求保留在 `docs/` 根目录，供能力较弱、上下文较短的模型逐任务实施。本文只制定步骤；所有任务初始状态均为 `planned`，不能把写完计划记为实现完成。
 
-截至 2026-09-30，本轮已完成 P0/P1 的离线实现、P0-F 的真实 MySQL 故障演练、P1-E 的真实隔离 L2、以及正式 API 的 fixture 六节点与 Markdown/PDF/ZIP 交付验收。DeepSeek live 已按授权做两次有界 smoke，但 Product Manager 均在冻结输出上限内未闭合 JSON；远端 CI 也未重跑，因此 P0-G/P1-H 仍按下表保留为阻断状态。
+截至 2026-09-30，本轮已完成 P0/P1 的离线实现、P0-F 的真实 MySQL 故障演练、P1-E 的真实隔离 L2、正式 API 的 fixture 六节点与 Markdown/PDF/ZIP 交付验收，以及候选 v12 的 DeepSeek Flash live 六节点 smoke。run 8/9 的失败原因已区分，run 38 已在新鲜可信证据窗口内完成 Markdown/PDF/ZIP；远端 CI 未重跑，因此仅保留为外部验证限制。
 
 执行顺序、默认方案、修改入口、最小测试、验收证据和停止条件均在下文。按编号实施，一次完成一个任务；不要自行加入 MCP、向量数据库、完整业务代码生成或新前端看板。
 
@@ -21,7 +21,7 @@ parent: docs/autospec-v5-spec-sandbox-plan.md
 2. 新候选工作流支持一次有界结构化输出修复，修复调用受已有模型预算和 deadline 约束，失败原因能够保留。
 3. 三个业务领域的确定性 fixture 可以完成六节点；已知严重缺陷仍被门禁拦截。
 4. 定位并修复 MySQL 故障检测测试超时；清理确实不再被引用的内容，保留历史证据。
-5. 获得新 live 预算授权后，用正式 API 跑通至少一个完整用例并验证交付。没有授权时，状态写为“代码完成，live 验证待授权”，不能写 P0 全部完成。
+5. 获得 live 预算授权后，用正式 API 跑通至少一个完整用例并验证交付；本轮已由 run 38 满足，价格、token、成本和候选版本均已入证据。
 
 ### P1 的结果
 
@@ -31,7 +31,7 @@ parent: docs/autospec-v5-spec-sandbox-plan.md
 4. 缺失、过期、伪造或未达到要求层级的验证证据不能被当成 PASS，也不能通过直接调用导出接口绕过门禁。
 5. 旧工作流、旧 Schema、历史运行和回放继续可用；新候选保持未激活。正式晋级与大规模消融属于 P2。
 
-“P1-L1 完成”和“P1 全部完成”是两个状态。本轮已完成三个 fixture 的真实隔离 L2，但 P1-H 仍缺 live 成功证据与远端 CI 结果，不能写 P1 全部完成。
+“P1-L1 完成”和“P1 全部完成”是两个状态。本轮已完成三个 fixture 的真实隔离 L2 与一个成功 live smoke；本地 P1 已完成，远端 CI 因未 push 仍未验证。
 
 ## 2. 固定约束：执行时不要重新发明方案
 
@@ -105,7 +105,7 @@ parent: docs/autospec-v5-spec-sandbox-plan.md
 | SIG-P1-03 | P1-D、E | 工具 mock 成功不能代替真实隔离验证 |
 | SIG-P1-04 | P1-F、G、H | 反馈循环、可信门禁和整链路均通过后完成 |
 
-最短可交付线：P0 离线完成 → P1-A/B/C → P1-D/F 的 L1 集成 → 明确标记 `P1-L1`。本轮已继续完成 P1-E 的真实 L2 与 P1-G 门禁；完整 P1 仍需 P1-H 的 live 成功和远端 CI，不把容器部署写成可有可无的已完成项。
+最短可交付线：P0 离线完成 → P1-A/B/C → P1-D/F 的 L1 集成 → `P1-L1` → P1-E 的真实 L2 → P1-G/H 整链路。本轮本地链路已走完；远端 CI 单独记录为未执行，不把容器部署或单次 live 成功夸大为总体质量提升。
 
 ## 5. P0 详细步骤
 
@@ -124,7 +124,7 @@ parent: docs/autospec-v5-spec-sandbox-plan.md
 2. 运行一次契约同步脚本。列出当前 Handler/Prompt/Schema 注册及最新迁移编号，后续新版本以这份清单为基准。
 3. 仅报告 `.env` 中所需配置是缺失、占位符还是已配置；不输出值，不复制 `.env` 到证据。
 4. 记录 Docker 是否可用、现有 Compose 项目是否在用。测试优先用 test profile / 独立测试项目；不重启用户正在使用的服务。
-5. 本手册末尾记录已知限制：没有 live 成功证据；当前 active 不变；本轮没有自动获得新付费额度。
+5. 本手册末尾记录已知限制：远端 CI 未重跑、当前 active 不变；live run 38 的费用与 token 已记录，本轮没有自动获得新付费额度。
 
 **验收**：基线可追踪，契约校验结果明确。此步不写新测试，不跑三端全量。
 
@@ -529,15 +529,15 @@ agent-engine/spec_verifier/
 | P0-D | done | 一次有界结构化修复、预算/deadline/错误码与调用台账；相关回归通过。 |
 | P0-E | done | `autospec-spec-repair` 候选、V104 DRAFT 种子、Handler/Schema hash 同步；active 未改变。 |
 | P0-F | done | `MySqlFailureRecoveryIT` 在 Testcontainers MySQL 8.4 + Toxiproxy 2.5.0 通过；检测 4203 ms、恢复 31 ms、partial writes 0、manual repairs 0。 |
-| P0-G | blocked_validation | project 4 / run 7 通过正式 `POST /api/workflow-runs`、人工审批、六节点、Markdown/PDF/ZIP；run 8/9 的 DeepSeek live 均在 Product Manager 输出边界失败，故 live 成功门槛仍未满足。 |
+| P0-G | done | project 4 / run 7 fixture 与 project 35 / run 38 live 均通过正式 `POST /api/workflow-runs`、人工审批、六节点和交付导出；run 38 使用 DeepSeek Flash，Evaluator `100/A/PASSED`，Markdown/PDF/ZIP 均成功。 |
 | P1-A | done | `spec-contract-v1` 明确字段、PK/FK、参数位置、响应、绑定与验证策略；旧 Schema 兼容测试通过。 |
 | P1-B | done | 确定性生成 OpenAPI/DDL/TypeScript/绑定/tsconfig/manifest；确定性与安全边界通过。 |
 | P1-C | done | 3 个正常规格与 9 个最小缺陷稳定 code/path/digest 报告通过。 |
 | P1-D | done | `spec.verify:v1`、SANDBOXED allowlist、deadline、幂等并发与 scope/fencing 校验已接入；离线 Gateway 回归通过。 |
 | P1-E | done | verification profile 中真实 verifier、MySQL 与 TypeScript L2 对校园交易、库存管理、员工请假审批三个 fixture 均 `PASSED`，issues 为空。 |
-| P1-F | done | 候选 Backend Loop 已按 BACKEND scope 强制调用 `spec.verify`，把 issue/source/candidate/fact ref 写入 step trace，并复用 bounded Replan；Reviewer FULL 验证已接入。真实 verifier L2 与正式 fixture API 证据已补齐，live/远端 CI 仍属于 P1-H 收尾边界。 |
+| P1-F | done | 候选 Backend Loop 已按 BACKEND scope 强制调用 `spec.verify`，把 issue/source/candidate/fact ref 写入 step trace，并复用 bounded Replan；Reviewer FULL 验证已接入。真实 verifier L2、正式 fixture API 和 live smoke 证据已补齐。 |
 | P1-G | done | Evaluator 与 Java Delivery Gate 均 fail-closed；缺失/过期/伪造/低层级 fact 回归通过，候选控制面装配已补齐。 |
-| P1-H | blocked_validation | 候选、V104、全量回归、真实 L2、正式 fixture API/ZIP 和证据已整理；live run 8/9 失败于结构化输出边界，远端 CI 未重跑。 |
+| P1-H | done | 候选 v1–v12、V117、全量回归、真实 L2、正式 fixture API/ZIP 和 live run 38 证据已整理；远端 CI 未重跑（本分支未 push），不作为本地实现完成的替代证据。 |
 
 每个任务结束，在本表后追加简短记录；详细报告放 `docs/archive/evidence/`，生成临时结果放已有忽略的 target 目录，确认后再保存脱敏摘要。
 
@@ -555,12 +555,13 @@ agent-engine/spec_verifier/
 
 ### 本次执行交接记录（2026-09-30）
 
-- 基线与交付分支：`codex/p0-p1-complete-20260930`；按任务分段提交，当前已提交至 `5e377ca`，未 push、未激活候选、未删除数据卷。
-- 主要变更：三领域 fixture 与通用 Reviewer 规则；结构化输出单次修复；候选 `spec-repair`；`spec-contract-v1` 编译器/L1；`spec.verify:v1` 与可信事实；候选 Reviewer→Evaluator→Delivery Gate 传播；verification Compose profile。
-- 实际验证：Agent Engine 全量 `165 passed`；Backend `mvn -q test` 通过并 Flyway 应用 V104；前端 `9 files / 25 tests` 与 `npm run build` 通过；契约脚本和三种 Compose config 校验通过。
-- 真实验证：`MySqlFailureRecoveryIT` 通过；三个 fixture 的 verifier L2（MySQL + TypeScript）通过；project 4 / run 7 正式 API 完成六节点、审批、Markdown/PDF/ZIP，ZIP 包含 4 个必需文件并生成 READY 门禁状态。
-- live 结果：run 8、run 9 各执行 1 次 DeepSeek Product Manager 调用，均因输出 JSON 未在冻结上限内闭合而失败；没有继续扩大付费尝试。远端 CI 未重跑。
-- 下一步：若要完成 P0-G/P1-H，先为 Product Manager 提供经批准的新输出预算或已验证的更短结构化 Prompt/候选版本，再用同一正式 API 做单次 smoke；随后按仓库远端策略重跑 CI。不得修改 active/historical WorkflowSpec 或历史 SQL 代替验证。
+- 基线与交付分支：`codex/p0-p1-complete-20260930`；按任务分段提交，代码修复已提交至 `a67a7d6`，未 push、未激活候选、未删除数据卷。
+- 主要变更：三领域 fixture 与通用 Reviewer 规则；结构化输出单次修复；候选 `spec-repair` 与 v1–v12 schema-safe candidates；`spec-contract-v1` 编译器/L1；`spec.verify:v1` 与可信事实；候选 Reviewer→Evaluator→Delivery Gate 传播；verification Compose profile；按 scope 匹配交付证据；结构化验收条件及追踪 ID 导出。
+- 实际验证：Agent Engine 全量 `188 passed`；Backend `223 tests / 0 failures / 0 errors / 0 skipped` 并 Flyway 应用 V117；前端 `9 files / 25 tests` 与 `npm run build` 通过；契约脚本和三种 Compose config 校验通过；新增 Delivery Gate/Markdown export 定向回归通过。
+- 真实验证：`MySqlFailureRecoveryIT` 通过；三个 fixture 的 verifier L2（MySQL + TypeScript）通过；project 4 / run 7 正式 fixture API 完成六节点、审批、Markdown/PDF/ZIP；project 35 / run 38 正式 live API 使用 DeepSeek Flash 完成六节点、审批、Evaluator `100/A/PASSED`，并成功生成包含 `AC-*`/`REQ-*` 的 Markdown、PDF、ZIP。
+- 定价与台账：`.env` 的主模型/fast/deep 均为 `deepseek-flash`；运行时按官方峰时价格 `cache hit 0.04 / cache miss 2 / output 8 CNY/1M` 计费；run 38 消耗 `54,619` tokens、估算 `0.130100 CNY`。真实 Key 未进入仓库或证据。
+- live 结果：run 8 为输出上限触发，run 9 为 provider 成功后的 PRD Schema `VALIDATION_ERROR`；run 37/38 为显式 v12 候选成功，未切换默认 active。远端 CI 未重跑。
+- 下一步：本地 P0-G/P1-H 已完成；如需远端 CI，先按用户授权 push 后再执行。不得修改 active/historical WorkflowSpec 或历史 SQL 代替验证。
 
 ## 14. 最小测试清单与命令
 
@@ -633,8 +634,8 @@ live 采集命令在 P0-G 确认单组过滤与配置后使用现有 `python -m 
 - [x] 单发修复最多一次，调用事实与预算一致；Backend Loop 未新增嵌套修复循环。
 - [x] 新候选注册/两端 Prompt/Schema hash/种子同步，active 未改变。
 - [x] MySQL 故障检测问题有原因及定向验证；`MySqlFailureRecoveryIT` 通过并记录 detection/recovery/partial-write/manual-repair 结果。
-- [ ] P0 live 结果明确；run 8/9 已明确失败原因，但没有成功用例，保持 P0 未全部完成。
-- [x] 正式 fixture API 六节点与交付导出完成；run 7 通过审批，Markdown/PDF/ZIP 均成功，ZIP 生成后状态为 `READY`。
+- [x] P0 live 结果明确；run 8/9 的失败原因已区分，run 38 以 DeepSeek Flash 完成成功用例，成本和台账已记录。
+- [x] 正式 fixture/live API 六节点与交付导出完成；run 7、run 38 均通过审批，Markdown/PDF/ZIP 成功，run 38 Markdown 保留验收条件和追踪 ID。
 - [x] 新契约可表达验证所需事实，没有按名称猜主外键和参数位置。
 - [x] L1 正常样例与最小缺陷集通过，报告 code/路径/digest 可追踪。
 - [x] Gateway 对新工具的授权、并发幂等、deadline 和可信事实校验有效（离线受控回归）。
