@@ -90,7 +90,7 @@ public class DeliveryGateService {
                     "NOT_STARTED",
                     null,
                     null,
-                    List.of("No V5 workflow run exists")
+                    List.of("No workflow run exists")
             );
         }
         List<Artifact> deliverableArtifacts;
@@ -139,7 +139,7 @@ public class DeliveryGateService {
         if (!"COMPLETED".equals(latestV5Run.getStatus())) {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
-                    "The latest V5 workflow run is not completed"
+                    "The latest workflow run is not completed"
             );
         }
         requireNoPendingApprovals(latestV5Run.getId());
@@ -190,6 +190,7 @@ public class DeliveryGateService {
                         "The evaluation quality gate is not passed"
                 );
             }
+            requireTrustedVerificationEvidence(latestV5Run, report);
         } catch (ResponseStatusException ex) {
             throw ex;
         } catch (Exception ex) {
@@ -247,6 +248,57 @@ public class DeliveryGateService {
             );
         }
         return REQUIRED_ARTIFACT_TYPES.stream().map(selected::get).toList();
+    }
+
+    private void requireTrustedVerificationEvidence(WorkflowRun run, JsonNode evaluationReport) {
+        if (run.getExecutionBundleJson() == null || run.getExecutionBundleJson().isBlank()) {
+            return;
+        }
+        try {
+            JsonNode nodes = objectMapper.readTree(run.getExecutionBundleJson()).path("nodes");
+            for (JsonNode node : nodes) {
+                JsonNode policy = node.path("verification_policy");
+                if (!policy.path("enabled").asBoolean(false)
+                        || "NONE".equals(policy.path("required_level").asText("NONE"))) {
+                    continue;
+                }
+                JsonNode fact = evaluationReport.path("verification_fact");
+                if (!fact.isObject()) {
+                    throw new ResponseStatusException(
+                            HttpStatus.UNPROCESSABLE_ENTITY,
+                            "Trusted verification evidence is required before delivery"
+                    );
+                }
+                String requiredLevel = policy.path("required_level").asText("L1");
+                String achievedLevel = fact.path("achieved_level").asText("");
+                int required = "L2".equals(requiredLevel) ? 2 : 1;
+                int achieved = "L2".equals(achievedLevel) ? 2 : "L1".equals(achievedLevel) ? 1 : 0;
+                if (!"PASSED".equals(fact.path("status").asText())
+                        || achieved < required
+                        || fact.path("expires_at_epoch_ms").asLong(0) <= System.currentTimeMillis()) {
+                    throw new ResponseStatusException(
+                            HttpStatus.UNPROCESSABLE_ENTITY,
+                            "Trusted verification evidence is missing, expired, or below the required level"
+                    );
+                }
+                for (String field : List.of("source_digest", "policy_hash")) {
+                    if (policy.has(field) && !policy.path(field).asText().equals(fact.path(field).asText())) {
+                        throw new ResponseStatusException(
+                                HttpStatus.UNPROCESSABLE_ENTITY,
+                                "Trusted verification evidence does not match the frozen verification policy"
+                        );
+                    }
+                }
+            }
+        } catch (ResponseStatusException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new ResponseStatusException(
+                    HttpStatus.UNPROCESSABLE_ENTITY,
+                    "The verification evidence is invalid",
+                    exception
+            );
+        }
     }
 
     private WorkflowRun latestV5Run(Long projectId) {

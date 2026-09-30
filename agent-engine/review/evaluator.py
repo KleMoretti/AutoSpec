@@ -8,11 +8,13 @@ from schemas.evaluation import (
     EvaluationDimensionScore,
     EvaluationIssue,
     EvaluationReport,
+    EvaluationReportV2,
     RequirementTrace,
 )
 from schemas.frontend_skeleton import FrontendSkeletonArtifact
 from schemas.prd import PrdArtifact
 from schemas.review import ReviewReport
+from schemas.verification import VerificationFact
 from review.citation_gate import validate_citations
 
 
@@ -28,7 +30,10 @@ def evaluate_artifacts(
     model_invocations: list[Any] | None = None,
     retrieved_sources: list[dict[str, Any]] | None = None,
     generated_files: list[dict[str, Any] | str] | None = None,
-) -> EvaluationReport:
+    verification_policy: dict[str, Any] | None = None,
+    verification_fact: dict[str, Any] | VerificationFact | None = None,
+) -> EvaluationReport | EvaluationReportV2:
+    trusted_verification = _require_trusted_verification(verification_policy or {}, verification_fact)
     issues: list[EvaluationIssue] = []
     traceability = _build_requirement_traceability(
         prd,
@@ -82,7 +87,8 @@ def evaluate_artifacts(
         overall_score = min(overall_score, 49)
     elif blocking_issues:
         overall_score = min(overall_score, 69)
-    return EvaluationReport(
+    report_model = EvaluationReportV2 if trusted_verification is not None else EvaluationReport
+    report_values = dict(
         overall_score=overall_score,
         final_grade=_grade(overall_score),
         dimension_scores=dimension_scores,
@@ -91,6 +97,38 @@ def evaluate_artifacts(
         blocking_issue_count=len(blocking_issues),
         requirement_traceability=traceability,
     )
+    if trusted_verification is not None:
+        report_values["verification_fact"] = trusted_verification.model_dump(mode="json")
+    return report_model(**report_values)
+
+
+class VerificationEvidenceError(RuntimeError):
+    error_code = "VERIFICATION_EVIDENCE_REQUIRED"
+
+
+def _require_trusted_verification(
+    policy: dict[str, Any],
+    fact: dict[str, Any] | VerificationFact | None,
+) -> VerificationFact | None:
+    if not policy.get("enabled") or policy.get("required_level", "NONE") == "NONE":
+        return None
+    if fact is None:
+        raise VerificationEvidenceError("required verification evidence is missing")
+    try:
+        trusted = fact if isinstance(fact, VerificationFact) else VerificationFact.model_validate(fact)
+    except Exception as exc:
+        raise VerificationEvidenceError("verification evidence is not a trusted fact") from exc
+    required = str(policy.get("required_level", "L1"))
+    levels = {"L1": 1, "L2": 2}
+    if trusted.status != "PASSED" or levels.get(trusted.achieved_level, 0) < levels.get(required, 99):
+        raise VerificationEvidenceError("verification evidence does not satisfy the required level")
+    if trusted.expires_at_epoch_ms <= int(__import__("time").time() * 1000):
+        raise VerificationEvidenceError("verification evidence has expired")
+    for field in ("source_digest", "policy_hash"):
+        expected = policy.get(field)
+        if expected is not None and getattr(trusted, field) != expected:
+            raise VerificationEvidenceError(f"verification evidence {field} does not match the frozen policy")
+    return trusted
 
 
 def _schema_validity_score() -> EvaluationDimensionScore:

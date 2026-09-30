@@ -100,7 +100,7 @@ def test_runtime_schema_failure_is_not_reported_as_valid_schema(error_code: str)
 
 
 def live_config() -> CollectionConfig:
-    source = Path(__file__).resolve().parents[2] / "docs/examples/agent-eval-live-cny10.json"
+    source = Path(__file__).resolve().parents[2] / "docs/archive/examples/agent-eval-live-cny10.json"
     value = CollectionConfig.model_validate_json(source.read_text(encoding="utf-8"))
     return value.model_copy(update={"version_ids": {"A": 1}})
 

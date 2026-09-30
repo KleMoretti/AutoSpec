@@ -56,6 +56,7 @@ def run_agent_node(
     node_name: str,
     payload: dict[str, Any],
     model_client: ModelClient | None = None,
+    verification_fact: dict[str, Any] | None = None,
 ) -> AgentExecutionRecord:
     if node_name not in SUPPORTED_AGENT_NODES:
         raise ValueError(f"Unsupported Agent node: {node_name}")
@@ -64,7 +65,12 @@ def run_agent_node(
         node_name=node_name,
         agent_name=_agent_name_for_node(node_name),
         input_payload=payload,
-        run=lambda: _run_node_output(node_name, payload, model_client),
+        run=lambda: _run_node_output(
+            node_name,
+            payload,
+            model_client,
+            verification_fact=verification_fact,
+        ),
     )
     if model_client is None:
         return record
@@ -89,6 +95,8 @@ def _run_node_output(
     node_name: str,
     payload: dict[str, Any],
     model_client: ModelClient | None,
+    *,
+    verification_fact: dict[str, Any] | None = None,
 ) -> Any:
     requirement = (
         _require_str(payload, "requirement")
@@ -99,6 +107,7 @@ def _run_node_output(
     context_manifest = payload.get("context_manifest", {})
     rework_directive = payload.get("rework_directive")
     shared_contract_required = payload.get("shared_contract_required", False)
+    rule_profile = payload.get("rule_profile", "legacy-marketplace-v1")
 
     if node_name == "product_manager":
         return ProductManagerAgent(model_client).run(
@@ -165,6 +174,8 @@ def _run_node_output(
         model_invocations=payload.get("model_invocations", []),
         context_manifest=context_manifest,
         shared_contract_required=shared_contract_required,
+        rule_profile=rule_profile,
+        verification_fact=verification_fact,
     )
 
 

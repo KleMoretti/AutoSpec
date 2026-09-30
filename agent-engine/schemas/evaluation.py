@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from schemas.traceability import RequirementId
 from schemas.workflow_spec import RetrievalPolicySpec
@@ -221,6 +222,46 @@ class EvaluationInput(BaseModel):
     generated_files: list[dict | str] = Field(default_factory=list)
     retrieval_policy: str | None = None
     execution_policy: dict = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def accept_control_plane_retrieval_envelope(cls, value: Any) -> Any:
+        """Keep the published v1 fingerprint compatible with trusted metadata.
+
+        The backend adds retrieval provenance to the node input for audit and
+        context routing.  The historical v1 evaluator does not consume those
+        fields; the v2 runtime model below does.  Strip only for this exact
+        compatibility model so the published v5-parallel contract remains
+        immutable while newer contracts retain typed provenance.
+        """
+        if cls is not EvaluationInput or not isinstance(value, Mapping):
+            return value
+        normalized = dict(value)
+        for field in (
+            "retrieval_project_id",
+            "retrieval_node_id",
+            "corpus_epoch",
+            "actor_scope_hash",
+            "retrieval_cache_key",
+            "retrieval_cache",
+            "retrieval_trace",
+            "retrieval_snapshot",
+        ):
+            normalized.pop(field, None)
+        return normalized
+
+
+class EvaluationReportV2(EvaluationReport):
+    """Candidate-only report carrying a trusted verifier fact."""
+
+    verification_fact: dict[str, Any] | None = None
+
+
+class EvaluationInputV2(EvaluationInput):
+    """Candidate-only evaluator input carrying frozen verification policy/evidence."""
+
+    verification_policy: dict[str, Any] = Field(default_factory=dict)
+    verification_fact: dict[str, Any] | None = None
 
 
 class EvaluationRuntimeInput(EvaluationInput):

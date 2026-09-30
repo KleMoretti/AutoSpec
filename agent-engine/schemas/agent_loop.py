@@ -20,6 +20,7 @@ class StopReason(StrEnum):
     TOOL_BUDGET_EXHAUSTED = "TOOL_BUDGET_EXHAUSTED"
     DEADLINE_EXCEEDED = "DEADLINE_EXCEEDED"
     PATH_OSCILLATION = "PATH_OSCILLATION"
+    VERIFICATION_FAILED = "VERIFICATION_FAILED"
     VALIDATION_FAILED = "VALIDATION_FAILED"
 
 
@@ -147,6 +148,8 @@ class AgentStepRecord(BaseModel):
     reason_code: str | None = Field(default=None, min_length=1)
     plan_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     observation_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    candidate_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    verification_fact_ref: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     validation_issue_codes: list[str] = Field(default_factory=list, max_length=32)
     model_call_ref: str | None = Field(default=None, min_length=1)
     tool_call_ref: str | None = Field(default=None, min_length=1)

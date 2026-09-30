@@ -39,10 +39,20 @@ from schemas.agent_loop import (
 )
 from schemas.backend_design import BackendDesignArtifact
 from schemas.prd import PrdArtifact
+from schemas.tool import ToolCallRequest
+from schemas.verification import VerificationFact, VerificationReport
+from spec_verifier.compiler import compile_spec
+from spec_verifier.fixtures import spec_contract_from_artifacts
 
 
 class BackendAgentLoopError(RuntimeError):
     def __init__(self, message: str, error_code: str = "VALIDATION_FAILED") -> None:
+        super().__init__(message)
+        self.error_code = error_code
+
+
+class BackendVerificationError(RuntimeError):
+    def __init__(self, message: str, error_code: str = "SPEC_VERIFY_FAILED") -> None:
         super().__init__(message)
         self.error_code = error_code
 
@@ -268,6 +278,7 @@ async def run_backend_agent_loop(
 
         if isinstance(turn, FinalCandidateTurn):
             state.candidate = turn.candidate
+            candidate_hash = stable_hash(turn.candidate)
             _append_step(
                 state,
                 StepPhase.FINAL_CANDIDATE,
@@ -275,6 +286,7 @@ async def run_backend_agent_loop(
                 reason_code="CANDIDATE_READY",
                 plan_hash=_plan_hash(state),
                 observation_hash=_observation_hash(state),
+                candidate_hash=candidate_hash,
                 model_call_ref=model_call_ref,
             )
             validation = validate_backend_candidate(
@@ -291,10 +303,112 @@ async def run_backend_agent_loop(
                 reason_code="VALIDATION_PASSED" if validation.valid else "VALIDATION_FAILED",
                 plan_hash=_plan_hash(state),
                 observation_hash=_observation_hash(state),
+                candidate_hash=candidate_hash,
                 validation_issue_codes=codes,
                 model_call_ref=model_call_ref,
             )
             if validation.valid and validation.candidate is not None:
+                verification_fact_ref: str | None = None
+                if _verification_required():
+                    started = time.perf_counter()
+                    try:
+                        report, fact = await _verify_backend_candidate(
+                            validation.candidate,
+                            prd,
+                        )
+                    except ToolRuntimeError as error:
+                        _append_step(
+                            state,
+                            StepPhase.OBSERVATION,
+                            StepStatus.FAILED,
+                            reason_code=error.error_code,
+                            plan_hash=_plan_hash(state),
+                            observation_hash=_observation_hash(state),
+                            candidate_hash=candidate_hash,
+                            model_call_ref=model_call_ref,
+                            duration_ms=_elapsed(started),
+                        )
+                        return _result(
+                            state,
+                            _verification_stop_reason(error.error_code),
+                        )
+                    except (BackendVerificationError, ValidationError, ValueError) as error:
+                        error_code = getattr(error, "error_code", "SPEC_VERIFY_INVALID")
+                        _append_step(
+                            state,
+                            StepPhase.OBSERVATION,
+                            StepStatus.FAILED,
+                            reason_code=error_code,
+                            plan_hash=_plan_hash(state),
+                            observation_hash=_observation_hash(state),
+                            candidate_hash=candidate_hash,
+                            model_call_ref=model_call_ref,
+                            duration_ms=_elapsed(started),
+                        )
+                        return _result(
+                            state,
+                            _verification_stop_reason(error_code)
+                            if isinstance(error, BackendVerificationError)
+                            else StopReason.VERIFICATION_FAILED,
+                        )
+
+                    verification_fact_ref = fact.report_hash
+                    state.observation = _verification_observation(report, fact)
+                    state.observations.append(
+                        {
+                            "tool": "spec.verify",
+                            "version": "v1",
+                            "scope": report.scope,
+                            "candidate_hash": candidate_hash,
+                            "result": state.observation,
+                        }
+                    )
+                    verification_codes = [issue.code for issue in report.issues]
+                    if report.status == "FAILED" and report.gate_status == "BLOCKED":
+                        state.issues = _verification_issues(report)
+                        _append_step(
+                            state,
+                            StepPhase.OBSERVATION,
+                            StepStatus.FAILED,
+                            reason_code="SPEC_VERIFY_FAILED",
+                            plan_hash=_plan_hash(state),
+                            observation_hash=stable_hash(state.observation),
+                            candidate_hash=candidate_hash,
+                            verification_fact_ref=verification_fact_ref,
+                            validation_issue_codes=verification_codes,
+                            model_call_ref=model_call_ref,
+                            duration_ms=_elapsed(started),
+                        )
+                        if state.replans >= policy.max_replans:
+                            return _result(state, StopReason.REPLAN_LIMIT)
+                        continue
+                    if report.status != "PASSED" or report.gate_status != "PASSED":
+                        _append_step(
+                            state,
+                            StepPhase.OBSERVATION,
+                            StepStatus.FAILED,
+                            reason_code="SPEC_VERIFY_NOT_PASSED",
+                            plan_hash=_plan_hash(state),
+                            observation_hash=stable_hash(state.observation),
+                            candidate_hash=candidate_hash,
+                            verification_fact_ref=verification_fact_ref,
+                            validation_issue_codes=verification_codes,
+                            model_call_ref=model_call_ref,
+                            duration_ms=_elapsed(started),
+                        )
+                        return _result(state, StopReason.VERIFICATION_FAILED)
+                    _append_step(
+                        state,
+                        StepPhase.OBSERVATION,
+                        StepStatus.SUCCEEDED,
+                        reason_code="SPEC_VERIFY_PASSED",
+                        plan_hash=_plan_hash(state),
+                        observation_hash=stable_hash(state.observation),
+                        candidate_hash=candidate_hash,
+                        verification_fact_ref=verification_fact_ref,
+                        model_call_ref=model_call_ref,
+                        duration_ms=_elapsed(started),
+                    )
                 _append_step(
                     state,
                     StepPhase.FINISH,
@@ -302,6 +416,8 @@ async def run_backend_agent_loop(
                     reason_code=StopReason.COMPLETED.value,
                     plan_hash=_plan_hash(state),
                     observation_hash=_observation_hash(state),
+                    candidate_hash=candidate_hash,
+                    verification_fact_ref=verification_fact_ref,
                     model_call_ref=model_call_ref,
                 )
                 return _result(
@@ -430,6 +546,8 @@ def _append_step(
     reason_code: str,
     plan_hash: str | None = None,
     observation_hash: str | None = None,
+    candidate_hash: str | None = None,
+    verification_fact_ref: str | None = None,
     validation_issue_codes: list[str] | None = None,
     model_call_ref: str | None = None,
     tool_call_ref: str | None = None,
@@ -444,6 +562,8 @@ def _append_step(
             reason_code=reason_code,
             plan_hash=plan_hash,
             observation_hash=observation_hash,
+            candidate_hash=candidate_hash,
+            verification_fact_ref=verification_fact_ref,
             validation_issue_codes=list(dict.fromkeys(validation_issue_codes or [])),
             model_call_ref=model_call_ref,
             tool_call_ref=tool_call_ref,
@@ -460,8 +580,14 @@ def _next_phase(state: _LoopState, policy: LoopPolicy) -> str:
         return "PLAN"
     if state.candidate is not None and state.issues:
         return "REPLAN"
-    if policy.enabled and _tool_policy().get("enabled", False) and (
-        not state.observation or state.observation.get("error_code") == "TOOL_INPUT_INVALID"
+    if (
+        policy.enabled
+        and not _verification_required()
+        and _tool_policy().get("enabled", False)
+        and (
+            not state.observation
+            or state.observation.get("error_code") == "TOOL_INPUT_INVALID"
+        )
     ):
         return "ACTION"
     return "FINAL"
@@ -484,6 +610,168 @@ def _observation(value: Any) -> dict[str, Any]:
     if isinstance(value, dict):
         return value
     return {"value": value}
+
+
+def _verification_policy() -> dict[str, Any]:
+    contract = current_model_execution_contract()
+    return dict(contract.verification_policy) if contract is not None else {}
+
+
+def _verification_required() -> bool:
+    policy = _verification_policy()
+    return bool(policy.get("enabled")) and policy.get("required_level") in {"L1", "L2"}
+
+
+async def _verify_backend_candidate(
+    candidate: BackendDesignArtifact,
+    prd: PrdArtifact,
+) -> tuple[VerificationReport, VerificationFact]:
+    execution = current_model_execution_contract()
+    if execution is None or not _verification_required():
+        raise BackendVerificationError(
+            "backend verification requires a frozen execution contract",
+            "SPEC_VERIFY_POLICY_MISSING",
+        )
+    policy = _verification_policy()
+    if policy.get("scope") != "BACKEND":
+        raise BackendVerificationError(
+            "backend verification must use BACKEND scope",
+            "SPEC_VERIFY_SCOPE_INVALID",
+        )
+    if _deadline_elapsed():
+        raise BackendVerificationError(
+            "backend verification deadline elapsed",
+            "TOOL_DEADLINE_EXCEEDED",
+        )
+
+    contract = spec_contract_from_artifacts(
+        prd,
+        candidate,
+        None,
+        contract_id="GeneratedSpec",
+    )
+    compiled = compile_spec(contract)
+    result = await execute_current_tool(
+        ToolCallRequest(
+            name="spec.verify",
+            version="v1",
+            arguments={
+                "contract": contract.model_dump(mode="json"),
+                "scope": "BACKEND",
+                "required_level": policy["required_level"],
+                "rule_profile": policy.get("rule_profile", "spec-backend-v1"),
+                "source_digest": compiled.source_digest,
+                "timeout_ms": policy.get("timeout_ms", 30_000),
+            },
+        )
+    )
+    if result.status != "SUCCEEDED" or not isinstance(result.result, dict):
+        raise BackendVerificationError(
+            result.error_message or "spec.verify returned a failed tool result",
+            result.error_code or "SPEC_VERIFY_FAILED",
+        )
+    payload = result.result.get("result", result.result)
+    if not isinstance(payload, dict):
+        raise BackendVerificationError(
+            "spec.verify returned an invalid result",
+            "SPEC_VERIFY_PROTOCOL_ERROR",
+        )
+    report_payload = {
+        key: value for key, value in payload.items() if key != "verification_fact"
+    }
+    report = VerificationReport.model_validate(report_payload)
+    fact_payload = payload.get("verification_fact")
+    if fact_payload is None:
+        raise BackendVerificationError(
+            "spec.verify did not return a trusted verification fact",
+            "SPEC_VERIFY_FACT_MISSING",
+        )
+    fact = VerificationFact.model_validate(fact_payload)
+    expected_policy_hash = policy.get("policy_hash") or stable_hash(
+        {key: value for key, value in policy.items() if key != "policy_hash"}
+    )
+    if report.execution_id != execution.execution_id:
+        raise BackendVerificationError(
+            "verification report execution does not match the current execution",
+            "SPEC_VERIFY_EXECUTION_MISMATCH",
+        )
+    if report.scope != "BACKEND" or fact.scope != "BACKEND":
+        raise BackendVerificationError(
+            "verification evidence scope does not match BACKEND",
+            "SPEC_VERIFY_SCOPE_MISMATCH",
+        )
+    if report.source_digest != compiled.source_digest or fact.source_digest != report.source_digest:
+        raise BackendVerificationError(
+            "verification evidence source digest does not match the candidate",
+            "SPEC_VERIFY_SOURCE_MISMATCH",
+        )
+    if fact.execution_id != execution.execution_id or fact.policy_hash != expected_policy_hash:
+        raise BackendVerificationError(
+            "verification fact is not bound to the frozen execution policy",
+            "SPEC_VERIFY_FACT_MISMATCH",
+        )
+    if fact.report_hash != stable_hash(report.model_dump(mode="json")):
+        raise BackendVerificationError(
+            "verification fact report hash does not match the report",
+            "SPEC_VERIFY_REPORT_HASH_MISMATCH",
+        )
+    if fact.expires_at_epoch_ms <= int(time.time() * 1000):
+        raise BackendVerificationError(
+            "verification fact has expired",
+            "SPEC_VERIFY_FACT_EXPIRED",
+        )
+    return report, fact
+
+
+def _verification_issues(report: VerificationReport) -> list[BackendValidationIssue]:
+    issues = [
+        BackendValidationIssue(
+            code=issue.code,
+            path=issue.path,
+            message=issue.message,
+            required_change=(
+                f"Repair verifier issue {issue.code} at {issue.path}: {issue.message}"
+            ),
+        )
+        for issue in report.issues
+    ]
+    if issues:
+        return issues
+    return [
+        BackendValidationIssue(
+            code="SPEC_VERIFY_FAILED",
+            path="$",
+            message="The backend candidate did not pass the frozen verifier.",
+            required_change="Repair the backend candidate and rerun spec.verify.",
+        )
+    ]
+
+
+def _verification_observation(
+    report: VerificationReport,
+    fact: VerificationFact,
+) -> dict[str, Any]:
+    return {
+        "status": report.status,
+        "gate_status": report.gate_status,
+        "scope": report.scope,
+        "level": report.level,
+        "source_digest": report.source_digest,
+        "fact_ref": fact.report_hash,
+        "fact_status": fact.status,
+        "issues": [
+            {"code": issue.code, "path": issue.path, "message": issue.message}
+            for issue in report.issues
+        ],
+    }
+
+
+def _verification_stop_reason(error_code: str) -> StopReason:
+    if error_code in {"TOOL_RATE_LIMITED", "TOOL_BUDGET_EXHAUSTED"}:
+        return StopReason.TOOL_BUDGET_EXHAUSTED
+    if error_code in {"TOOL_TIMEOUT", "TOOL_DEADLINE_EXCEEDED", "SPEC_VERIFY_DEADLINE_EXCEEDED"}:
+        return StopReason.DEADLINE_EXCEEDED
+    return StopReason.VERIFICATION_FAILED
 
 
 def _tool_policy() -> dict[str, Any]:
