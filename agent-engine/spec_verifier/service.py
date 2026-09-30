@@ -85,6 +85,13 @@ def create_app(token: str | None = None) -> FastAPI:
                 {
                     "location": list(error.get("loc", ())),
                     "type": error.get("type", "validation_error"),
+                    "reason": (
+                        str(error.get("ctx", {}).get("error"))[:200]
+                        if error.get("type") == "json_invalid"
+                        and isinstance(error.get("ctx"), dict)
+                        and error.get("ctx", {}).get("error")
+                        else None
+                    ),
                 }
                 for error in errors
             ]
