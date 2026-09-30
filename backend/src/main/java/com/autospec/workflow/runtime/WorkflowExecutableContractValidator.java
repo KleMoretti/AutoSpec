@@ -133,7 +133,7 @@ public final class WorkflowExecutableContractValidator {
         rejectUnknown(node.fallback(), FALLBACK_FIELDS, "fallback", node.nodeId());
         rejectUnknown(node.verificationPolicy(), Set.of(
                 "enabled", "scope", "required_level", "rule_profile",
-                "verifier_version", "compiler_version", "timeout_ms"
+                "verifier_version", "compiler_version", "timeout_ms", "policy_hash"
         ), "verification_policy", node.nodeId());
         validateStructuredOutputRepair(node);
         validateVerificationPolicy(node, protocolVersion);
@@ -302,6 +302,10 @@ public final class WorkflowExecutableContractValidator {
                 || text(policy, "verifier_version") == null
                 || text(policy, "compiler_version") == null) {
             throw new IllegalArgumentException("verification_policy metadata is invalid: " + node.nodeId());
+        }
+        if (policy.has("policy_hash")) {
+            requireHash(policy.path("policy_hash").asText(null),
+                    "verification_policy.policy_hash", node.nodeId());
         }
     }
 

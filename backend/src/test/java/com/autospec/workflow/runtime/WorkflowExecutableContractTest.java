@@ -26,6 +26,32 @@ class WorkflowExecutableContractTest {
                 .containsExactlyInAnyOrder("backend_engineer", "frontend_engineer");
     }
 
+    @Test
+    void pmSchemaRepairCandidateValidatesAndReservesTwoFlashCalls() throws Exception {
+        var mapper = new ObjectMapper();
+        var snapshot = Files.readString(Path.of("..", "agent-engine", "contracts",
+                "autospec-pm-schema-repair.workflow.json"));
+        var spec = new WorkflowSnapshotParser(mapper).parse(snapshot);
+        WorkflowExecutableContractValidator.validate(spec);
+        var node = spec.nodes().stream()
+                .filter(value -> "product_manager".equals(value.nodeId()))
+                .findFirst()
+                .orElseThrow();
+
+        assertThat(node.modelPolicy().path("provider_key").asText()).isEqualTo("deepseek");
+        assertThat(node.modelPolicy().path("model_name").asText()).isEqualTo("deepseek-flash");
+        assertThat(node.modelPolicy().path("max_output_tokens").asInt()).isEqualTo(8000);
+        assertThat(node.modelPolicy().path("structured_output_repair").path("max_repairs").asInt())
+                .isEqualTo(1);
+
+        WorkflowBudgetReservation reservation = WorkflowBudgetReservation.from(
+                "19:product_manager:1:1", node.contextPolicy(), node.modelPolicy()
+        );
+        assertThat(reservation.inputTokens()).isEqualTo(24000L);
+        assertThat(reservation.outputTokens()).isEqualTo(16000L);
+        assertThat(reservation.estimatedCost()).isEqualByComparingTo("0.176000");
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"v5", "v6"})
     void diagnosticPinsThinkingModeAndRejectsInvalidValues(String version) throws Exception {
