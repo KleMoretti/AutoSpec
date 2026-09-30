@@ -116,3 +116,18 @@ def test_backend_contract_infers_conventional_entity_primary_key_names() -> None
     assert [field.name for field in converted.fields if field.primary_key] == [
         table.fields[0].name
     ]
+
+
+def test_backend_contract_uses_explicit_field_id_when_table_name_is_composite() -> None:
+    fixture = get_fixture("campus_marketplace")
+    backend = fixture.backend.model_copy(deep=True)
+    table = backend.tables[0]
+    table.name = "activity_entry"
+    table.fields[0].name = "activity_id"
+    table.fields[0].field_id = "FIELD-ACT-ID"
+    table.fields[1].name = "actor_member_id"
+
+    contract = spec_contract_from_artifacts(fixture.prd, backend)
+    converted = next(item for item in contract.tables if item.name == table.name)
+
+    assert [field.name for field in converted.fields if field.primary_key] == ["activity_id"]

@@ -262,6 +262,14 @@ def _primary_key_name(
     if len(matches) == 1:
         return matches[0]
 
+    field_id_matches = [
+        field.name
+        for field in fields
+        if re.search(r"(?:^|[-_])id$", field.field_id.strip(), re.IGNORECASE)
+    ]
+    if len(field_id_matches) == 1:
+        return field_id_matches[0]
+
     fallback = [
         field.name
         for field in fields
