@@ -40,6 +40,13 @@ def generate_structured_output(
     )
     enabled = bool(repair_policy.get("enabled", False))
     max_repairs = min(1, max(0, int(repair_policy.get("max_repairs", 0)))) if enabled else 0
+    repairable_error_codes = {
+        str(code)
+        for code in repair_policy.get(
+            "error_codes",
+            ["STRUCTURED_OUTPUT_INVALID", "VALIDATION_ERROR"],
+        )
+    }
 
     payload: Mapping[str, Any] = input_payload
     last_issues: list[dict[str, str]] = []
@@ -63,6 +70,8 @@ def generate_structured_output(
             last_error_code = "STRUCTURED_OUTPUT_INVALID"
             last_issues = [{"path": "$", "code": "STRUCTURED_OUTPUT_INVALID", "message": str(exc)[:300]}]
 
+        if last_error_code not in repairable_error_codes:
+            break
         max_model_calls = int(contract.model_policy.get("max_calls", 1)) if contract is not None else 1
         if attempt >= max_repairs or attempt + 1 >= max_model_calls:
             break

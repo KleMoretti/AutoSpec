@@ -12,6 +12,7 @@ CONTRACT = ROOT / "agent-engine" / "contracts" / "autospec-v5.workflow.json"
 PARALLEL_CONTRACT = ROOT / "agent-engine" / "contracts" / "autospec-v5-parallel.workflow.json"
 CANDIDATE_CONTRACT = ROOT / "agent-engine" / "contracts" / "autospec-v5-agent-execution.workflow.json"
 SPEC_REPAIR_CONTRACT = ROOT / "agent-engine" / "contracts" / "autospec-spec-repair.workflow.json"
+PM_SCHEMA_REPAIR_CONTRACT = ROOT / "agent-engine" / "contracts" / "autospec-pm-schema-repair.workflow.json"
 MIGRATION_DIR = ROOT / "backend" / "src" / "main" / "resources" / "db" / "migration"
 MIGRATION_PATTERN = re.compile(r"^V(?P<version>\d+)_.*\.sql$")
 
@@ -101,6 +102,12 @@ def main() -> int:
     spec_repair_error = verify_seeded_contract(SPEC_REPAIR_CONTRACT, "spec-repair")
     if spec_repair_error is not None:
         return 1
+    pm_schema_repair_error = verify_seeded_contract(
+        PM_SCHEMA_REPAIR_CONTRACT,
+        "pm-schema-repair-v1",
+    )
+    if pm_schema_repair_error is not None:
+        return 1
     experiment_contracts = sorted(
         CONTRACT.parent.glob("autospec-v5-agent-execution-v[23456]-*.workflow.json")
     )
@@ -116,7 +123,14 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
-    contracts = [CONTRACT, PARALLEL_CONTRACT, CANDIDATE_CONTRACT, SPEC_REPAIR_CONTRACT, *experiment_contracts]
+    contracts = [
+        CONTRACT,
+        PARALLEL_CONTRACT,
+        CANDIDATE_CONTRACT,
+        SPEC_REPAIR_CONTRACT,
+        PM_SCHEMA_REPAIR_CONTRACT,
+        *experiment_contracts,
+    ]
     for path in contracts[3:]:
         document = json.loads(path.read_text(encoding="utf-8"))
         if verify_seeded_contract(path, document["version"]) is not None:
