@@ -51,6 +51,10 @@ class ModelOutputLimitError(RuntimeError):
     error_code = "MODEL_OUTPUT_LIMIT"
 
 
+class ModelStructuredOutputError(RuntimeError):
+    error_code = "STRUCTURED_OUTPUT_INVALID"
+
+
 @dataclass(frozen=True)
 class ModelRoutingRequest:
     quality_profile: str = "BALANCED"
@@ -298,13 +302,13 @@ class OpenAICompatibleModelClient:
                 raise ModelOutputLimitError("Model exhausted the frozen output token allowance before completing its JSON response")
             content = completion.choices[0].message.content
             if content is None or not content.strip():
-                raise RuntimeError("Model returned an empty response")
+                raise ModelStructuredOutputError("Model returned an empty response")
             try:
                 parsed = json.loads(content)
             except json.JSONDecodeError as exc:
-                raise RuntimeError("Model response was not valid JSON") from exc
+                raise ModelStructuredOutputError("Model response was not valid JSON") from exc
             if not isinstance(parsed, dict):
-                raise RuntimeError("Model response must be a JSON object")
+                raise ModelStructuredOutputError("Model response must be a JSON object")
         except Exception as exception:
             estimated_cost = _invocation_cost(
                 input_tokens,

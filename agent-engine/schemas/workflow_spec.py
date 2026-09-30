@@ -8,6 +8,43 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from schemas.agent_loop import LoopPolicy, validate_loop_budget
 
 
+class StructuredOutputRepairPolicy(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    max_repairs: int = Field(default=0, ge=0, le=1)
+    error_codes: list[str] = Field(default_factory=lambda: ["STRUCTURED_OUTPUT_INVALID"])
+
+    @model_validator(mode="after")
+    def validate_repair_budget(self) -> "StructuredOutputRepairPolicy":
+        if self.enabled and self.max_repairs != 1:
+            raise ValueError("structured output repair permits at most one repair")
+        if len(set(self.error_codes)) != len(self.error_codes):
+            raise ValueError("structured output repair error_codes must be unique")
+        return self
+
+
+class VerificationPolicy(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    scope: Literal["BACKEND", "FULL"] = "FULL"
+    required_level: Literal["NONE", "L1", "L2"] = "NONE"
+    rule_profile: str = Field(default="spec-full-v1", min_length=1)
+    verifier_version: str = Field(default="spec-verifier-v1", min_length=1)
+    compiler_version: str = Field(default="spec-compiler-v1", min_length=1)
+    timeout_ms: int = Field(default=30_000, ge=1_000, le=900_000)
+    policy_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+
+    @model_validator(mode="after")
+    def validate_level(self) -> "VerificationPolicy":
+        if self.enabled and self.required_level == "NONE":
+            raise ValueError("enabled verification policy requires L1 or L2")
+        if not self.enabled and self.required_level != "NONE":
+            raise ValueError("disabled verification policy must use required_level NONE")
+        return self
+
+
 class ModelPolicy(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -23,6 +60,9 @@ class ModelPolicy(BaseModel):
     cached_input_cost_per_million: float = Field(default=0.0, ge=0.0)
     output_cost_per_million: float = Field(default=0.0, ge=0.0)
     required_capabilities: list[str] = Field(default_factory=list)
+    structured_output_repair: StructuredOutputRepairPolicy = Field(
+        default_factory=StructuredOutputRepairPolicy
+    )
 
     @model_validator(mode="after")
     def validate_target(self) -> "ModelPolicy":
@@ -116,7 +156,7 @@ class ToolPolicy(BaseModel):
         if self.total_timeout_ms < self.per_call_timeout_ms:
             raise ValueError("total_timeout_ms must cover one tool call")
         if not set(self.allowed_side_effects).issubset(
-            {"READ_ONLY", "DETERMINISTIC", "WRITE"}
+            {"READ_ONLY", "DETERMINISTIC", "SANDBOXED", "WRITE"}
         ):
             raise ValueError("unsupported tool side effect level")
         return self
@@ -228,6 +268,7 @@ class WorkflowNodeSpec(BaseModel):
     tool_policy: ToolPolicy = Field(default_factory=ToolPolicy)
     agent_loop_policy: LoopPolicy = Field(default_factory=LoopPolicy)
     retrieval_policy: RetrievalPolicySpec | None = None
+    verification_policy: VerificationPolicy = Field(default_factory=VerificationPolicy)
     requires_human_approval: bool = False
     depends_on: list[str] = Field(default_factory=list)
     approval: ApprovalPolicy = Field(default_factory=ApprovalPolicy)
