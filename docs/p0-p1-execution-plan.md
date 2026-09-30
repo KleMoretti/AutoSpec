@@ -1,6 +1,6 @@
 ---
 plan_id: autospec-p0-p1-execution
-status: p1-l1-complete
+status: p1-l2-fixture-complete-live-blocked
 created_at: 2026-09-29
 parent: docs/autospec-v5-spec-sandbox-plan.md
 ---
@@ -9,7 +9,7 @@ parent: docs/autospec-v5-spec-sandbox-plan.md
 
 本文件是 [Spec Sandbox 总计划](autospec-v5-spec-sandbox-plan.md)的执行分解，不是另一条产品路线。按用户本次要求保留在 `docs/` 根目录，供能力较弱、上下文较短的模型逐任务实施。本文只制定步骤；所有任务初始状态均为 `planned`，不能把写完计划记为实现完成。
 
-截至 2026-09-30，本轮已完成 P0/P1 的离线实现与 P1-L1 验收；P0-F/P0-G/P1-E/P1-H 的真实 Docker、MySQL、L2、正式 API 和 live 验证因本机 Docker Engine 未启动或未获得 live 授权，仍按下表保留为阻断状态。
+截至 2026-09-30，本轮已完成 P0/P1 的离线实现、P0-F 的真实 MySQL 故障演练、P1-E 的真实隔离 L2、以及正式 API 的 fixture 六节点与 Markdown/PDF/ZIP 交付验收。DeepSeek live 已按授权做两次有界 smoke，但 Product Manager 均在冻结输出上限内未闭合 JSON；远端 CI 也未重跑，因此 P0-G/P1-H 仍按下表保留为阻断状态。
 
 执行顺序、默认方案、修改入口、最小测试、验收证据和停止条件均在下文。按编号实施，一次完成一个任务；不要自行加入 MCP、向量数据库、完整业务代码生成或新前端看板。
 
@@ -31,7 +31,7 @@ parent: docs/autospec-v5-spec-sandbox-plan.md
 4. 缺失、过期、伪造或未达到要求层级的验证证据不能被当成 PASS，也不能通过直接调用导出接口绕过门禁。
 5. 旧工作流、旧 Schema、历史运行和回放继续可用；新候选保持未激活。正式晋级与大规模消融属于 P2。
 
-“P1-L1 完成”和“P1 全部完成”是两个状态。没有真实 L2 隔离验证时，只能交付前者。
+“P1-L1 完成”和“P1 全部完成”是两个状态。本轮已完成三个 fixture 的真实隔离 L2，但 P1-H 仍缺 live 成功证据与远端 CI 结果，不能写 P1 全部完成。
 
 ## 2. 固定约束：执行时不要重新发明方案
 
@@ -528,16 +528,16 @@ agent-engine/spec_verifier/
 | P0-C | done | `spec-full-v1` 通用规则、legacy 规则隔离；approval/event/retry 不再误报，真实引用/权限缺陷仍阻断。 |
 | P0-D | done | 一次有界结构化修复、预算/deadline/错误码与调用台账；相关回归通过。 |
 | P0-E | done | `autospec-spec-repair` 候选、V104 DRAFT 种子、Handler/Schema hash 同步；active 未改变。 |
-| P0-F | blocked_validation | 归档路径与 Compose 配置已修正，H2/Flyway 可到 V104；Testcontainers MySQL 演练未执行，Docker Engine 不可用。 |
-| P0-G | blocked_validation | fixture/受控工具离线链路已测；正式 `POST /api/workflow-runs`、ZIP、live smoke 未执行，分别受 Docker 与授权限制。 |
+| P0-F | done | `MySqlFailureRecoveryIT` 在 Testcontainers MySQL 8.4 + Toxiproxy 2.5.0 通过；检测 4203 ms、恢复 31 ms、partial writes 0、manual repairs 0。 |
+| P0-G | blocked_validation | project 4 / run 7 通过正式 `POST /api/workflow-runs`、人工审批、六节点、Markdown/PDF/ZIP；run 8/9 的 DeepSeek live 均在 Product Manager 输出边界失败，故 live 成功门槛仍未满足。 |
 | P1-A | done | `spec-contract-v1` 明确字段、PK/FK、参数位置、响应、绑定与验证策略；旧 Schema 兼容测试通过。 |
 | P1-B | done | 确定性生成 OpenAPI/DDL/TypeScript/绑定/tsconfig/manifest；确定性与安全边界通过。 |
 | P1-C | done | 3 个正常规格与 9 个最小缺陷稳定 code/path/digest 报告通过。 |
 | P1-D | done | `spec.verify:v1`、SANDBOXED allowlist、deadline、幂等并发与 scope/fencing 校验已接入；离线 Gateway 回归通过。 |
-| P1-E | blocked_validation | verification Compose profile、sidecar、MySQL 与 tsc 配置校验通过；真实容器/L2 未执行。 |
-| P1-F | done | 候选 Backend Loop 已按 BACKEND scope 强制调用 `spec.verify`，把 issue/source/candidate/fact ref 写入 step trace，并复用 bounded Replan；Reviewer FULL 验证已接入。仅真实 L2/正式 API 仍待环境验证。 |
+| P1-E | done | verification profile 中真实 verifier、MySQL 与 TypeScript L2 对校园交易、库存管理、员工请假审批三个 fixture 均 `PASSED`，issues 为空。 |
+| P1-F | done | 候选 Backend Loop 已按 BACKEND scope 强制调用 `spec.verify`，把 issue/source/candidate/fact ref 写入 step trace，并复用 bounded Replan；Reviewer FULL 验证已接入。真实 verifier L2 与正式 fixture API 证据已补齐，live/远端 CI 仍属于 P1-H 收尾边界。 |
 | P1-G | done | Evaluator 与 Java Delivery Gate 均 fail-closed；缺失/过期/伪造/低层级 fact 回归通过，候选控制面装配已补齐。 |
-| P1-H | blocked_validation | 候选、V104、全量离线回归和证据已整理；真实 L2 六节点、正式 API、live 与远端 CI 未执行。 |
+| P1-H | blocked_validation | 候选、V104、全量回归、真实 L2、正式 fixture API/ZIP 和证据已整理；live run 8/9 失败于结构化输出边界，远端 CI 未重跑。 |
 
 每个任务结束，在本表后追加简短记录；详细报告放 `docs/archive/evidence/`，生成临时结果放已有忽略的 target 目录，确认后再保存脱敏摘要。
 
@@ -555,12 +555,12 @@ agent-engine/spec_verifier/
 
 ### 本次执行交接记录（2026-09-30）
 
-- 基线：`0768d4e25fe6467bbfc6b8a733d145bc3342523b`，分支 `master`；保留用户已有 dirty worktree，未 commit/push/激活候选。
+- 基线与交付分支：`codex/p0-p1-complete-20260930`；按任务分段提交，当前已提交至 `5e377ca`，未 push、未激活候选、未删除数据卷。
 - 主要变更：三领域 fixture 与通用 Reviewer 规则；结构化输出单次修复；候选 `spec-repair`；`spec-contract-v1` 编译器/L1；`spec.verify:v1` 与可信事实；候选 Reviewer→Evaluator→Delivery Gate 传播；verification Compose profile。
-- 实际验证：Agent Engine `163 passed`；Backend `mvn -q test` 通过并 Flyway 应用 V104；前端 `9 files / 25 tests` 与 `npm run build` 通过；契约脚本和三种 Compose config 校验通过。
-- 继续执行：Backend Loop verifier feedback/replan 定向用例通过；Agent Engine 全量 `164 passed`；Backend 定向 `WorkflowExecutableContractTest,ToolGatewayServiceTest,DeliveryGateServiceTest,CodeSkeletonServiceTest` 通过并应用 V104。
-- 未执行：Docker/Testcontainers MySQL、真实 verifier MySQL/tsc L2、正式六节点 API/ZIP、live 模型 smoke、远端 CI；原因和后续动作见 [脱敏证据](archive/evidence/p0-p1-execution-2026-09-30.md)。
-- 下一步：启动 Docker Engine 后先执行 P0-F 的 `MySqlFailureRecoveryIT`，再执行 P1-E verification profile 的真实 L2，最后用明确授权的单组 fixture API smoke；P1-F 已完成离线实现，P1-H 仍等待真实 L2/API/live 证据。
+- 实际验证：Agent Engine 全量 `165 passed`；Backend `mvn -q test` 通过并 Flyway 应用 V104；前端 `9 files / 25 tests` 与 `npm run build` 通过；契约脚本和三种 Compose config 校验通过。
+- 真实验证：`MySqlFailureRecoveryIT` 通过；三个 fixture 的 verifier L2（MySQL + TypeScript）通过；project 4 / run 7 正式 API 完成六节点、审批、Markdown/PDF/ZIP，ZIP 包含 4 个必需文件并生成 READY 门禁状态。
+- live 结果：run 8、run 9 各执行 1 次 DeepSeek Product Manager 调用，均因输出 JSON 未在冻结上限内闭合而失败；没有继续扩大付费尝试。远端 CI 未重跑。
+- 下一步：若要完成 P0-G/P1-H，先为 Product Manager 提供经批准的新输出预算或已验证的更短结构化 Prompt/候选版本，再用同一正式 API 做单次 smoke；随后按仓库远端策略重跑 CI。不得修改 active/historical WorkflowSpec 或历史 SQL 代替验证。
 
 ## 14. 最小测试清单与命令
 
@@ -632,16 +632,18 @@ live 采集命令在 P0-G 确认单组过滤与配置后使用现有 `python -m 
 - [x] 三领域 fixture 通过；平台关键词不误杀，真实权限/引用缺陷仍阻断。
 - [x] 单发修复最多一次，调用事实与预算一致；Backend Loop 未新增嵌套修复循环。
 - [x] 新候选注册/两端 Prompt/Schema hash/种子同步，active 未改变。
-- [ ] MySQL 故障检测问题有原因及定向验证；配置已就绪，但 Testcontainers 因 Docker 不可用未执行。
-- [ ] P0 live 结果明确；未执行，保持 P0 未全部完成。
+- [x] MySQL 故障检测问题有原因及定向验证；`MySqlFailureRecoveryIT` 通过并记录 detection/recovery/partial-write/manual-repair 结果。
+- [ ] P0 live 结果明确；run 8/9 已明确失败原因，但没有成功用例，保持 P0 未全部完成。
+- [x] 正式 fixture API 六节点与交付导出完成；run 7 通过审批，Markdown/PDF/ZIP 均成功，ZIP 生成后状态为 `READY`。
 - [x] 新契约可表达验证所需事实，没有按名称猜主外键和参数位置。
 - [x] L1 正常样例与最小缺陷集通过，报告 code/路径/digest 可追踪。
 - [x] Gateway 对新工具的授权、并发幂等、deadline 和可信事实校验有效（离线受控回归）。
-- [ ] 真实 L2 完成，隔离与资源限制有证据；当前只交付 P1-L1。
-- [x] Backend 验证局部、Reviewer 验证汇合产物及错误反馈完整闭环；Backend 使用 BACKEND scope，Reviewer 使用 FULL scope，错误反馈进入 bounded Replan；真实 L2 仍未执行。
+- [x] 真实 L2 完成，隔离与资源限制有证据；三个 fixture 均通过 verifier MySQL 与 TypeScript 检查。
+- [x] Backend 验证局部、Reviewer 验证汇合产物及错误反馈完整闭环；Backend 使用 BACKEND scope，Reviewer 使用 FULL scope，错误反馈进入 bounded Replan；真实 L2 证据另见 P1-E。
 - [x] Evaluator 和交付入口对缺失、过期、伪造或低层级证据 fail-closed（离线回归）。
 - [x] 最终报告写清实际命令、结果、未执行项、预算与候选未激活事实。
 - [x] 没有未经授权的 commit、push、发布、删除数据卷或额外付费实验。
+- [ ] 远端 CI 已重跑并通过；本轮未 push，因此不宣称远端状态。
 
 ## 16. 给执行模型的首条指令
 
