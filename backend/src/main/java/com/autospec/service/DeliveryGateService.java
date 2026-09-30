@@ -256,13 +256,23 @@ public class DeliveryGateService {
         }
         try {
             JsonNode nodes = objectMapper.readTree(run.getExecutionBundleJson()).path("nodes");
+            JsonNode fact = evaluationReport.path("verification_fact");
+            boolean verificationRequired = false;
+            boolean matchingScopeFound = false;
             for (JsonNode node : nodes) {
                 JsonNode policy = node.path("verification_policy");
                 if (!policy.path("enabled").asBoolean(false)
                         || "NONE".equals(policy.path("required_level").asText("NONE"))) {
                     continue;
                 }
-                JsonNode fact = evaluationReport.path("verification_fact");
+                verificationRequired = true;
+                String policyScope = policy.path("scope").asText("");
+                if (fact.isObject()
+                        && !policyScope.isBlank()
+                        && !policyScope.equals(fact.path("scope").asText(""))) {
+                    continue;
+                }
+                matchingScopeFound = true;
                 if (!fact.isObject()) {
                     throw new ResponseStatusException(
                             HttpStatus.UNPROCESSABLE_ENTITY,
@@ -289,6 +299,12 @@ public class DeliveryGateService {
                         );
                     }
                 }
+            }
+            if (verificationRequired && !matchingScopeFound) {
+                throw new ResponseStatusException(
+                        HttpStatus.UNPROCESSABLE_ENTITY,
+                        "Trusted verification evidence does not match the frozen verification policy"
+                );
             }
         } catch (ResponseStatusException exception) {
             throw exception;
