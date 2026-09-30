@@ -12,6 +12,7 @@ CANDIDATE = ENGINE / "contracts/autospec-pm-schema-repair.workflow.json"
 CANDIDATE_V2 = ENGINE / "contracts/autospec-pm-schema-repair-v2.workflow.json"
 CANDIDATE_V3 = ENGINE / "contracts/autospec-pm-schema-repair-v3.workflow.json"
 CANDIDATE_V4 = ENGINE / "contracts/autospec-pm-schema-repair-v4.workflow.json"
+CANDIDATE_V5 = ENGINE / "contracts/autospec-pm-schema-repair-v5.workflow.json"
 
 
 def _document() -> dict:
@@ -134,3 +135,19 @@ def test_candidate_v4_freezes_schema_reviewer_handler() -> None:
         .encode("utf-8")
     ).hexdigest()
     assert reviewer["context_policy"]["prompt_token_reserve"] == 2048
+
+
+def test_candidate_v5_freezes_phase_safe_backend_loop_prompt() -> None:
+    document = json.loads(CANDIDATE_V5.read_text(encoding="utf-8"))
+    WorkflowSpec.model_validate(document)
+    backend = next(node for node in document["nodes"] if node["node_id"] == "backend_engineer")
+    assert document["version"] == "pm-schema-repair-v5"
+    assert backend["agent_name"] == "BackendEngineerAgent_v5"
+    assert backend["prompt_key"] == "backend_engineer_loop_v2"
+    assert backend["prompt_version"] == "v1"
+    assert backend["prompt_checksum"] == hashlib.sha256(
+        (ENGINE / "prompts/backend_engineer_loop_v2_v1.md")
+        .read_text(encoding="utf-8")
+        .replace("\r\n", "\n")
+        .encode("utf-8")
+    ).hexdigest()
