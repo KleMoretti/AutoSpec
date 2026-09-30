@@ -11,6 +11,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 
 /** Internal, fail-closed client for the sandboxed executable-spec verifier. */
@@ -30,6 +31,7 @@ public class SpecVerificationClient {
         this.baseUrl = baseUrl == null ? "" : baseUrl.replaceAll("/+$", "");
         this.serviceToken = serviceToken == null ? "" : serviceToken;
         this.httpClient = HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)
                 .connectTimeout(Duration.ofSeconds(3))
                 .build();
     }
@@ -60,12 +62,13 @@ public class SpecVerificationClient {
             if (arguments.has("timeout_ms")) {
                 payload.set("timeout_ms", arguments.path("timeout_ms").deepCopy());
             }
+            String payloadJson = objectMapper.writeValueAsString(payload);
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(baseUrl + "/verify"))
                     .timeout(Duration.ofSeconds(35))
                     .header("Content-Type", "application/json")
                     .header(ToolGatewayService.SERVICE_HEADER, serviceToken)
-                    .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(payload)))
+                    .POST(HttpRequest.BodyPublishers.ofByteArray(payloadJson.getBytes(StandardCharsets.UTF_8)))
                     .build();
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() >= 400) {
@@ -103,8 +106,8 @@ public class SpecVerificationClient {
                 + ", scope=" + textNodeValue(scope)
                 + ", required_level=" + textNodeValue(requiredLevel)
                 + ", rule_profile=" + textNodeSummary(ruleProfile)
-                + ", source_digest=" + textNodeSummary(sourceDigest)
-                + ", timeout_ms=" + nodeType(timeoutMs);
+                + ", source_digest=" + digestSummary(sourceDigest)
+                + ", timeout_ms=" + timeoutSummary(timeoutMs);
     }
 
     private String textNodeSummary(JsonNode node) {
@@ -123,5 +126,23 @@ public class SpecVerificationClient {
 
     private String nodeType(JsonNode node) {
         return node == null || node.isNull() ? "missing" : node.getNodeType().name();
+    }
+
+    private String digestSummary(JsonNode node) {
+        return textNodeSummary(node)
+                + (node != null && node.isTextual()
+                ? ",hex64=" + node.textValue().matches("[0-9a-f]{64}")
+                : "");
+    }
+
+    private String timeoutSummary(JsonNode node) {
+        if (node == null || node.isNull()) {
+            return "missing";
+        }
+        if (!node.isIntegralNumber()) {
+            return nodeType(node);
+        }
+        long value = node.asLong();
+        return "integer(" + value + "),range1000to900000=" + (value >= 1_000 && value <= 900_000);
     }
 }
