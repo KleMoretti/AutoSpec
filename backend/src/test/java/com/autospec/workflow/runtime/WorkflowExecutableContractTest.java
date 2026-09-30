@@ -187,6 +187,25 @@ class WorkflowExecutableContractTest {
                 .isEqualTo("spec-full-v1");
     }
 
+    @Test
+    void pmSchemaRepairV10CandidateUsesNarrowHistoricalReuseGate() throws Exception {
+        var mapper = new ObjectMapper();
+        var snapshot = Files.readString(Path.of("..", "agent-engine", "contracts",
+                "autospec-pm-schema-repair-v10.workflow.json"));
+        var spec = new WorkflowSnapshotParser(mapper).parse(snapshot);
+        WorkflowExecutableContractValidator.validate(spec);
+
+        var reviewer = spec.nodes().stream()
+                .filter(value -> "reviewer".equals(value.nodeId()))
+                .findFirst()
+                .orElseThrow();
+
+        assertThat(reviewer.agentName()).isEqualTo("ReviewerAgent_v5");
+        assertThat(reviewer.promptKey()).isEqualTo("reviewer_schema_v2");
+        assertThat(reviewer.verificationPolicy().path("rule_profile").asText())
+                .isEqualTo("spec-full-v2");
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"v5", "v6"})
     void diagnosticPinsThinkingModeAndRejectsInvalidValues(String version) throws Exception {

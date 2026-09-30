@@ -17,6 +17,7 @@ CANDIDATE_V6 = ENGINE / "contracts/autospec-pm-schema-repair-v6.workflow.json"
 CANDIDATE_V7 = ENGINE / "contracts/autospec-pm-schema-repair-v7.workflow.json"
 CANDIDATE_V8 = ENGINE / "contracts/autospec-pm-schema-repair-v8.workflow.json"
 CANDIDATE_V9 = ENGINE / "contracts/autospec-pm-schema-repair-v9.workflow.json"
+CANDIDATE_V10 = ENGINE / "contracts/autospec-pm-schema-repair-v10.workflow.json"
 
 
 def _document() -> dict:
@@ -206,3 +207,13 @@ def test_candidate_v9_uses_domain_neutral_reviewer_profile_and_prompt() -> None:
         .encode("utf-8")
     ).hexdigest()
     assert reviewer["verification_policy"]["rule_profile"] == "spec-full-v1"
+
+
+def test_candidate_v10_uses_narrow_historical_reuse_gate() -> None:
+    document = json.loads(CANDIDATE_V10.read_text(encoding="utf-8"))
+    WorkflowSpec.model_validate(document)
+    reviewer = next(node for node in document["nodes"] if node["node_id"] == "reviewer")
+    assert document["version"] == "pm-schema-repair-v10"
+    assert reviewer["agent_name"] == "ReviewerAgent_v5"
+    assert reviewer["prompt_key"] == "reviewer_schema_v2"
+    assert reviewer["verification_policy"]["rule_profile"] == "spec-full-v2"
