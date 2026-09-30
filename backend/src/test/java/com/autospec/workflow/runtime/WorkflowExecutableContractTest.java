@@ -146,6 +146,28 @@ class WorkflowExecutableContractTest {
         assertThat(architect.modelPolicy().path("max_output_tokens").asInt()).isEqualTo(8000);
     }
 
+    @Test
+    void pmSchemaRepairV8CandidateExpandsDownstreamContextBudget() throws Exception {
+        var mapper = new ObjectMapper();
+        var snapshot = Files.readString(Path.of("..", "agent-engine", "contracts",
+                "autospec-pm-schema-repair-v8.workflow.json"));
+        var spec = new WorkflowSnapshotParser(mapper).parse(snapshot);
+        WorkflowExecutableContractValidator.validate(spec);
+
+        assertThat(spec.nodes().stream()
+                .filter(value -> "backend_engineer".equals(value.nodeId()))
+                .findFirst().orElseThrow().contextPolicy().path("max_input_tokens").asInt())
+                .isEqualTo(24000);
+        assertThat(spec.nodes().stream()
+                .filter(value -> "frontend_engineer".equals(value.nodeId()))
+                .findFirst().orElseThrow().contextPolicy().path("max_input_tokens").asInt())
+                .isEqualTo(24000);
+        assertThat(spec.nodes().stream()
+                .filter(value -> "reviewer".equals(value.nodeId()))
+                .findFirst().orElseThrow().contextPolicy().path("max_input_tokens").asInt())
+                .isEqualTo(30000);
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"v5", "v6"})
     void diagnosticPinsThinkingModeAndRejectsInvalidValues(String version) throws Exception {

@@ -19,6 +19,7 @@ PM_SCHEMA_REPAIR_V4_CONTRACT = ROOT / "agent-engine" / "contracts" / "autospec-p
 PM_SCHEMA_REPAIR_V5_CONTRACT = ROOT / "agent-engine" / "contracts" / "autospec-pm-schema-repair-v5.workflow.json"
 PM_SCHEMA_REPAIR_V6_CONTRACT = ROOT / "agent-engine" / "contracts" / "autospec-pm-schema-repair-v6.workflow.json"
 PM_SCHEMA_REPAIR_V7_CONTRACT = ROOT / "agent-engine" / "contracts" / "autospec-pm-schema-repair-v7.workflow.json"
+PM_SCHEMA_REPAIR_V8_CONTRACT = ROOT / "agent-engine" / "contracts" / "autospec-pm-schema-repair-v8.workflow.json"
 MIGRATION_DIR = ROOT / "backend" / "src" / "main" / "resources" / "db" / "migration"
 MIGRATION_PATTERN = re.compile(r"^V(?P<version>\d+)_.*\.sql$")
 
@@ -150,6 +151,12 @@ def main() -> int:
     )
     if pm_schema_repair_v7_error is not None:
         return 1
+    pm_schema_repair_v8_error = verify_seeded_contract(
+        PM_SCHEMA_REPAIR_V8_CONTRACT,
+        "pm-schema-repair-v8",
+    )
+    if pm_schema_repair_v8_error is not None:
+        return 1
     experiment_contracts = sorted(
         CONTRACT.parent.glob("autospec-v5-agent-execution-v[23456]-*.workflow.json")
     )
@@ -177,6 +184,7 @@ def main() -> int:
         PM_SCHEMA_REPAIR_V5_CONTRACT,
         PM_SCHEMA_REPAIR_V6_CONTRACT,
         PM_SCHEMA_REPAIR_V7_CONTRACT,
+        PM_SCHEMA_REPAIR_V8_CONTRACT,
         *experiment_contracts,
     ]
     for path in contracts[3:]:
