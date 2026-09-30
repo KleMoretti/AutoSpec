@@ -33,6 +33,7 @@ PROMPT_FILES = {
     "ProductManagerAgent_v2": "product_manager_schema_v1.md",
     "ArchitectAgent_v1": "architect_v1.md",
     "ArchitectAgent_v2": "architect_shared_v1.md",
+    "ArchitectAgent_v3": "architect_schema_v1.md",
     "BackendEngineerAgent_v1": "backend_engineer_v1.md",
     "BackendEngineerAgent_v2": "backend_engineer_loop_v1.md",
     "BackendEngineerAgent_v3": "backend_engineer_shared_v1.md",

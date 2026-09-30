@@ -9,6 +9,7 @@ from schemas.workflow_spec import WorkflowSpec
 
 ENGINE = Path(__file__).resolve().parents[1]
 CANDIDATE = ENGINE / "contracts/autospec-pm-schema-repair.workflow.json"
+CANDIDATE_V2 = ENGINE / "contracts/autospec-pm-schema-repair-v2.workflow.json"
 
 
 def _document() -> dict:
@@ -72,3 +73,20 @@ def test_candidate_freezes_flash_model_for_all_remote_nodes() -> None:
         assert policy["input_cost_per_million"] == 2
         assert policy["cached_input_cost_per_million"] == 0.04
         assert policy["output_cost_per_million"] == 8
+
+
+def test_candidate_v2_freezes_explicit_architect_schema_handler() -> None:
+    document = json.loads(CANDIDATE_V2.read_text(encoding="utf-8"))
+    WorkflowSpec.model_validate(document)
+    architect = next(node for node in document["nodes"] if node["node_id"] == "architect")
+    assert document["version"] == "pm-schema-repair-v2"
+    assert architect["agent_name"] == "ArchitectAgent_v3"
+    assert architect["prompt_key"] == "architect_schema"
+    assert architect["prompt_version"] == "v1"
+    assert architect["prompt_checksum"] == hashlib.sha256(
+        (ENGINE / "prompts/architect_schema_v1.md")
+        .read_text(encoding="utf-8")
+        .replace("\r\n", "\n")
+        .encode("utf-8")
+    ).hexdigest()
+    assert architect["context_policy"]["prompt_token_reserve"] == 6000

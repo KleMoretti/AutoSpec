@@ -13,6 +13,7 @@ PARALLEL_CONTRACT = ROOT / "agent-engine" / "contracts" / "autospec-v5-parallel.
 CANDIDATE_CONTRACT = ROOT / "agent-engine" / "contracts" / "autospec-v5-agent-execution.workflow.json"
 SPEC_REPAIR_CONTRACT = ROOT / "agent-engine" / "contracts" / "autospec-spec-repair.workflow.json"
 PM_SCHEMA_REPAIR_CONTRACT = ROOT / "agent-engine" / "contracts" / "autospec-pm-schema-repair.workflow.json"
+PM_SCHEMA_REPAIR_V2_CONTRACT = ROOT / "agent-engine" / "contracts" / "autospec-pm-schema-repair-v2.workflow.json"
 MIGRATION_DIR = ROOT / "backend" / "src" / "main" / "resources" / "db" / "migration"
 MIGRATION_PATTERN = re.compile(r"^V(?P<version>\d+)_.*\.sql$")
 
@@ -108,6 +109,12 @@ def main() -> int:
     )
     if pm_schema_repair_error is not None:
         return 1
+    pm_schema_repair_v2_error = verify_seeded_contract(
+        PM_SCHEMA_REPAIR_V2_CONTRACT,
+        "pm-schema-repair-v2",
+    )
+    if pm_schema_repair_v2_error is not None:
+        return 1
     experiment_contracts = sorted(
         CONTRACT.parent.glob("autospec-v5-agent-execution-v[23456]-*.workflow.json")
     )
@@ -129,6 +136,7 @@ def main() -> int:
         CANDIDATE_CONTRACT,
         SPEC_REPAIR_CONTRACT,
         PM_SCHEMA_REPAIR_CONTRACT,
+        PM_SCHEMA_REPAIR_V2_CONTRACT,
         *experiment_contracts,
     ]
     for path in contracts[3:]:
@@ -146,7 +154,7 @@ def main() -> int:
         WorkflowSpec.model_validate(document)
     for prompt_name in (
         "backend_engineer_loop_v1.md", "product_manager_schema_v1.md",
-        "architect_shared_v1.md", "backend_engineer_shared_v1.md",
+        "architect_shared_v1.md", "architect_schema_v1.md", "backend_engineer_shared_v1.md",
         "frontend_engineer_shared_v1.md", "reviewer_shared_v1.md",
     ):
         prompt_path = AGENT_ENGINE / "prompts" / prompt_name
