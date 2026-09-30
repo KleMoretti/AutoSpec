@@ -204,8 +204,21 @@ public class ToolGatewayService {
         } catch (GatewayFailure failure) {
             return persistFailure(request, run, failure.code, failure.getMessage());
         } catch (Exception exception) {
-            return persistFailure(request, run, "TOOL_EXECUTION_FAILED", "controlled tool execution failed");
+            return persistFailure(
+                    request,
+                    run,
+                    "TOOL_EXECUTION_FAILED",
+                    controlledToolFailureMessage(exception)
+            );
         }
+    }
+
+    private String controlledToolFailureMessage(Exception exception) {
+        String message = exception.getMessage();
+        if (message == null || !message.startsWith("spec verifier ")) {
+            return "controlled tool execution failed";
+        }
+        return message.length() <= 512 ? message : message.substring(0, 512);
     }
 
     private GatewayFailure validateExecutionScope(
