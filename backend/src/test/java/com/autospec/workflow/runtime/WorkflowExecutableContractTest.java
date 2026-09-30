@@ -225,6 +225,24 @@ class WorkflowExecutableContractTest {
                 .isEqualTo("2dcdb7bff37b4c1638210ce0e3d35b125eb7d9cc670243d8e1b6b4c0397cab83");
     }
 
+    @Test
+    void pmSchemaRepairV12CandidateUsesNormalizedSharedContractReview() throws Exception {
+        var mapper = new ObjectMapper();
+        var snapshot = Files.readString(Path.of("..", "agent-engine", "contracts",
+                "autospec-pm-schema-repair-v12.workflow.json"));
+        var spec = new WorkflowSnapshotParser(mapper).parse(snapshot);
+        WorkflowExecutableContractValidator.validate(spec);
+
+        var reviewer = spec.nodes().stream()
+                .filter(value -> "reviewer".equals(value.nodeId()))
+                .findFirst()
+                .orElseThrow();
+
+        assertThat(reviewer.agentName()).isEqualTo("ReviewerAgent_v5");
+        assertThat(reviewer.verificationPolicy().path("rule_profile").asText())
+                .isEqualTo("spec-full-v2");
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"v5", "v6"})
     void diagnosticPinsThinkingModeAndRejectsInvalidValues(String version) throws Exception {
