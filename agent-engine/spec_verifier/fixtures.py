@@ -263,12 +263,15 @@ def _primary_key_name(
         return matches[0]
 
     field_id_matches = [
-        field.name
+        (field.name, len(re.split(r"[-_]", field.field_id.strip())))
         for field in fields
         if re.search(r"(?:^|[-_])id$", field.field_id.strip(), re.IGNORECASE)
     ]
-    if len(field_id_matches) == 1:
-        return field_id_matches[0]
+    if field_id_matches:
+        shallowest = min(depth for _, depth in field_id_matches)
+        shallow_matches = [name for name, depth in field_id_matches if depth == shallowest]
+        if len(shallow_matches) == 1:
+            return shallow_matches[0]
 
     fallback = [
         field.name

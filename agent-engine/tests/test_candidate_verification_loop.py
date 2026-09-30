@@ -125,7 +125,8 @@ def test_backend_contract_uses_explicit_field_id_when_table_name_is_composite() 
     table.name = "activity_entry"
     table.fields[0].name = "activity_id"
     table.fields[0].field_id = "FIELD-ACT-ID"
-    table.fields[1].name = "actor_member_id"
+    table.fields[1].name = "workspace_id"
+    table.fields[1].field_id = "FIELD-ACT-WORKSPACE-ID"
 
     contract = spec_contract_from_artifacts(fixture.prd, backend)
     converted = next(item for item in contract.tables if item.name == table.name)
