@@ -80,7 +80,21 @@ def create_app(token: str | None = None) -> FastAPI:
         try:
             payload = VerifyRequest.model_validate_json(body)
         except ValueError as exc:
-            raise HTTPException(status_code=422, detail="invalid verification request") from exc
+            errors = exc.errors() if hasattr(exc, "errors") else []
+            safe_errors = [
+                {
+                    "location": list(error.get("loc", ())),
+                    "type": error.get("type", "validation_error"),
+                }
+                for error in errors
+            ]
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "message": "invalid verification request",
+                    "errors": safe_errors,
+                },
+            ) from exc
         return verify_payload(payload)
 
     return app
