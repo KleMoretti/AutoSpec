@@ -5,6 +5,7 @@ from agents.backend_engineer import BackendEngineerAgent
 from agents.frontend_engineer import FrontendEngineerAgent
 from agents.product_manager import ProductManagerAgent
 from evaluation.retrieval import load_gold_dataset, run_retrieval_evaluation
+from fixtures.software_domains import get_fixture
 from review.shared_contract import validate_backend_contract, validate_frontend_contract
 from runtime.embedding_provider import HashEmbeddingProvider, OpenAIEmbeddingProvider, configured_embedding_provider
 from runtime.context_policy import apply_context_policy
@@ -29,6 +30,15 @@ def test_shared_contract_supports_parallel_backend_and_frontend() -> None:
     broken.api_bindings[0].path = "/api/not-in-shared-contract"
     with pytest.raises(ValueError, match="Shared Contract"):
         validate_frontend_contract(architecture, broken)
+
+
+def test_shared_contract_allows_backend_detail_and_conventional_table_names() -> None:
+    fixture = get_fixture("inventory_management")
+    architecture = fixture.shared_architecture()
+    architecture.shared_contract.domain_models[0].name = "InventoryItem"
+    fixture.backend.apis[0].description += " Reject invalid item details with a typed error."
+
+    validate_backend_contract(architecture, fixture.backend)
 
 
 def test_canonical_graph_has_real_parallel_branch() -> None:
