@@ -76,6 +76,7 @@ public class SpecVerificationClient {
                 throw new IllegalStateException(
                         "spec verifier rejected the request: HTTP " + response.statusCode()
                                 + (responseBody.isBlank() ? "" : ": " + responseBody)
+                                + " (request=" + requestSummary(payload) + ")"
                 );
             }
             return objectMapper.readTree(response.body());
@@ -87,5 +88,40 @@ public class SpecVerificationClient {
         } catch (IOException exception) {
             throw new IllegalStateException("spec verifier is unavailable", exception);
         }
+    }
+
+    private String requestSummary(com.fasterxml.jackson.databind.node.ObjectNode payload) {
+        JsonNode executionId = payload.get("execution_id");
+        JsonNode contract = payload.get("contract");
+        JsonNode scope = payload.get("scope");
+        JsonNode requiredLevel = payload.get("required_level");
+        JsonNode ruleProfile = payload.get("rule_profile");
+        JsonNode sourceDigest = payload.get("source_digest");
+        JsonNode timeoutMs = payload.get("timeout_ms");
+        return "execution_id=" + textNodeSummary(executionId)
+                + ", contract_object=" + (contract != null && contract.isObject())
+                + ", scope=" + textNodeValue(scope)
+                + ", required_level=" + textNodeValue(requiredLevel)
+                + ", rule_profile=" + textNodeSummary(ruleProfile)
+                + ", source_digest=" + textNodeSummary(sourceDigest)
+                + ", timeout_ms=" + nodeType(timeoutMs);
+    }
+
+    private String textNodeSummary(JsonNode node) {
+        if (node == null || node.isNull()) {
+            return "missing";
+        }
+        return node.isTextual() ? "text(" + node.textValue().length() + ")" : nodeType(node);
+    }
+
+    private String textNodeValue(JsonNode node) {
+        if (node == null || node.isNull()) {
+            return "missing";
+        }
+        return node.isTextual() ? node.textValue() : nodeType(node);
+    }
+
+    private String nodeType(JsonNode node) {
+        return node == null || node.isNull() ? "missing" : node.getNodeType().name();
     }
 }
