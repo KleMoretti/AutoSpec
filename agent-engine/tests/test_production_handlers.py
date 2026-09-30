@@ -35,6 +35,8 @@ def test_registry_contains_all_builtin_v5_handlers() -> None:
         "EvaluatorAgent",
     ]:
         assert registry.resolve(handler_key, "v1")
+    assert registry.resolve("BackendEngineerAgent", "v4")
+    assert registry.resolve("FrontendEngineerAgent", "v3")
 
 
 @pytest.mark.asyncio

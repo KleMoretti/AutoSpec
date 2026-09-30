@@ -39,6 +39,7 @@ PROMPT_FILES = {
     "BackendEngineerAgent_v3": "backend_engineer_shared_v1.md",
     "FrontendEngineerAgent_v1": "frontend_engineer_v1.md",
     "FrontendEngineerAgent_v2": "frontend_engineer_shared_v1.md",
+    "FrontendEngineerAgent_v3": "frontend_schema_v1.md",
     "ReviewerAgent_v1": "reviewer_v1.md",
     "ReviewerAgent_v2": "reviewer_shared_v1.md",
 }

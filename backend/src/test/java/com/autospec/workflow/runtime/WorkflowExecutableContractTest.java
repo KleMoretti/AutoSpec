@@ -52,6 +52,30 @@ class WorkflowExecutableContractTest {
         assertThat(reservation.estimatedCost()).isEqualByComparingTo("0.176000");
     }
 
+    @Test
+    void pmSchemaRepairV3CandidateUsesLoopBackendAndSchemaFrontend() throws Exception {
+        var mapper = new ObjectMapper();
+        var snapshot = Files.readString(Path.of("..", "agent-engine", "contracts",
+                "autospec-pm-schema-repair-v3.workflow.json"));
+        var spec = new WorkflowSnapshotParser(mapper).parse(snapshot);
+        WorkflowExecutableContractValidator.validate(spec);
+
+        var backend = spec.nodes().stream()
+                .filter(value -> "backend_engineer".equals(value.nodeId()))
+                .findFirst()
+                .orElseThrow();
+        var frontend = spec.nodes().stream()
+                .filter(value -> "frontend_engineer".equals(value.nodeId()))
+                .findFirst()
+                .orElseThrow();
+
+        assertThat(backend.agentName()).isEqualTo("BackendEngineerAgent_v4");
+        assertThat(backend.promptKey()).isEqualTo("backend_engineer_loop");
+        assertThat(frontend.agentName()).isEqualTo("FrontendEngineerAgent_v3");
+        assertThat(frontend.promptKey()).isEqualTo("frontend_schema");
+        assertThat(frontend.contextPolicy().path("prompt_token_reserve").asInt()).isEqualTo(2048);
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"v5", "v6"})
     void diagnosticPinsThinkingModeAndRejectsInvalidValues(String version) throws Exception {

@@ -10,6 +10,7 @@ from schemas.workflow_spec import WorkflowSpec
 ENGINE = Path(__file__).resolve().parents[1]
 CANDIDATE = ENGINE / "contracts/autospec-pm-schema-repair.workflow.json"
 CANDIDATE_V2 = ENGINE / "contracts/autospec-pm-schema-repair-v2.workflow.json"
+CANDIDATE_V3 = ENGINE / "contracts/autospec-pm-schema-repair-v3.workflow.json"
 
 
 def _document() -> dict:
@@ -90,3 +91,28 @@ def test_candidate_v2_freezes_explicit_architect_schema_handler() -> None:
         .encode("utf-8")
     ).hexdigest()
     assert architect["context_policy"]["prompt_token_reserve"] == 6000
+
+
+def test_candidate_v3_freezes_loop_backend_and_schema_frontend_handlers() -> None:
+    document = json.loads(CANDIDATE_V3.read_text(encoding="utf-8"))
+    WorkflowSpec.model_validate(document)
+    assert document["version"] == "pm-schema-repair-v3"
+    backend = next(node for node in document["nodes"] if node["node_id"] == "backend_engineer")
+    frontend = next(node for node in document["nodes"] if node["node_id"] == "frontend_engineer")
+    assert backend["agent_name"] == "BackendEngineerAgent_v4"
+    assert backend["prompt_key"] == "backend_engineer_loop"
+    assert backend["prompt_checksum"] == hashlib.sha256(
+        (ENGINE / "prompts/backend_engineer_loop_v1.md")
+        .read_text(encoding="utf-8")
+        .replace("\r\n", "\n")
+        .encode("utf-8")
+    ).hexdigest()
+    assert frontend["agent_name"] == "FrontendEngineerAgent_v3"
+    assert frontend["prompt_key"] == "frontend_schema"
+    assert frontend["prompt_checksum"] == hashlib.sha256(
+        (ENGINE / "prompts/frontend_schema_v1.md")
+        .read_text(encoding="utf-8")
+        .replace("\r\n", "\n")
+        .encode("utf-8")
+    ).hexdigest()
+    assert frontend["context_policy"]["prompt_token_reserve"] == 2048
