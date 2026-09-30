@@ -68,8 +68,13 @@ def run_current_rule_checks(
     frontend_skeleton: FrontendSkeletonArtifact,
     retrieved_sources: list[dict[str, Any]] | None = None,
     generated_files: list[dict[str, Any] | str] | None = None,
+    rule_profile: str = "legacy-marketplace-v1",
 ) -> list[ReviewIssue]:
-    issues = run_rule_checks(prd, backend_design)
+    issues = (
+        run_generic_rule_checks(prd, architecture_design, backend_design, frontend_skeleton)
+        if rule_profile == "spec-full-v1"
+        else run_rule_checks(prd, backend_design)
+    )
     if isinstance(architecture_design, ArchitectureDesignArtifactV2):
         for check, target in ((validate_backend_contract, "backend_engineer"), (validate_frontend_contract, "frontend_engineer")):
             try:
@@ -81,14 +86,15 @@ def run_current_rule_checks(
                     description=str(exception),
                     suggestion=f"Rework {target} against the Architect Shared Contract without changing its stable API ids.",
                 ))
-    issues.extend(
-        _run_cross_artifact_checks(
-            prd,
-            architecture_design,
-            backend_design,
-            frontend_skeleton,
+    if rule_profile != "spec-full-v1":
+        issues.extend(
+            _run_cross_artifact_checks(
+                prd,
+                architecture_design,
+                backend_design,
+                frontend_skeleton,
+            )
         )
-    )
     issues.extend(
         _run_delivery_checks(
             prd,
@@ -100,6 +106,123 @@ def run_current_rule_checks(
         )
     )
     return issues
+
+
+def run_generic_rule_checks(
+    prd: PrdArtifact,
+    architecture_design: ArchitectureDesignArtifact,
+    backend_design: BackendDesignArtifact,
+    frontend_skeleton: FrontendSkeletonArtifact,
+) -> list[ReviewIssue]:
+    """Run domain-neutral structural checks for the executable spec profile.
+
+    The historical marketplace profile intentionally remains text-oriented for
+    replay compatibility.  This profile reasons over stable ids and typed
+    artifact relationships, so words such as ``event`` or ``approval`` in a
+    business requirement cannot accidentally demand AutoSpec control-plane
+    APIs.
+    """
+
+    issues: list[ReviewIssue] = []
+    known_requirements = {feature.requirement_id for feature in prd.core_features}
+    known_api_ids = {api.api_id for api in backend_design.apis}
+    seen_api_pairs: set[tuple[str, str]] = set()
+
+    for api in backend_design.apis:
+        pair = (api.method, api.path)
+        if pair in seen_api_pairs:
+            issues.append(_issue(
+                "HIGH", "API_DUPLICATE_OPERATION",
+                f"API operation '{api.method} {api.path}' is duplicated.",
+                "Keep one stable API id per method/path operation.",
+            ))
+        seen_api_pairs.add(pair)
+        if api.auth_required and not api.required_roles:
+            issues.append(_issue(
+                "HIGH", "PERMISSION_COVERAGE",
+                f"Authenticated API '{api.api_id}' has no required role.",
+                "Declare at least one role for every authenticated API.",
+            ))
+        issues.extend(_unknown_refs(api.requirement_refs, known_requirements, "API", api.api_id))
+
+    for table in backend_design.tables:
+        issues.extend(_unknown_refs(table.requirement_refs, known_requirements, "table", table.table_id))
+        for field in table.fields:
+            issues.extend(_unknown_refs(field.requirement_refs, known_requirements, "field", field.field_id))
+
+    for binding in frontend_skeleton.api_bindings:
+        if binding.backend_api_id not in known_api_ids:
+            issues.append(_issue(
+                "HIGH", "BINDING_API_NOT_FOUND",
+                f"Frontend binding '{binding.binding_id}' references unknown API '{binding.backend_api_id}'.",
+                "Bind the UI to an API id emitted by the backend artifact.",
+            ))
+            continue
+        api = next(api for api in backend_design.apis if api.api_id == binding.backend_api_id)
+        if (binding.method, binding.path) != (api.method, api.path):
+            issues.append(_issue(
+                "HIGH", "BINDING_API_DRIFT",
+                f"Frontend binding '{binding.binding_id}' does not match API '{api.api_id}'.",
+                f"Use {api.method} {api.path} for this binding.",
+            ))
+        issues.extend(_unknown_refs(binding.requirement_refs, known_requirements, "binding", binding.binding_id))
+
+    for artifact_name, artifact in (
+        ("architecture", architecture_design),
+        ("frontend", frontend_skeleton),
+    ):
+        for item in _artifact_items_with_refs(artifact):
+            issues.extend(_unknown_refs(item[1], known_requirements, artifact_name, item[0]))
+
+    covered = _covered_requirement_ids(prd, architecture_design, backend_design, frontend_skeleton)
+    for feature in prd.core_features:
+        if feature.priority == "MUST" and feature.requirement_id not in covered:
+            issues.append(_issue(
+                "HIGH", "MUST_REQUIREMENT_UNCOVERED",
+                f"MUST requirement '{feature.requirement_id}' has no downstream artifact coverage.",
+                "Reference the requirement from an API, data model, UI binding, architecture item, story, or acceptance criterion.",
+            ))
+
+    return issues
+
+
+def _unknown_refs(refs: list[str], known: set[str], kind: str, identity: str | None) -> list[ReviewIssue]:
+    return [
+        _issue(
+            "HIGH", "UNKNOWN_REQUIREMENT_REF",
+            f"{kind} '{identity}' references unknown requirement '{ref}'.",
+            "Use only requirement ids declared by the PRD.",
+        )
+        for ref in refs
+        if ref not in known
+    ]
+
+
+def _artifact_items_with_refs(artifact: Any) -> list[tuple[str | None, list[str]]]:
+    items: list[tuple[str | None, list[str]]] = []
+    for value in artifact.model_dump(mode="python").values():
+        if isinstance(value, list):
+            for item in value:
+                if isinstance(item, dict) and "requirement_refs" in item:
+                    items.append((item.get("module_id") or item.get("page_id") or item.get("route_id") or item.get("component_id") or item.get("decision_id") or item.get("constraint_id") or item.get("binding_id"), item["requirement_refs"]))
+    return items
+
+
+def _covered_requirement_ids(
+    prd: PrdArtifact,
+    architecture_design: ArchitectureDesignArtifact,
+    backend_design: BackendDesignArtifact,
+    frontend_skeleton: FrontendSkeletonArtifact,
+) -> set[str]:
+    covered = {
+        ref
+        for story in prd.user_stories
+        for ref in [*story.requirement_refs, *(ref for criterion in story.acceptance_criteria for ref in criterion.requirement_refs)]
+    }
+    for artifact in (architecture_design, backend_design, frontend_skeleton):
+        for _, refs in _artifact_items_with_refs(artifact):
+            covered.update(refs)
+    return covered
 
 
 def _run_cross_artifact_checks(

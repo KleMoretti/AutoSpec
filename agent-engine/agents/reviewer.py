@@ -3,11 +3,12 @@ from typing import Any
 
 from agents.base import ModelClient
 from review.rules import run_current_rule_checks, score_from_issues
+from runtime.structured_output import generate_structured_output
 from schemas.architecture_design import ArchitectureDesignArtifact
 from schemas.backend_design import BackendDesignArtifact
 from schemas.frontend_skeleton import FrontendSkeletonArtifact
 from schemas.prd import PrdArtifact
-from schemas.review import ReviewDecision, ReviewIssue, ReviewReport, ReworkRoute
+from schemas.review import ReviewDecision, ReviewIssue, ReviewReport, ReviewReportV2, ReworkRoute
 
 
 _ISSUE_TARGETS = {
@@ -22,6 +23,11 @@ _ISSUE_TARGETS = {
     "CITATION_INVALID": "architect",
     "SHARED_CONTRACT_BACKEND_DRIFT": "backend_engineer",
     "SHARED_CONTRACT_FRONTEND_DRIFT": "frontend_engineer",
+    "API_DUPLICATE_OPERATION": "backend_engineer",
+    "BINDING_API_NOT_FOUND": "frontend_engineer",
+    "BINDING_API_DRIFT": "frontend_engineer",
+    "UNKNOWN_REQUIREMENT_REF": "architect",
+    "MUST_REQUIREMENT_UNCOVERED": "architect",
 }
 
 
@@ -42,7 +48,9 @@ class ReviewerAgent:
         model_invocations: list[dict[str, Any]] | None = None,
         context_manifest: dict[str, Any] | None = None,
         shared_contract_required: bool = False,
-    ) -> ReviewReport:
+        rule_profile: str = "legacy-marketplace-v1",
+        verification_fact: dict[str, Any] | None = None,
+    ) -> ReviewReport | ReviewReportV2:
         rule_issues = run_current_rule_checks(
             prd=prd,
             architecture_design=architecture_design,
@@ -50,6 +58,7 @@ class ReviewerAgent:
             frontend_skeleton=frontend_skeleton,
             retrieved_sources=retrieved_sources or [],
             generated_files=generated_files or [],
+            rule_profile=rule_profile,
         )
 
         rule_issues = self._with_stable_issue_ids(rule_issues)
@@ -70,8 +79,11 @@ class ReviewerAgent:
                 input_payload["model_invocations"] = model_invocations
             input_payload["context_manifest"] = context_manifest or {}
 
-            semantic_report = ReviewReport.model_validate(
-                self.model_client.generate_json("ReviewerAgent_v2" if shared_contract_required else self.prompt_name, input_payload)
+            semantic_report = generate_structured_output(
+                self.model_client,
+                "ReviewerAgent_v2" if shared_contract_required else self.prompt_name,
+                input_payload,
+                ReviewReport,
             )
             combined_issues = self._with_stable_issue_ids(
                 [*rule_issues, *semantic_report.issues]
@@ -79,19 +91,33 @@ class ReviewerAgent:
             routes = self._merge_routes(
                 self._routes_for_issues(combined_issues), semantic_report.routes
             )
-            return ReviewReport(
+            report = ReviewReport(
                 score=min(semantic_report.score, score_from_issues(rule_issues)),
                 issues=combined_issues,
                 decision=ReviewDecision.REWORK if routes else ReviewDecision.PASS,
                 routes=routes,
             )
+            return self._with_verification_fact(report, verification_fact)
 
         routes = self._routes_for_issues(rule_issues)
-        return ReviewReport(
+        report = ReviewReport(
             score=score_from_issues(rule_issues),
             issues=rule_issues,
             decision=ReviewDecision.REWORK if routes else ReviewDecision.PASS,
             routes=routes,
+        )
+        return self._with_verification_fact(report, verification_fact)
+
+    def _with_verification_fact(
+        self,
+        report: ReviewReport,
+        verification_fact: dict[str, Any] | None,
+    ) -> ReviewReport | ReviewReportV2:
+        if verification_fact is None:
+            return report
+        return ReviewReportV2(
+            **report.model_dump(),
+            verification_fact=verification_fact,
         )
 
     def _routes_for_issues(self, issues: list[ReviewIssue]) -> list[ReworkRoute]:

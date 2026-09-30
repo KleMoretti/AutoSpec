@@ -1,6 +1,8 @@
 from typing import Any, Mapping
 
 from agents.base import ModelClient
+from fixtures.software_domains import fixture_for_requirement
+from runtime.structured_output import generate_structured_output
 from schemas.architecture_design import ArchitectureDesignArtifact
 from schemas.backend_design import BackendDesignArtifact
 from schemas.prd import PrdArtifact
@@ -43,9 +45,14 @@ class BackendEngineerAgent:
                 if key != "architecture_design"
             }
         if self.model_client is not None:
-            return BackendDesignArtifact.model_validate(
-                self.model_client.generate_json("BackendEngineerAgent_v3" if shared_contract_required else self.prompt_name, input_payload)
+            return generate_structured_output(
+                self.model_client,
+                "BackendEngineerAgent_v3" if shared_contract_required else self.prompt_name,
+                input_payload,
+                BackendDesignArtifact,
             )
+
+        return fixture_for_requirement(requirement).backend
 
         fallback = {
                 "tables": [
