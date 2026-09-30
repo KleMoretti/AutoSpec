@@ -278,14 +278,16 @@ def _register_agent_node(
             compacted_input["reviewer_prompt_name"] = (
                 "ReviewerAgent_v5" if handler_version == "v5" else "ReviewerAgent_v4"
             )
+        frozen = current_model_execution_contract()
+        verification_policy = dict(frozen.verification_policy if frozen else {})
         if rule_profile is not None:
             compacted_input["rule_profile"] = rule_profile
         elif handler_version == "v5":
             # Candidate reviewers use the domain-neutral profile. The older
             # v4 handler intentionally remains unchanged for replay fidelity.
-            compacted_input["rule_profile"] = "spec-full-v1"
-        frozen = current_model_execution_contract()
-        verification_policy = dict(frozen.verification_policy if frozen else {})
+            compacted_input["rule_profile"] = verification_policy.get(
+                "rule_profile", "spec-full-v1"
+            )
         if not verification_policy.get("enabled"):
             raise RuntimeError("candidate reviewer requires an enabled verification policy")
         prd = PrdArtifact.model_validate(compacted_input["prd"])

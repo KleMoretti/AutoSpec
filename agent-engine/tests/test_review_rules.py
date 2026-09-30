@@ -70,3 +70,33 @@ def test_generic_profile_treats_business_event_retry_and_approval_as_domain_feat
         )
         assert not any(issue.issue_type == "API_COVERAGE" for issue in issues)
         assert not any("workflow-runs" in issue.description for issue in issues)
+
+
+def test_generic_v2_does_not_treat_storage_as_historical_reuse() -> None:
+    fixture = get_fixture("inventory_management")
+    fixture.prd.risks.append("Storage location and retention are configurable.")
+
+    issues = run_current_rule_checks(
+        fixture.prd,
+        fixture.shared_architecture(),
+        fixture.backend,
+        fixture.frontend,
+        rule_profile="spec-full-v2",
+    )
+
+    assert not any(issue.issue_type == "RAG_SOURCE_CITATION" for issue in issues)
+
+
+def test_generic_v2_requires_sources_for_explicit_historical_reuse() -> None:
+    fixture = get_fixture("inventory_management")
+    fixture.prd.risks.append("Reuse prior historical artifacts when designing the workflow.")
+
+    issues = run_current_rule_checks(
+        fixture.prd,
+        fixture.shared_architecture(),
+        fixture.backend,
+        fixture.frontend,
+        rule_profile="spec-full-v2",
+    )
+
+    assert any(issue.issue_type == "RAG_SOURCE_CITATION" for issue in issues)

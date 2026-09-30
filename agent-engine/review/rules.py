@@ -46,6 +46,18 @@ API_DATA_RULES = [
     ("审核", ["audit", "audit_status"]),
 ]
 
+GENERIC_RULE_PROFILES = {"spec-full-v1", "spec-full-v2"}
+HISTORICAL_REUSE_TERMS = [
+    "historical artifact",
+    "historical reuse",
+    "reuse prior",
+    "reuse existing",
+    "knowledge reuse",
+    "历史复用",
+    "复用历史",
+    "知识复用",
+]
+
 
 def run_rule_checks(prd: PrdArtifact, backend_design: BackendDesignArtifact) -> list[ReviewIssue]:
     issues: list[ReviewIssue] = []
@@ -72,7 +84,7 @@ def run_current_rule_checks(
 ) -> list[ReviewIssue]:
     issues = (
         run_generic_rule_checks(prd, architecture_design, backend_design, frontend_skeleton)
-        if rule_profile == "spec-full-v1"
+        if rule_profile in GENERIC_RULE_PROFILES
         else run_rule_checks(prd, backend_design)
     )
     if isinstance(architecture_design, ArchitectureDesignArtifactV2):
@@ -86,7 +98,7 @@ def run_current_rule_checks(
                     description=str(exception),
                     suggestion=f"Rework {target} against the Architect Shared Contract without changing its stable API ids.",
                 ))
-    if rule_profile != "spec-full-v1":
+    if rule_profile not in GENERIC_RULE_PROFILES:
         issues.extend(
             _run_cross_artifact_checks(
                 prd,
@@ -290,7 +302,7 @@ def _run_delivery_checks(
 
     if _mentions_any(
         prd_text,
-        ["history", "rag", "historical", "reuse", "历史", "知识复用"],
+        HISTORICAL_REUSE_TERMS,
     ) and not _has_valid_retrieved_source(retrieved_sources or []):
         issues.append(
             _issue(
