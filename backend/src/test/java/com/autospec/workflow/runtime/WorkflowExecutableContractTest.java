@@ -129,6 +129,23 @@ class WorkflowExecutableContractTest {
         assertThat(backend.promptKey()).isEqualTo("backend_engineer_loop_v3");
     }
 
+    @Test
+    void pmSchemaRepairV7CandidateRaisesArchitectOutputCap() throws Exception {
+        var mapper = new ObjectMapper();
+        var snapshot = Files.readString(Path.of("..", "agent-engine", "contracts",
+                "autospec-pm-schema-repair-v7.workflow.json"));
+        var spec = new WorkflowSnapshotParser(mapper).parse(snapshot);
+        WorkflowExecutableContractValidator.validate(spec);
+
+        var architect = spec.nodes().stream()
+                .filter(value -> "architect".equals(value.nodeId()))
+                .findFirst()
+                .orElseThrow();
+
+        assertThat(architect.agentName()).isEqualTo("ArchitectAgent_v3");
+        assertThat(architect.modelPolicy().path("max_output_tokens").asInt()).isEqualTo(8000);
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"v5", "v6"})
     void diagnosticPinsThinkingModeAndRejectsInvalidValues(String version) throws Exception {

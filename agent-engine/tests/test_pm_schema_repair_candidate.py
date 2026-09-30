@@ -14,6 +14,7 @@ CANDIDATE_V3 = ENGINE / "contracts/autospec-pm-schema-repair-v3.workflow.json"
 CANDIDATE_V4 = ENGINE / "contracts/autospec-pm-schema-repair-v4.workflow.json"
 CANDIDATE_V5 = ENGINE / "contracts/autospec-pm-schema-repair-v5.workflow.json"
 CANDIDATE_V6 = ENGINE / "contracts/autospec-pm-schema-repair-v6.workflow.json"
+CANDIDATE_V7 = ENGINE / "contracts/autospec-pm-schema-repair-v7.workflow.json"
 
 
 def _document() -> dict:
@@ -167,3 +168,13 @@ def test_candidate_v6_freezes_explicit_agent_turn_templates() -> None:
         .replace("\r\n", "\n")
         .encode("utf-8")
     ).hexdigest()
+
+
+def test_candidate_v7_raises_architect_output_cap() -> None:
+    document = json.loads(CANDIDATE_V7.read_text(encoding="utf-8"))
+    WorkflowSpec.model_validate(document)
+    architect = next(node for node in document["nodes"] if node["node_id"] == "architect")
+    assert document["version"] == "pm-schema-repair-v7"
+    assert architect["agent_name"] == "ArchitectAgent_v3"
+    assert architect["model_policy"]["max_output_tokens"] == 8000
+    assert architect["context_policy"]["prompt_token_reserve"] == 6000
