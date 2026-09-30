@@ -45,6 +45,7 @@ PROMPT_FILES = {
     "ReviewerAgent_v1": "reviewer_v1.md",
     "ReviewerAgent_v2": "reviewer_shared_v1.md",
     "ReviewerAgent_v4": "reviewer_schema_v1.md",
+    "ReviewerAgent_v5": "reviewer_schema_v2_v1.md",
 }
 
 

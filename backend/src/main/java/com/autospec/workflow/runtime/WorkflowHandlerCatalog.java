@@ -11,7 +11,7 @@ import java.util.stream.Collectors;
 public class WorkflowHandlerCatalog {
     private final Set<String> availableHandlers;
 
-    public WorkflowHandlerCatalog(@Value("${autospec.workflow.available-handlers:ProductManagerAgent:v1,ProductManagerAgent:v2,ArchitectAgent:v1,ArchitectAgent:v2,ArchitectAgent:v3,BackendEngineerAgent:v1,BackendEngineerAgent:v2,BackendEngineerAgent:v3,BackendEngineerAgent:v4,BackendEngineerAgent:v5,BackendEngineerAgent:v6,FrontendEngineerAgent:v1,FrontendEngineerAgent:v2,FrontendEngineerAgent:v3,ReviewerAgent:v1,ReviewerAgent:v2,ReviewerAgent:v3,ReviewerAgent:v4,EvaluatorAgent:v1,EvaluatorAgent:v2,EvaluatorAgent:v3}") String configuredHandlers) {
+    public WorkflowHandlerCatalog(@Value("${autospec.workflow.available-handlers:ProductManagerAgent:v1,ProductManagerAgent:v2,ArchitectAgent:v1,ArchitectAgent:v2,ArchitectAgent:v3,BackendEngineerAgent:v1,BackendEngineerAgent:v2,BackendEngineerAgent:v3,BackendEngineerAgent:v4,BackendEngineerAgent:v5,BackendEngineerAgent:v6,FrontendEngineerAgent:v1,FrontendEngineerAgent:v2,FrontendEngineerAgent:v3,ReviewerAgent:v1,ReviewerAgent:v2,ReviewerAgent:v3,ReviewerAgent:v4,ReviewerAgent:v5,EvaluatorAgent:v1,EvaluatorAgent:v2,EvaluatorAgent:v3}") String configuredHandlers) {
         availableHandlers = Arrays.stream(configuredHandlers.split(","))
                 .map(String::trim)
                 .filter(value -> !value.isBlank())

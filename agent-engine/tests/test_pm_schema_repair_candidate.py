@@ -16,6 +16,7 @@ CANDIDATE_V5 = ENGINE / "contracts/autospec-pm-schema-repair-v5.workflow.json"
 CANDIDATE_V6 = ENGINE / "contracts/autospec-pm-schema-repair-v6.workflow.json"
 CANDIDATE_V7 = ENGINE / "contracts/autospec-pm-schema-repair-v7.workflow.json"
 CANDIDATE_V8 = ENGINE / "contracts/autospec-pm-schema-repair-v8.workflow.json"
+CANDIDATE_V9 = ENGINE / "contracts/autospec-pm-schema-repair-v9.workflow.json"
 
 
 def _document() -> dict:
@@ -189,3 +190,19 @@ def test_candidate_v8_expands_downstream_context_budget() -> None:
     assert nodes["backend_engineer"]["context_policy"]["max_input_tokens"] == 24000
     assert nodes["frontend_engineer"]["context_policy"]["max_input_tokens"] == 24000
     assert nodes["reviewer"]["context_policy"]["max_input_tokens"] == 30000
+
+
+def test_candidate_v9_uses_domain_neutral_reviewer_profile_and_prompt() -> None:
+    document = json.loads(CANDIDATE_V9.read_text(encoding="utf-8"))
+    WorkflowSpec.model_validate(document)
+    reviewer = next(node for node in document["nodes"] if node["node_id"] == "reviewer")
+    assert document["version"] == "pm-schema-repair-v9"
+    assert reviewer["agent_name"] == "ReviewerAgent_v5"
+    assert reviewer["prompt_key"] == "reviewer_schema_v2"
+    assert reviewer["prompt_checksum"] == hashlib.sha256(
+        (ENGINE / "prompts/reviewer_schema_v2_v1.md")
+        .read_text(encoding="utf-8")
+        .replace("\r\n", "\n")
+        .encode("utf-8")
+    ).hexdigest()
+    assert reviewer["verification_policy"]["rule_profile"] == "spec-full-v1"
