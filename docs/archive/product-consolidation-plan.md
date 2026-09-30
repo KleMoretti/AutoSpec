@@ -1,10 +1,12 @@
 # AutoSpec 当前产品与代码收口计划
 
+> 历史归档（2026-09-29）：保留当时的设计、状态和执行证据，不作为当前能力或待办清单。当前说明见 [文档索引](documentation-index.md)，后续工作见 [Spec Sandbox 计划](../autospec-v5-spec-sandbox-plan.md)。
+
 > 当前版本：`autospec-v5:v5`
 >
 > 状态：已实现，旧固定流水线正在从主干代码中清除
 >
-> 架构设计：`docs/superpowers/specs/2026-07-11-autospec-v5-dynamic-workflow-design.md`
+> 架构设计：`docs/archive/dynamic-workflow-design-2026-07-11.md`
 
 ## 产品目标
 

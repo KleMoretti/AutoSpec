@@ -1,14 +1,16 @@
 ---
 plan_id: autospec-v5-interview-driven-optimization
 version: 1.2
-status: implementing
+status: archived
 created_at: 2026-09-14
 product_baseline: autospec-v5:v5
 reviewed_commit: 4487cc1d
 scope: Agent应用研发与Java后端实习面试导向的项目优化
 ---
 
-# AutoSpec V5 面经驱动优化计划
+# AutoSpec 面经驱动优化计划
+
+> 历史归档（2026-09-29）：保留当时的设计、状态和执行证据，不作为当前能力或待办清单。当前说明见 [文档索引](documentation-index.md)，后续工作见 [Spec Sandbox 计划](../autospec-v5-spec-sandbox-plan.md)。
 
 ## 1. 结论
 
@@ -57,7 +59,7 @@ scope: Agent应用研发与Java后端实习面试导向的项目优化
 | RAG | `backend/src/main/java/com/autospec/service/KnowledgeEmbeddingService.java`、`KnowledgeIndexService.java` | 当前向量为 192 维 hashing n-gram；存在词法/向量融合与确定性重排；Artifact 分块调用参数为 900/120 字符 | P1：量化语义检索和分块改进，不称已有神经 Embedding |
 | 长期记忆 | `agent-engine/runtime/memory.py`、`runtime/context_builder.py`、`schemas/memory.py` | 内存实现仍按 user/skill 组织，生产 Handler 使用另一条 context policy 链路；未找到正式 Project Memory 接入 | P1：项目事实记忆持久化与受控召回 |
 | 审查与交付门禁 | `agent-engine/agents/reviewer.py`、`review/evaluator.py` | Reviewer 已合并规则与模型语义审查，Evaluator 已有追踪门禁 | 增加与人工判断、交付构建结果的对照 |
-| 运行证据 | `docs/p1-capacity-and-recovery-report.md` | 旧报告明确未执行 live、Docker E2E、容量和故障注入 | P1：补实测；旧报告不代表本次测试结果 |
+| 运行证据 | `docs/archive/p1-capacity-and-recovery-report.md` | 旧报告明确未执行 live、Docker E2E、容量和故障注入 | P1：补实测；旧报告不代表本次测试结果 |
 
 补充发现：README 声称架构后前后端并行，但候选 Spec 中 Frontend 还依赖 Backend；说明与实际依赖要逐项对齐。不能直接为追求并发删除依赖，需验证 Frontend 输入是否需要 Backend 契约，并用冻结 Spec 表达最终决定。
 
@@ -211,8 +213,8 @@ MCP 仅在出现真实外部工具接入需求时作为 P2；优先给现有 Gat
 
 ## 8. 与已有计划的衔接
 
-- `docs/autospec-v5-next-optimization-plan.md`：继续保留其 Runtime/Control Plane 建设历史；本计划 P1-03 接续其中尚缺的实测证据。
-- `docs/autospec-v5-agent-execution-plan.md`：AEX-P0-01/02/03 已有部分实现，后续执行先按当前代码核验状态；INT-P0-01 负责收口，不重新实现。INT-P0-03 接续 Live Eval，P1 的 Memory/RAG/证据工作沿用同一目标。
+- `docs/archive/runtime-optimization-plan.md`：继续保留其 Runtime/Control Plane 建设历史；本计划 P1-03 接续其中尚缺的实测证据。
+- `docs/archive/agent-execution-plan.md`：AEX-P0-01/02/03 已有部分实现，后续执行先按当前代码核验状态；INT-P0-01 负责收口，不重新实现。INT-P0-03 接续 Live Eval，P1 的 Memory/RAG/证据工作沿用同一目标。
 - 新计划增加的重点是 Prompt/预算可达性、晋级门禁误判、评测数据隔离、消融归因及面试证据。
 - 本次不覆盖以上已有文件。后续开始实施时统一任务状态，避免两份计划分别重复开发同一能力。
 
@@ -239,7 +241,7 @@ MCP 仅在出现真实外部工具接入需求时作为 P2；优先给现有 Gat
 
 ## 10. 执行状态（2026-09-17）
 
-详细变更、验证命令、采集器与独立 rubric 使用方法见 [P0 执行记录](autospec-v5-interview-p0-execution.md)。
+详细变更、验证命令、采集器与独立 rubric 使用方法见 [P0 执行记录](agent-execution-record-2026-09-17.md)。
 
 | 项目 | 当前状态 | 证据与剩余工作 |
 |---|---|---|
@@ -251,4 +253,4 @@ MCP 仅在出现真实外部工具接入需求时作为 P2；优先给现有 Gat
 
 历史核验数字仅表示制定计划时的基线；本次新验证结果独立保留，避免将 fixture、自评或未执行指标写成 live 收益。
 
-最新状态：隔离 MySQL 已迁移至 V101，六个服务健康，Agent API 与两个 Worker 已恢复 fixture。四组旧 fixture 经过六节点且 C/D 工具成功；新 v6-D / Run 16 的前五节点和工具调用也成功，Evaluator 继续按质量规则拦截，Schema 错误为 0。live 的空响应/输出预算和 PRD 验收标准层级问题已形成失败复盘，并新增模式配置、版本化 Schema Prompt 和错误分类修复。9 月 17 日回归为后端 203 项、Agent 147 项、前端 24 项及构建通过。脱敏 [live 证据](examples/agent-eval-live-smoke-2026-09-17.json) 与 [P0 执行记录](autospec-v5-interview-p0-execution.md) 保留费用和限制；未获得 live Loop 收益或候选晋级结论，也未宣称完整计划完成。
+最新状态：隔离 MySQL 已迁移至 V101，六个服务健康，Agent API 与两个 Worker 已恢复 fixture。四组旧 fixture 经过六节点且 C/D 工具成功；新 v6-D / Run 16 的前五节点和工具调用也成功，Evaluator 继续按质量规则拦截，Schema 错误为 0。live 的空响应/输出预算和 PRD 验收标准层级问题已形成失败复盘，并新增模式配置、版本化 Schema Prompt 和错误分类修复。9 月 17 日回归为后端 203 项、Agent 147 项、前端 24 项及构建通过。脱敏 [live 证据](examples/agent-eval-live-smoke-2026-09-17.json) 与 [P0 执行记录](agent-execution-record-2026-09-17.md) 保留费用和限制；未获得 live Loop 收益或候选晋级结论，也未宣称完整计划完成。

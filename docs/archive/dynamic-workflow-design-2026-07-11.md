@@ -1,4 +1,6 @@
-# AutoSpec V5 配置驱动的生产级 Agent 工作流设计
+# AutoSpec 配置驱动的生产级 Agent 工作流设计
+
+> 历史归档（2026-09-29）：保留当时的设计、状态和执行证据，不作为当前能力或待办清单。当前说明见 [文档索引](documentation-index.md)，后续工作见 [Spec Sandbox 计划](../autospec-v5-spec-sandbox-plan.md)。
 
 ## 1. 背景与目标
 

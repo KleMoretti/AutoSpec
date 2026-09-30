@@ -1,13 +1,15 @@
 ---
 plan_id: ai-interview-agent-roadmap
 version: 1.0
-status: active
+status: archived
 created_at: 2026-09-04
 updated_at: 2026-09-04
 source_conversation: 6a9a95a0-76d8-83ee-974c-23bcbea6ffbc
 ---
 
 # AI 面试 Agent 项目优化计划
+
+> 历史归档（2026-09-29）：保留当时的设计、状态和执行证据，不作为当前能力或待办清单。当前说明见 [文档索引](documentation-index.md)，后续工作见 [Spec Sandbox 计划](../autospec-v5-spec-sandbox-plan.md)。
 
 ## 1. 项目定位
 
@@ -249,7 +251,7 @@ Trace 最小字段：
 - 对积压、模型限流、工具超时、Worker 崩溃、Redis 短暂不可用进行故障演练。
 - 输出容量边界、P95 延迟、恢复率与资源成本报告。
 
-当前 V5 实现：启动入口增加按发起用户的运行中限额；Worker 支持批量并发、FIFO 公平 Semaphore、进程级 LLM 并发上限和用户级执行隔离。Redis Consumer Group、背压、重试、死信、XAUTOCLAIM、执行台账幂等、fencing token、心跳和断点恢复沿用现有正式链路；容量和故障演练结果不虚构，统一记录在 `docs/p1-capacity-and-recovery-report.md`。
+当前 V5 实现：启动入口增加按发起用户的运行中限额；Worker 支持批量并发、FIFO 公平 Semaphore、进程级 LLM 并发上限和用户级执行隔离。Redis Consumer Group、背压、重试、死信、XAUTOCLAIM、执行台账幂等、fencing token、心跳和断点恢复沿用现有正式链路；容量和故障演练结果不虚构，统一记录在 `docs/archive/p1-capacity-and-recovery-report.md`。
 
 ## 7. P2：MCP / Skills
 

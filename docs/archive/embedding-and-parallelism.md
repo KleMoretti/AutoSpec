@@ -1,5 +1,7 @@
 # AutoSpec P1: semantic retrieval and Shared Contract parallelism
 
+> 归档资料（2026-09-29）：仅供背景、操作参考或历史证据使用，不作为当前任务。唯一当前任务见 [Spec Sandbox 计划](../autospec-v5-spec-sandbox-plan.md)。
+
 Updated: 2026-09-21. This document supersedes the earlier fixture-only RAG baseline for current deployments; historical `v5` snapshots remain unchanged.
 
 ## Retrieval

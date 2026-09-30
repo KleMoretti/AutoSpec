@@ -1,5 +1,7 @@
 # 后端故障注入与恢复演练
 
+> 归档资料（2026-09-29）：仅供背景、操作参考或历史证据使用，不作为当前任务。唯一当前任务见 [Spec Sandbox 计划](../autospec-v5-spec-sandbox-plan.md)。
+
 本文档是 ROLE-BE-08 的可执行手册。演练覆盖控制面 Outbox、Redis Streams、Worker、MySQL 和模型调用链；所有状态恢复均通过应用重试、连接池重连或消息重放完成，不直接修改数据库。
 
 ## 快速运行

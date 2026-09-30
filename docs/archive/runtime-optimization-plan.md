@@ -1,13 +1,18 @@
 ---
 plan_id: autospec-v5-next-optimization
 version: 1.0
-status: in_progress
+status: archived
 created_at: 2026-09-04
 updated_at: 2026-09-06
 product_baseline: autospec-v5:v5
+successor: docs/archive/agent-execution-plan.md
 ---
 
-# AutoSpec V5 新一轮优化计划
+# AutoSpec 新一轮优化计划
+
+> 历史归档（2026-09-29）：保留当时的设计、状态和执行证据，不作为当前能力或待办清单。当前说明见 [文档索引](documentation-index.md)，后续工作见 [Spec Sandbox 计划](../autospec-v5-spec-sandbox-plan.md)。
+
+> 2026-09-07：本计划保留为 Runtime / Control Plane 的实施与证据记录。后续“Agent 决策循环、正式 Tool/RAG 激活、Live Eval、Project Memory”由 `docs/archive/agent-execution-plan.md` 承接；本计划尚未完成的隔离环境容量与故障演练并入其 `AEX-P1-03`。
 
 ## 1. 计划目标
 
@@ -37,7 +42,7 @@ product_baseline: autospec-v5:v5
 | RAG | 项目级权限隔离、审批索引、Hybrid Search、启动时检索快照、基础评测接口 | 只按原始 requirement 做一次检索；后续节点没有按上游 Artifact/Review Issue 动态检索；Java 与 Python 检索实现和评测数据相互独立 | `WorkflowRuntimeController.trustedInput`、`KnowledgeIndexService`、`runtime/hybrid_rag.py` |
 | Tool Runtime | Python 已有 ToolRegistry/ToolHarness、Schema、allowlist、超时、重试、幂等、熔断和台账接点 | 生产 Worker 使用空 ToolRegistry，当前 WorkflowSpec 未启用任何工具，也没有连接 MySQL 事实服务的受控工具通道 | `runtime/tool_harness.py`、`runtime/node_executor.py`、`autospec-v5.workflow.json` |
 | 缓存 | `execution_id` 终态幂等缓存、Provider cache token 计量 | 没有租户安全的 RAG 查询缓存、验证后的节点结果缓存、语料 epoch 和完整失效协议 | `runtime/execution_ledger.py`、`runtime/worker.py` |
-| 质量证据 | Fixture 测试、检索指标实现、性能脚本和容量报告模板 | 检索评测仍是小型内置 fixture；容量、P95、恢复率和真实成本报告尚未填写 | `evaluation/retrieval.py`、`docs/p1-capacity-and-recovery-report.md` |
+| 质量证据 | Fixture 测试、检索指标实现、性能脚本和容量报告模板 | 检索评测仍是小型内置 fixture；容量、P95、恢复率和真实成本报告尚未填写 | `evaluation/retrieval.py`、`docs/archive/p1-capacity-and-recovery-report.md` |
 | 治理权限 | 项目 OWNER/EDITOR/VIEWER 权限 | 任意已登录用户都可创建和发布全局 Workflow；Prompt active 列表没有显式认证，缺少平台级治理角色 | `WorkflowVersionController`、`PromptVersionController` |
 
 ## 3. 设计原则
@@ -237,7 +242,7 @@ product_baseline: autospec-v5:v5
 
 实施项：
 
-- 在隔离环境完成 fixture 与 live 两套基线，填写 `docs/p1-capacity-and-recovery-report.md`，记录 commit、资源、并发、模型、数据集和采样窗口。
+- 在隔离环境完成 fixture 与 live 两套基线，填写 `docs/archive/p1-capacity-and-recovery-report.md`，记录 commit、资源、并发、模型、数据集和采样窗口。
 - 分别测量 API、队列、节点、检索、工具和端到端的 P50/P95/P99、错误率、恢复率、Token/run 和 cost/run。
 - 执行 Outbox 积压、Redis 短断、Worker 崩溃、工具超时、Provider 限流、索引损坏和缓存失效故障演练。
 - 增加治理接口越权、跨项目 RAG、工具参数注入、Prompt Injection、日志脱敏和重放攻击回归。
@@ -349,7 +354,7 @@ docker compose --profile monitoring config --quiet
 
 ## 13. 本次执行记录（2026-09-06）
 
-本次在分支 `codex/autospec-v5-next-optimization` 上按工作包顺序完成了 P0–P2-02 的代码交付，并将 P2-03 的本地发布证据写入 `docs/p1-capacity-and-recovery-report.md`。GitHub PR 为 [#7](https://github.com/KleMoretti/AutoSpec/pull/7)。
+本次在分支 `codex/autospec-v5-next-optimization` 上按工作包顺序完成了 P0–P2-02 的代码交付，并将 P2-03 的本地发布证据写入 `docs/archive/p1-capacity-and-recovery-report.md`。GitHub PR 为 [#7](https://github.com/KleMoretti/AutoSpec/pull/7)。
 
 ### 分批提交
 
@@ -368,7 +373,7 @@ docker compose --profile monitoring config --quiet
 - Agent Engine：103 passed；fixture 回归通过。
 - Frontend：9 个测试文件、24 tests passed；production build 转换 3097 modules 并通过。
 - `scripts/verify_workflow_contract.py`、base Compose 和 monitoring Compose 配置校验全部通过。
-- 详细命令、环境和边界见 `docs/p1-capacity-and-recovery-report.md`。
+- 详细命令、环境和边界见 `docs/archive/p1-capacity-and-recovery-report.md`。
 
 ### P2-03 状态边界
 

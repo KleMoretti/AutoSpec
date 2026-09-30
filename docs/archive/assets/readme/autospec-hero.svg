@@ -47,7 +47,7 @@
 
   <g transform="translate(850 94)" filter="url(#shadow)" font-family="Inter,Segoe UI,Arial,sans-serif">
     <rect width="454" height="378" rx="28" fill="#0E2137" stroke="#264762"/>
-    <text x="34" y="48" fill="#96ABC1" font-size="15" font-weight="700" letter-spacing="1.5">AUTOSPEC V5 · PARALLEL DAG</text>
+    <text x="34" y="48" fill="#96ABC1" font-size="15" font-weight="700" letter-spacing="1.5">AUTOSPEC · PARALLEL DAG</text>
 
     <g>
       <rect x="145" y="76" width="164" height="48" rx="12" fill="#173854" stroke="#3C698A"/>

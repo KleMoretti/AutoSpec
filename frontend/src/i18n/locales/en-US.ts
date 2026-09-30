@@ -175,7 +175,7 @@ const enUS = {
     pdfExportFailed: 'PDF export failed',
     refreshCoreFailed: 'Some core project data could not be refreshed',
     partialDataTitle: 'Some project data is temporarily unavailable',
-    canonicalWorkflow: 'V5 canonical workflow',
+    canonicalWorkflow: 'Canonical workflow',
     exportMarkdown: 'Export Markdown',
     exportPdf: 'Export PDF',
     stagesLabel: 'Project stages',

@@ -1,4 +1,6 @@
-# AutoSpec V5 P2-03 本地发布证据
+# AutoSpec P2-03 本地发布证据
+
+> 归档资料（2026-09-29）：仅供背景、操作参考或历史证据使用，不作为当前任务。唯一当前任务见 [Spec Sandbox 计划](../autospec-v5-spec-sandbox-plan.md)。
 
 状态：local-fixture-verified-with-production-boundaries
 
@@ -33,9 +35,9 @@
 
 ## 已验证的安全与正确性边界
 
-- V5 仍是 Product Manager、Architect、Backend Engineer、Frontend Engineer、Reviewer、Evaluator 六节点；正式入口和 Redis Worker 主链路未被改成同步生成。
+- AutoSpec 仍是 Product Manager、Architect、Backend Engineer、Frontend Engineer、Reviewer、Evaluator 六节点；正式入口和 Redis Worker 主链路未被改成同步生成。
 - Worker 输出 Schema hash 已与 canonical WorkflowSpec、V94 数据库 seed 同步；历史 Flyway 迁移未修改。
-- Prompt 别名归一化测试使用事务回滚，避免测试数据覆盖内置 V5 prompt；执行 bundle 会拒绝活动 Prompt checksum 漂移。
+- Prompt 别名归一化测试使用事务回滚，避免测试数据覆盖内置 prompt；执行 bundle 会拒绝活动 Prompt checksum 漂移。
 - 本地回归覆盖项目/访问范围检索隔离、引用完整性、受控 Tool Gateway allowlist、fencing/idempotency、corpus epoch 和缓存 provenance 相关失败路径。
 - 前端回放页可以从运行定位 Bundle ID/hash、节点 contract hash、fencing token、Trace 中的模型/工具调用和检索缓存状态。
 
@@ -48,7 +50,7 @@
 | Live provider 基线 | 未执行 | 本机未启用 live 模型；需要安全注入 Key、固定 provider/model 和脱敏采样窗口 |
 | Docker 端到端运行 | 未执行 | 本次只做 base/monitoring Compose 配置校验；需要隔离 Docker 环境、数据库和 Redis 数据卷 |
 | API/队列/节点/检索/工具容量采样 | 未执行 | 单元和集成测试不能替代多实例、受控并发和资源采样 |
-| Outbox/Redis/Worker/Provider/Tool/索引/缓存故障注入 | 未执行 | 故障演练会改变本地服务状态；需在隔离环境按 `docs/backend-failure-drills.md` 执行并保留 Run/Trace ID |
+| Outbox/Redis/Worker/Provider/Tool/索引/缓存故障注入 | 未执行 | 故障演练会改变本地服务状态；需在隔离环境按 `docs/archive/backend-failure-drills.md` 执行并保留 Run/Trace ID |
 | 生产成本与恢复率 | 未执行 | fixture 成本为零，不代表 live 成本；需要从 model/tool invocation 台账计算 |
 
 ## 结论

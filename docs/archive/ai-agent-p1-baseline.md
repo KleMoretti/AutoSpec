@@ -1,10 +1,12 @@
-# AutoSpec V5 P1 实施基线
+# AutoSpec P1 实施基线
+
+> 历史归档（2026-09-29）：保留当时的设计、状态和执行证据，不作为当前能力或待办清单。当前说明见 [文档索引](documentation-index.md)，后续工作见 [Spec Sandbox 计划](../autospec-v5-spec-sandbox-plan.md)。
 
 更新时间：2026-09-04
 
-> 本文是 2026-09-04 的 fixture-only 历史基线，不代表当前语义检索或并行图。当前实现与配置见 [P1 更新](autospec-v5-p1-embedding-parallel.md)。
+> 本文是 2026-09-04 的 fixture-only 历史基线，不代表当前语义检索或并行图。当前实现与配置见 [P1 更新](embedding-and-parallelism.md)。
 
-本基线对应 `docs/AI-Agent项目优化计划.md` 中的 AGT-P1-01、AGT-P1-02 和 AGT-P1-03。实现继续使用 AutoSpec V5 的六节点冻结 WorkflowSpec；没有新增独立的面试流水线，也没有改变正式入口 `POST /api/workflow-runs`。
+本基线对应 `docs/archive/interview-agent-roadmap.md` 中的 AGT-P1-01、AGT-P1-02 和 AGT-P1-03。实现继续使用 AutoSpec V5 的六节点冻结 WorkflowSpec；没有新增独立的面试流水线，也没有改变正式入口 `POST /api/workflow-runs`。
 
 ## P1-01 Hybrid RAG
 
@@ -26,7 +28,7 @@
 - Spring Boot 入口在创建运行前检查 Outbox、Worker backlog 与按发起用户的运行中上限，超限返回 Retry-After 语义并记录拒绝指标。
 - Worker Runner 支持 Redis Stream 批量拉取后的受控并发；NodeExecutor 使用 FIFO 全局 LLM Semaphore，并按内部发起用户标识隔离同一用户的节点执行。
 - 现有 Consumer Group、XAUTOCLAIM、心跳、Retry/DLQ、执行台账、fencing token、重复消息幂等和 Checkpoint/Resume 继续作为正式恢复链路。
-- 真实容量、P95、恢复率和成本不在代码或文档中预填；按 `docs/p1-capacity-and-recovery-report.md` 的口径在目标部署环境采集。
+- 真实容量、P95、恢复率和成本不在代码或文档中预填；按 `docs/archive/p1-capacity-and-recovery-report.md` 的口径在目标部署环境采集。
 
 ## 边界说明
 

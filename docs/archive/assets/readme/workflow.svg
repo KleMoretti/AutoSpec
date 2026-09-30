@@ -9,7 +9,7 @@
     </marker>
   </defs>
   <rect width="1480" height="560" rx="24" fill="url(#panel)"/>
-  <text x="64" y="68" fill="#0F172A" font-size="30" font-family="Inter,Segoe UI,Arial,sans-serif" font-weight="740">AutoSpec V5 execution flow</text>
+  <text x="64" y="68" fill="#0F172A" font-size="30" font-family="Inter,Segoe UI,Arial,sans-serif" font-weight="740">AutoSpec execution flow</text>
   <text x="64" y="102" fill="#64748B" font-size="17" font-family="Inter,Segoe UI,Arial,sans-serif">A frozen WorkflowSpec drives execution, parallel branches, review, rework and delivery gating.</text>
 
   <g font-family="Inter,Segoe UI,Arial,sans-serif">

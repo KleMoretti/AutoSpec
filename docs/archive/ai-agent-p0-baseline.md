@@ -1,6 +1,8 @@
-# AutoSpec V5：AI-Agent P0 实施基线
+# AutoSpec：AI-Agent P0 实施基线
 
-本文记录 `AI-Agent项目优化计划.md` 在当前 AutoSpec V5 产品中的落地方式。
+> 历史归档（2026-09-29）：保留当时的设计、状态和执行证据，不作为当前能力或待办清单。当前说明见 [文档索引](documentation-index.md)，后续工作见 [Spec Sandbox 计划](../autospec-v5-spec-sandbox-plan.md)。
+
+本文记录 `interview-agent-roadmap.md` 在当前 AutoSpec V5 产品中的落地方式。
 
 ## 边界
 

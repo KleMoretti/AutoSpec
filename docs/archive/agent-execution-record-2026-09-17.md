@@ -1,6 +1,8 @@
 # 面经驱动优化 P0 执行记录
 
-更新日期：2026-09-17。对应计划：`autospec-v5-interview-driven-optimization-plan-2026-09-14.md`。
+> 历史归档（2026-09-29）：保留当时的设计、状态和执行证据，不作为当前能力或待办清单。当前说明见 [文档索引](documentation-index.md)，后续工作见 [Spec Sandbox 计划](../autospec-v5-spec-sandbox-plan.md)。
+
+更新日期：2026-09-17。对应计划：`interview-optimization-plan-2026-09-14.md`。
 本记录描述工作区实现与可复现验证，不代表正式发布或 live 质量收益。
 
 ## 已实现的变化
@@ -63,7 +65,7 @@ REWORK 类检验输入中的纠错理解；真实运行中的人工返工/恢复
 从 `agent-engine` 目录使用仓库指定 Python 执行：
 
 ```powershell
-python -m evaluation.run_control_plane --config ../docs/examples/agent-eval-config.json --output target/evaluations
+python -m evaluation.run_control_plane --config ../docs/archive/examples/agent-eval-config.json --output target/evaluations
 ```
 
 示例配置是 fixture smoke 模板：先将 version_ids 替换成隔离环境中按正式验证/发布流程准备的实验版本 ID，填写代码和环境版本、唯一实验 ID。

@@ -1,4 +1,6 @@
-# AutoSpec V5 Dynamic Workflow — Sanitized Run
+# AutoSpec Dynamic Workflow — Sanitized Run
+
+> 归档资料（2026-09-29）：仅供背景、操作参考或历史证据使用，不作为当前任务。唯一当前任务见 [Spec Sandbox 计划](../../autospec-v5-spec-sandbox-plan.md)。
 
 This example contains no user identifiers, credentials, provider payloads, or proprietary requirements. It records the synthetic integration scenario exercised by `DynamicWorkflowLifecycleTest`, not the published `autospec-v5:v5` seed. The published historical v5 graph is serial; the new `autospec-v5:v5-parallel` graph is the parallel production version.
 

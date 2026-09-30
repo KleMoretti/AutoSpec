@@ -175,7 +175,7 @@ const zhCN = {
     pdfExportFailed: 'PDF 导出失败',
     refreshCoreFailed: '部分核心项目数据刷新失败',
     partialDataTitle: '部分项目数据暂时不可用',
-    canonicalWorkflow: 'V5 标准工作流',
+    canonicalWorkflow: '标准工作流',
     exportMarkdown: '导出 Markdown',
     exportPdf: '导出 PDF',
     stagesLabel: '项目阶段',

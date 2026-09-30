@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/assets/readme/autospec-hero.svg" alt="AutoSpec" width="100%" />
+<img src="docs/archive/assets/readme/autospec-hero.svg" alt="AutoSpec" width="100%" />
 
 # AutoSpec
 
@@ -38,7 +38,7 @@ Typical LLM coding demos stop at "generate some text." AutoSpec treats generatio
 The default published workflow is <code>autospec-v5:v5-parallel</code>. The historical <code>v5</code> workflow remains available for reproducible replay.
 
 <p align="center">
-  <img src="docs/assets/readme/workflow.svg" alt="AutoSpec V5 workflow" width="100%" />
+  <img src="docs/archive/assets/readme/workflow.svg" alt="AutoSpec workflow" width="100%" />
 </p>
 
 The six-node workflow is:
@@ -55,7 +55,7 @@ Reviewer findings can route targeted rework back to Architect, Backend or Fronte
 ## Architecture
 
 <p align="center">
-  <img src="docs/assets/readme/architecture.svg" alt="AutoSpec system architecture" width="100%" />
+  <img src="docs/archive/assets/readme/architecture.svg" alt="AutoSpec system architecture" width="100%" />
 </p>
 
 | Layer | Responsibility |
@@ -197,7 +197,7 @@ AutoSpec/
 ├─ observability/               # Prometheus / Grafana / Tempo
 ├─ performance/                 # k6 scenarios and performance reports
 ├─ scripts/                     # Contract and release verification
-├─ docs/                        # Design docs, ADRs and examples
+├─ docs/                        # Current task and archived reference material
 └─ docker-compose.yml           # Full local topology
 ~~~
 
@@ -275,12 +275,9 @@ docker compose --profile monitoring up --build -d
 
 ## Documentation
 
-- [Runtime orchestration ADR](docs/adr/ADR-001-runtime-orchestration.md)
-- [V5 design plan](docs/autospec-v5-plan.md)
-- [Backend service contracts](docs/backend-service-contracts.md)
-- [Parallel workflow and embedding notes](docs/autospec-v5-p1-embedding-parallel.md)
-- [Failure drills](docs/backend-failure-drills.md)
-- [Dynamic workflow example](docs/examples/v5-dynamic-workflow-run.md)
+- [Current task: Spec Sandbox](docs/autospec-v5-spec-sandbox-plan.md)
+- [P0 / P1 execution guide](docs/p0-p1-execution-plan.md)
+- [Archived documentation and evidence](docs/archive/README.md)
 
 ## Contributing
 
@@ -299,5 +296,5 @@ test: cover evaluator delivery gate
 ---
 
 <div align="center">
-  <sub>AutoSpec V5 · auditable multi-Agent engineering from requirement to verified delivery.</sub>
+  <sub>AutoSpec · auditable multi-Agent engineering from requirement to verified delivery.</sub>
 </div>
