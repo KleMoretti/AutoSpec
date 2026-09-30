@@ -37,6 +37,7 @@ def test_registry_contains_all_builtin_v5_handlers() -> None:
         assert registry.resolve(handler_key, "v1")
     assert registry.resolve("BackendEngineerAgent", "v4")
     assert registry.resolve("BackendEngineerAgent", "v5")
+    assert registry.resolve("BackendEngineerAgent", "v6")
     assert registry.resolve("FrontendEngineerAgent", "v3")
     assert registry.resolve("ReviewerAgent", "v4")
 

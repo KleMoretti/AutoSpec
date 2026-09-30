@@ -112,6 +112,23 @@ class WorkflowExecutableContractTest {
         assertThat(backend.contextPolicy().path("prompt_token_reserve").asInt()).isEqualTo(1500);
     }
 
+    @Test
+    void pmSchemaRepairV6CandidateUsesExplicitTurnTemplates() throws Exception {
+        var mapper = new ObjectMapper();
+        var snapshot = Files.readString(Path.of("..", "agent-engine", "contracts",
+                "autospec-pm-schema-repair-v6.workflow.json"));
+        var spec = new WorkflowSnapshotParser(mapper).parse(snapshot);
+        WorkflowExecutableContractValidator.validate(spec);
+
+        var backend = spec.nodes().stream()
+                .filter(value -> "backend_engineer".equals(value.nodeId()))
+                .findFirst()
+                .orElseThrow();
+
+        assertThat(backend.agentName()).isEqualTo("BackendEngineerAgent_v6");
+        assertThat(backend.promptKey()).isEqualTo("backend_engineer_loop_v3");
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"v5", "v6"})
     void diagnosticPinsThinkingModeAndRejectsInvalidValues(String version) throws Exception {

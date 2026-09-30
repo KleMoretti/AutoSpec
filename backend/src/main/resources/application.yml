@@ -118,7 +118,7 @@ autospec:
       max-worker-backlog: ${WORKFLOW_ADMISSION_MAX_WORKER_BACKLOG:1000}
       max-active-runs-per-user: ${WORKFLOW_ADMISSION_MAX_ACTIVE_RUNS_PER_USER:3}
       retry-after: ${WORKFLOW_ADMISSION_RETRY_AFTER:5s}
-      available-handlers: ${WORKFLOW_AVAILABLE_HANDLERS:ProductManagerAgent:v1,ProductManagerAgent:v2,ArchitectAgent:v1,ArchitectAgent:v2,ArchitectAgent:v3,BackendEngineerAgent:v1,BackendEngineerAgent:v2,BackendEngineerAgent:v3,BackendEngineerAgent:v4,BackendEngineerAgent:v5,FrontendEngineerAgent:v1,FrontendEngineerAgent:v2,FrontendEngineerAgent:v3,ReviewerAgent:v1,ReviewerAgent:v2,ReviewerAgent:v3,ReviewerAgent:v4,EvaluatorAgent:v1,EvaluatorAgent:v2,EvaluatorAgent:v3}
+      available-handlers: ${WORKFLOW_AVAILABLE_HANDLERS:ProductManagerAgent:v1,ProductManagerAgent:v2,ArchitectAgent:v1,ArchitectAgent:v2,ArchitectAgent:v3,BackendEngineerAgent:v1,BackendEngineerAgent:v2,BackendEngineerAgent:v3,BackendEngineerAgent:v4,BackendEngineerAgent:v5,BackendEngineerAgent:v6,FrontendEngineerAgent:v1,FrontendEngineerAgent:v2,FrontendEngineerAgent:v3,ReviewerAgent:v1,ReviewerAgent:v2,ReviewerAgent:v3,ReviewerAgent:v4,EvaluatorAgent:v1,EvaluatorAgent:v2,EvaluatorAgent:v3}
     commands:
       stream-max-length: ${WORKFLOW_COMMAND_STREAM_MAX_LENGTH:1000000}
     outbox:

@@ -13,6 +13,7 @@ CANDIDATE_V2 = ENGINE / "contracts/autospec-pm-schema-repair-v2.workflow.json"
 CANDIDATE_V3 = ENGINE / "contracts/autospec-pm-schema-repair-v3.workflow.json"
 CANDIDATE_V4 = ENGINE / "contracts/autospec-pm-schema-repair-v4.workflow.json"
 CANDIDATE_V5 = ENGINE / "contracts/autospec-pm-schema-repair-v5.workflow.json"
+CANDIDATE_V6 = ENGINE / "contracts/autospec-pm-schema-repair-v6.workflow.json"
 
 
 def _document() -> dict:
@@ -147,6 +148,21 @@ def test_candidate_v5_freezes_phase_safe_backend_loop_prompt() -> None:
     assert backend["prompt_version"] == "v1"
     assert backend["prompt_checksum"] == hashlib.sha256(
         (ENGINE / "prompts/backend_engineer_loop_v2_v1.md")
+        .read_text(encoding="utf-8")
+        .replace("\r\n", "\n")
+        .encode("utf-8")
+    ).hexdigest()
+
+
+def test_candidate_v6_freezes_explicit_agent_turn_templates() -> None:
+    document = json.loads(CANDIDATE_V6.read_text(encoding="utf-8"))
+    WorkflowSpec.model_validate(document)
+    backend = next(node for node in document["nodes"] if node["node_id"] == "backend_engineer")
+    assert document["version"] == "pm-schema-repair-v6"
+    assert backend["agent_name"] == "BackendEngineerAgent_v6"
+    assert backend["prompt_key"] == "backend_engineer_loop_v3"
+    assert backend["prompt_checksum"] == hashlib.sha256(
+        (ENGINE / "prompts/backend_engineer_loop_v3_v1.md")
         .read_text(encoding="utf-8")
         .replace("\r\n", "\n")
         .encode("utf-8")

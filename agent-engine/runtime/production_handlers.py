@@ -151,6 +151,7 @@ def build_production_registry(model_client: ModelClient | None = None) -> Handle
         ("BackendEngineerAgent", "v3", "backend_engineer", BackendDesignInput, BackendDesignArtifact, "BackendDesignInput", "BackendDesignArtifact", "backend_engineer_shared"),
         ("BackendEngineerAgent", "v4", "backend_engineer", BackendDesignInput, BackendDesignArtifact, "BackendDesignInput", "BackendDesignArtifact", "backend_engineer_loop"),
         ("BackendEngineerAgent", "v5", "backend_engineer", BackendDesignInput, BackendDesignArtifact, "BackendDesignInput", "BackendDesignArtifact", "backend_engineer_loop_v2"),
+        ("BackendEngineerAgent", "v6", "backend_engineer", BackendDesignInput, BackendDesignArtifact, "BackendDesignInput", "BackendDesignArtifact", "backend_engineer_loop_v3"),
         ("FrontendEngineerAgent", "v2", "frontend_engineer", FrontendNodeInputV2, FrontendSkeletonArtifact, "FrontendSkeletonInputV2", "FrontendSkeletonArtifact", "frontend_engineer_shared"),
         ("FrontendEngineerAgent", "v3", "frontend_engineer", FrontendNodeInputV2, FrontendSkeletonArtifact, "FrontendSkeletonInputV2", "FrontendSkeletonArtifact", "frontend_schema"),
         ("ReviewerAgent", "v2", "reviewer", ReviewerNodeInputV2, ReviewReport, "ReviewInputV2", "ReviewReport", "reviewer_shared"),
@@ -340,7 +341,7 @@ def _register_agent_node(
 
     async def execute_backend(input_payload: BaseModel) -> dict[str, Any]:
         compacted_input, quality_profile = compact_input(input_payload)
-        if handler_version in {"v3", "v4", "v5"}:
+        if handler_version in {"v3", "v4", "v5", "v6"}:
             compacted_input["shared_contract_required"] = True
         contract = current_model_execution_contract()
         policy = LoopPolicy.model_validate(
