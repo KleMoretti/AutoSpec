@@ -8,7 +8,7 @@ import pytest
 
 from evaluation.ablation import ablation_configs, evaluate_release_gate
 from evaluation.autospec_case_catalog import list_autospec_cases
-from evaluation.control_plane import CollectionConfig, ControlPlaneCollector, digest, measure_case
+from evaluation.control_plane import CollectionConfig, ControlPlaneCollector, digest, measure_case, validate_live_prices
 from evaluation.budget_ledger import BudgetLedger
 from evaluation.run_control_plane import select_cases
 
@@ -155,6 +155,36 @@ def test_unknown_prices_are_not_zero_cost_and_failed_cases_keep_token_usage() ->
     assert result.cost is None
     assert result.gate_pass is False
     assert result.must_trace_coverage is None
+
+
+def test_live_price_validation_skips_any_local_evaluator_version() -> None:
+    spec = {
+        "nodes": [
+            {
+                "agent_name": "ProductManagerAgent_v2",
+                "model_policy": {
+                    "provider_key": "deepseek",
+                    "model_name": "deepseek-flash",
+                    "input_cost_per_million": 2,
+                    "cached_input_cost_per_million": 0.04,
+                    "output_cost_per_million": 8,
+                },
+                "fallback": {"enabled": False},
+            },
+            {
+                "agent_name": "EvaluatorAgent_v4",
+                "model_policy": {"provider_key": "local", "model_name": "deterministic-rules"},
+                "fallback": {"enabled": False},
+            },
+        ]
+    }
+    pricing = {"models": {"deepseek:deepseek-flash": {
+        "input_per_million": 2,
+        "cached_input_per_million": 0.04,
+        "output_per_million": 8,
+    }}}
+
+    validate_live_prices(spec, pricing)
 
 
 def test_reviewer_verification_tool_is_not_counted_as_unauthorized() -> None:

@@ -349,7 +349,7 @@ def validate_live_prices(spec: dict, pricing: dict) -> None:
     """Zero-cost fixture contracts cannot enforce a monetary live budget."""
     for node in spec["nodes"]:
         policy = node["model_policy"]
-        if policy.get("provider_key") == "local" and node["agent_name"] == "EvaluatorAgent_v2":
+        if policy.get("provider_key") == "local":
             continue
         rate = pricing["models"].get(f'{policy.get("provider_key")}:{policy.get("model_name")}')
         if not valid_rates(rate):
