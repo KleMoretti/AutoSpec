@@ -7,7 +7,7 @@ import json
 import math
 import time
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Literal, Sequence
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field
@@ -31,6 +31,8 @@ class CollectionConfig(BaseModel):
     environment: dict[str, str]
     dataset_split: str = "smoke"
     random_seed: int = 20261001
+    fixture_approval_policy: Literal["MANUAL", "AUTO_APPROVE_FOR_TEST"] = "MANUAL"
+    fixture_approval_reason: str | None = None
     case_ids: list[str] | None = Field(default=None, min_length=1)
     contract_family: str = Field(default="v3", pattern=r"^v[3456]$")
     manifest_path: str | None = None
@@ -84,6 +86,11 @@ class ControlPlaneCollector:
                 group not in self.config.version_ids for group in self.config.groups
             ):
                 raise ValueError("groups must be a unique subset of configured version_ids")
+        if self.config.fixture_approval_policy == "AUTO_APPROVE_FOR_TEST":
+            if self.config.environment.get("model_mode") != "fixture":
+                raise ValueError("automatic approval is restricted to fixture model mode")
+            if not self.config.fixture_approval_reason:
+                raise ValueError("fixture automatic approval requires a pre-registered reason")
         if self.config.environment.get("model_mode") == "live":
             if not self.config.budget_authorization_id:
                 raise ValueError("live collection requires a shared budget_authorization_id")
@@ -257,6 +264,12 @@ class ControlPlaneCollector:
 
         started = time.monotonic()
         while run["status"] not in {"SUCCEEDED", "FAILED", "CANCELLED", "COMPLETED"}:
+            if run["status"] == "WAITING_APPROVAL" and self.config.fixture_approval_policy == "AUTO_APPROVE_FOR_TEST":
+                journal_data["fixture_approval"] = await self.approve_fixture(project_id, journal_data)
+                journal.write_text(json.dumps(journal_data, ensure_ascii=False, indent=2), encoding="utf-8")
+                await asyncio.sleep(self.config.poll_seconds)
+                run = await self.request("GET", f"/api/workflow-runs/{run_id}")
+                continue
             if run["status"] in {"WAITING_APPROVAL", "PAUSED"} or time.monotonic() - started >= self.config.run_timeout_seconds:
                 # Never silently approve a human gate. Cancel only the experiment's own run.
                 await self.request("POST", f"/api/projects/{project_id}/workflow-runs/{run_id}/cancel")
@@ -289,6 +302,39 @@ class ControlPlaneCollector:
                              "trace": trace, "artifacts": artifacts})
         journal.write_text(json.dumps(journal_data, ensure_ascii=False, indent=2), encoding="utf-8")
         return result, trace
+
+    async def approve_fixture(self, project_id: int, journal_data: dict[str, Any]) -> dict[str, Any]:
+        """Apply only the explicitly pre-registered fixture approval rule.
+
+        Live collections and ordinary fixture runs remain manual.  The journal
+        records the approval IDs, policy and reason so an automatic decision is
+        distinguishable from human approval in the collected evidence.
+        """
+
+        approvals = await self.request("GET", f"/api/projects/{project_id}/workflow-approvals")
+        pending = [approval for approval in approvals if approval.get("status") == "PENDING"]
+        if not pending:
+            raise RuntimeError("fixture run is waiting for approval but no pending approval was returned")
+        approved_ids: list[int] = []
+        for approval in pending:
+            if "APPROVE" not in (approval.get("allowedActions") or []):
+                raise RuntimeError("fixture automatic approval is not allowed for a pending approval")
+            approval_id = approval.get("id")
+            lock_version = approval.get("lockVersion")
+            if approval_id is None or lock_version is None:
+                raise RuntimeError("fixture approval lacks a stable ID or lock version")
+            await self.request("POST", f"/api/workflow-approvals/{approval_id}/decide", json={
+                "decision": "APPROVE",
+                "reason": self.config.fixture_approval_reason,
+                "idempotencyKey": f"fixture-auto-approve:{self.config.experiment_id}:{approval_id}",
+                "expectedLockVersion": lock_version,
+            })
+            approved_ids.append(int(approval_id))
+        return {
+            "policy": self.config.fixture_approval_policy,
+            "reason": self.config.fixture_approval_reason,
+            "approval_ids": approved_ids,
+        }
 
 
 def validate_live_prices(spec: dict, pricing: dict) -> None:

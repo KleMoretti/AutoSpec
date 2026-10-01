@@ -91,6 +91,66 @@ def test_unknown_prices_are_not_zero_cost_and_failed_cases_keep_token_usage() ->
     assert result.must_trace_coverage is None
 
 
+@pytest.mark.asyncio
+async def test_fixture_auto_approval_is_explicit_and_journaled(eval_output: Path) -> None:
+    cfg = config().model_copy(update={
+        "environment": {"name": "fixture", "model_mode": "fixture"},
+        "fixture_approval_policy": "AUTO_APPROVE_FOR_TEST",
+        "fixture_approval_reason": "bounded test approval",
+        "run_timeout_seconds": 5,
+    })
+    states = iter([
+        {"id": 9, "status": "WAITING_APPROVAL"},
+        {"id": 9, "status": "SUCCEEDED"},
+    ])
+    requests = []
+
+    def handler(request):
+        requests.append((request.method, request.url.path))
+        path = request.url.path
+        if path == "/api/workflows/autospec-v5/versions":
+            spec = json.loads((Path(__file__).resolve().parents[1] / "contracts" /
+                               "autospec-v5-agent-execution-v3-a.workflow.json").read_text())
+            return httpx.Response(200, json=[{"id": 1, "status": "PUBLISHED",
+                                              "specJson": json.dumps(spec), "contentHash": digest(spec)}])
+        if path == "/api/projects":
+            return httpx.Response(200, json={"projectId": 7})
+        if path == "/api/workflow-runs":
+            return httpx.Response(200, json=next(states))
+        if path == "/api/projects/7/workflow-approvals":
+            return httpx.Response(200, json=[{"id": 17, "status": "PENDING",
+                                              "allowedActions": ["APPROVE"], "lockVersion": 0}])
+        if path == "/api/workflow-approvals/17/decide":
+            body = json.loads(request.content)
+            assert body["decision"] == "APPROVE"
+            assert body["reason"] == "bounded test approval"
+            assert body["idempotencyKey"].startswith("fixture-auto-approve:test:")
+            return httpx.Response(200, json={"id": 17, "status": "DECIDED"})
+        if path == "/api/workflow-runs/9":
+            return httpx.Response(200, json=next(states))
+        if path == "/api/workflow-runs/9/trace":
+            return httpx.Response(200, json={"workflowRunId": 9, "correlationId": "trace-9",
+                                              "executionBundleHash": "a" * 64, "nodes": []})
+        if path == "/api/workflow-runs/9/nodes":
+            return httpx.Response(200, json=[])
+        if path == "/api/projects/7/artifacts":
+            return httpx.Response(200, json=[])
+        raise AssertionError(path)
+
+    async with httpx.AsyncClient(base_url="http://test", transport=httpx.MockTransport(handler)) as client:
+        collector = ControlPlaneCollector(client, cfg, eval_output)
+        result = await collector("A", list_autospec_cases()[:1], ablation_configs()[0])
+    assert result.status == "SUCCEEDED"
+    journal = next(eval_output.glob("test-A-*.json"))
+    payload = json.loads(journal.read_text(encoding="utf-8"))
+    assert payload["fixture_approval"] == {
+        "policy": "AUTO_APPROVE_FOR_TEST",
+        "reason": "bounded test approval",
+        "approval_ids": [17],
+    }
+    assert ("POST", "/api/workflow-approvals/17/decide") in requests
+
+
 @pytest.mark.parametrize("error_code", ["VALIDATION_ERROR", "OUTPUT_SCHEMA_ERROR"])
 def test_runtime_schema_failure_is_not_reported_as_valid_schema(error_code: str) -> None:
     result = measure_case(list_autospec_cases()[0], 1, {"id": 1, "status": "FAILED"},

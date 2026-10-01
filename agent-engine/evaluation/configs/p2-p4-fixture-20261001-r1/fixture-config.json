@@ -13,6 +13,8 @@
     "embedding_mode": "fixture",
     "execution_mode": "FIXTURE_BASELINE"
   },
+  "fixture_approval_policy": "AUTO_APPROVE_FOR_TEST",
+  "fixture_approval_reason": "Pre-registered fixture-only approval for the bounded P2-E smoke; not human approval.",
   "dataset_split": "smoke",
   "random_seed": 20261001,
   "case_ids": [
