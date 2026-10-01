@@ -81,7 +81,7 @@ P3-MCP 在 P3-S/P3-F 后、且外部集成需求明确时插入；P3-I 在 BASE-
 | P4-A | SIG-P4-01 数据接口 | BASE-03、P2-D | done：已同步知识上传、Trace steps 和平台管理员评测比较契约 | ui-contract |
 | P4-B | SIG-P4-01 Trace / DAG | P4-A | done：步骤时间线已接入；未宣称动态 DAG 图验收 | trace-dag |
 | P4-C | SIG-P4-01 矩阵 / 验证 | P4-B | done | verification-ui |
-| P4-D | SIG-P4-01 评测看板 | P4-A、P2-D | blocked：已实现平台管理员只读比较 API/DTO、结果目录加载和 fixture/live 分离，并接入 live smoke 结果；因缺少完整 dev/holdout 四组矩阵，页面必须继续显示 `NOT_EVALUATED`，不能展示晋级百分比 | eval-ui |
+| P4-D | SIG-P4-01 评测看板 | P4-A、P2-D | done（看板实现）：已实现平台管理员只读比较 API/DTO、结果目录加载、fixture/live 分离、split 展示和 live smoke 组计数；完整 dev/holdout 四组矩阵仍缺失，因此页面继续显示 `NOT_EVALUATED`，P2-E/P4-D 晋级证据保持 blocked | eval-ui |
 | P4-E | SIG-P4-02 | P4-B/C/D | done（截图归档按用户明确要求豁免）：Docker + fixture 浏览器演示、审批/Trace/验证/交付链路已走通，截图仍只保留受控会话证据，不生成仓库图片文件 | demo-readme |
 | P4-F | SIG-P4-03 | P4-E | done：15 张问答卡片已归档 | interview-cards |
 | END-01 | 总计划 DoD | 必选任务完成或明确列缺项 | blocked：见交接证据中的外部条件 | final-handoff |
