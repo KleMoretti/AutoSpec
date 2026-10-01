@@ -3081,11 +3081,11 @@ components:
     ReviewResponse:
       type: object
       required:
-      - score
       - issues
       properties:
         score:
           type: integer
+          nullable: true
         issues:
           type: array
           items:

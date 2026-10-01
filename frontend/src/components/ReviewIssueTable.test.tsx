@@ -28,4 +28,13 @@ describe('ReviewIssueTable load states', () => {
     expect(pending).toContain('Review has not been produced yet');
     expect(empty).toContain('No review findings');
   });
+
+  it('renders an unknown score as an empty-state value', () => {
+    const html = renderToStaticMarkup(
+      <ReviewIssueTable projectId={7} review={{ score: null, issues: [] }} artifacts={[]} />
+    );
+
+    expect(html).toContain('>--</span>');
+    expect(html).not.toContain('null/100');
+  });
 });

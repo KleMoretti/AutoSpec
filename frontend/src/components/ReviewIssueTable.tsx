@@ -135,7 +135,7 @@ function ReviewIssueTable({ projectId, review, artifacts, loadError, onChanged, 
             {t('review.description')}
           </Typography.Text>
         </div>
-        <Typography.Text className="score">{review ? `${review.score}/100` : '--'}</Typography.Text>
+        <Typography.Text className="score">{review?.score != null ? `${review.score}/100` : '--'}</Typography.Text>
       </div>
       {loadError ? (
         <Alert

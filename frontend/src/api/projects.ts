@@ -83,7 +83,7 @@ export interface ArtifactDiffResponse {
 }
 
 export interface ReviewResponse {
-  score: number;
+  score: number | null;
   issues: ReviewIssueResponse[];
 }
 

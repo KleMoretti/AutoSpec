@@ -36,17 +36,17 @@ public class ReviewIssueServiceImpl extends ServiceImpl<ReviewIssueMapper, Revie
     }
 
     @Override
-    public int latestReviewScore(Long projectId) {
+    public Integer latestReviewScore(Long projectId) {
         Artifact report = artifactService.lambdaQuery()
                 .eq(Artifact::getProjectId, projectId)
                 .eq(Artifact::getType, "REVIEW_REPORT")
                 .orderByDesc(Artifact::getVersion)
                 .last("limit 1")
                 .oneOpt()
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND,
-                        "Review report not found"
-                ));
+                .orElse(null);
+        if (report == null) {
+            return null;
+        }
         try {
             return objectMapper.readTree(report.getContent()).path("score").asInt(0);
         } catch (Exception ex) {
