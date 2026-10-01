@@ -65,7 +65,7 @@ P3-MCP 在 P3-S/P3-F 后、且外部集成需求明确时插入；P3-I 在 BASE-
 | P2-B | SIG-P2-02 采集器 | P2-A | done | collector |
 | P2-C | SIG-P2-02 数据集 | P2-A | done | dataset |
 | P2-D | SIG-P2-02 判分统计 | P2-B、P2-C | done | metrics-gate |
-| P2-E | SIG-P2-02 正式评测 | P2-D、有效预算 | blocked：A/B/C/D `#10/#11/#12/#13`、r10 fixture smoke 和用户授权的 live smoke 已完成；live 结果含取消、Handler 错误、超时和质量门禁阻断，完整 development `192` 节点样本与 holdout `96` 节点样本未执行，不能形成晋级结论 | ablation |
+| P2-E | SIG-P2-02 正式评测 | P2-D、有效预算 | blocked：A/B/C/D `#10/#11/#12/#13`、r10 fixture smoke、r11 完整 fixture development/holdout 和用户授权的 live smoke 已完成；完整 live development `192` 与 holdout `96` 样本尚未执行，不能形成晋级结论 | ablation |
 | P2-F | SIG-P2-03 | P2-B；质量结论另依赖 P2-E | done：隔离空项目冻结 inventory 输入后完成 10/20 并发，30/30 run 六节点成功、Evaluator `100/A/PASSED`、预算已结算且无重试/恢复/重复副作用；另保留动态知识索引导致的失败 smoke，未将 fixture 观测晋级为生产 SLA 或跨配置质量结论 | traces-capacity |
 | P3-R1 | SIG-P3-05 watchdog | BASE-01 | done | watchdog |
 | P3-R2 | SIG-P3-05 poison / DLQ | P3-R1 | done | poison |
