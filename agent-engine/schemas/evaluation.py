@@ -160,6 +160,23 @@ class AutoSpecGateDecision(BaseModel):
     paired_statistics: dict[str, Any] = Field(default_factory=dict)
 
 
+class AutoSpecEvaluationComparison(BaseModel):
+    """Read-only comparison envelope for the evaluation dashboard.
+
+    The envelope deliberately keeps an explicit NOT_EVALUATED state.  The
+    dashboard may render missing live evidence, but it must not turn the
+    absence of a collected matrix into zero-valued metrics or a promotion.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    status: Literal["MEASURED", "NOT_EVALUATED"]
+    source: Literal["RESULT_DIRECTORY", "NONE"]
+    matrix: AutoSpecAblationMatrix
+    decision: AutoSpecGateDecision
+    not_evaluated_reason: str | None = None
+
+
 class EvaluationIssue(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

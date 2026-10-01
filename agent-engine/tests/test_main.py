@@ -48,3 +48,20 @@ def test_release_gate_uses_autospec_evaluation_runs() -> None:
     assert body["decision"] == "NOT_EVALUATED"
     assert body["baseline_run_id"] == "baseline-a"
     assert body["candidate_run_id"] == "candidate-d"
+
+
+def test_ablation_comparison_keeps_missing_live_evidence_explicit() -> None:
+    response = client.get("/evaluation/ablation")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "NOT_EVALUATED"
+    assert body["source"] == "NONE"
+    assert len(body["matrix"]["runs"]) == 4
+    assert all(run["status"] == "NOT_EXECUTED" for run in body["matrix"]["runs"])
+    assert all(
+        metric["value"] is None
+        for run in body["matrix"]["runs"]
+        for metric in run["metrics"]
+    )
+    assert body["decision"]["decision"] == "NOT_EVALUATED"

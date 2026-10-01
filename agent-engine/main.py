@@ -5,10 +5,14 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from evaluation.ablation import evaluate_release_gate
+from evaluation.ablation import evaluate_release_gate, run_ablation_matrix
 from evaluation.autospec_case_catalog import list_autospec_cases
 from evaluation.retrieval import fixture_retrieval_evaluation
-from schemas.evaluation import AutoSpecEvalRun
+from schemas.evaluation import (
+    AutoSpecEvalRun,
+    AutoSpecEvaluationComparison,
+    AutoSpecGateDecision,
+)
 
 
 app = FastAPI(title="AutoSpec Agent Engine", version="5.0.0")
@@ -56,6 +60,38 @@ def evaluation_cases() -> list[dict]:
 def retrieval_evaluation() -> dict:
     """Return the independent deterministic hybrid-retrieval baseline."""
     return fixture_retrieval_evaluation().model_dump(mode="json")
+
+
+@app.get("/evaluation/ablation")
+async def ablation_evaluation() -> dict:
+    """Return the current read-only A/B/C/D comparison evidence.
+
+    No live adapter is supplied here.  The endpoint therefore returns the
+    canonical four-group matrix in an explicit NOT_EVALUATED state until a
+    separately authorized control-plane collection publishes results.  This
+    makes the dashboard useful without fabricating fixture or live metrics.
+    """
+
+    matrix = await run_ablation_matrix(matrix_id="not-executed")
+    baseline, candidate = matrix.runs[0], matrix.runs[-1]
+    decision = AutoSpecGateDecision(
+        decision="NOT_EVALUATED",
+        gate_status="NOT_EVALUATED",
+        reasons=[
+            "No authorized control-plane comparison has been published; "
+            "fixture output is not used as a live metric."
+        ],
+        baseline_run_id=baseline.run_id,
+        candidate_run_id=candidate.run_id,
+    )
+    comparison = AutoSpecEvaluationComparison(
+        status="NOT_EVALUATED",
+        source="NONE",
+        matrix=matrix,
+        decision=decision,
+        not_evaluated_reason=decision.reasons[0],
+    )
+    return comparison.model_dump(mode="json")
 
 
 @app.post("/evaluation/release-gate")
