@@ -1,8 +1,9 @@
 import { FileTextOutlined, PlusOutlined } from '@ant-design/icons';
 import { Button, Layout, Space } from 'antd';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, Navigate, Route, BrowserRouter as Router, Routes } from 'react-router-dom';
-import { readSession } from './api/auth';
+import { readSession, subscribeSession, type SessionUser } from './api/auth';
 import LanguageSwitcher from './components/LanguageSwitcher';
 import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage';
@@ -12,7 +13,9 @@ const { Header } = Layout;
 
 function App() {
   const { t } = useTranslation();
-  const session = readSession();
+  const [session, setSession] = useState<SessionUser | null>(() => readSession());
+
+  useEffect(() => subscribeSession(setSession), []);
 
   return (
     <Router>
