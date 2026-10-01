@@ -77,7 +77,7 @@ class ControlPlaneCollector:
             raise RuntimeError(f"control plane returned HTTP {response.status_code} for {path}")
         return response.json()
 
-    async def preflight(self, *, offline: bool = False) -> None:
+    async def preflight(self, *, offline: bool = False, dataset_version: str | None = None) -> None:
         checked_versions: dict[str, dict[str, Any]] = {}
         if not self.config.version_ids or set(self.config.version_ids) - {"A", "B", "C", "D"}:
             raise ValueError("version_ids must use experimental groups A/B/C/D")
@@ -115,6 +115,8 @@ class ControlPlaneCollector:
                 raise ValueError("experiment manifest experiment_id does not match config")
             if self.config.manifest_hash and self.config.manifest_hash != manifest_digest:
                 raise ValueError("experiment manifest checksum mismatch")
+            if dataset_version is not None and manifest.dataset_version != dataset_version:
+                raise ValueError("experiment manifest dataset version does not match selected dataset")
             manifest_entries = validate_manifest_contracts(manifest_path, manifest)
             configured = set(self.config.version_ids)
             if configured - set(manifest_entries):
@@ -179,7 +181,9 @@ class ControlPlaneCollector:
 
     async def __call__(self, group: str, cases: Sequence[AutoSpecEvalCase], knobs: dict[str, Any]) -> AutoSpecEvalRun:
         if not self.versions:
-            await self.preflight()
+            if not cases:
+                raise ValueError("collection requires at least one evaluation case")
+            await self.preflight(dataset_version=cases[0].dataset_version)
         if group not in self.versions:
             raise ValueError(f"no published version configured for group {group}")
         results: list[AutoSpecCaseResult] = []

@@ -24,7 +24,7 @@ async def run(config_path: Path, output: Path, *, validate_only: bool = False, r
     if validate_only:
         async with httpx.AsyncClient(base_url="http://127.0.0.1", timeout=5) as client:
             collector = ControlPlaneCollector(client, config, output / config.experiment_id, resume=resume)
-            await collector.preflight(offline=True)
+            await collector.preflight(offline=True, dataset_version=cases[0].dataset_version)
         print(json.dumps({"experiment_id": config.experiment_id, "status": "VALIDATED",
                           "groups": config.groups or sorted(config.version_ids),
                           "case_count": len(cases), "collection_scope": config.collection_scope}))
