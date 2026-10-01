@@ -65,7 +65,7 @@ P3-MCP 在 P3-S/P3-F 后、且外部集成需求明确时插入；P3-I 在 BASE-
 | P2-B | SIG-P2-02 采集器 | P2-A | done | collector |
 | P2-C | SIG-P2-02 数据集 | P2-A | done | dataset |
 | P2-D | SIG-P2-02 判分统计 | P2-B、P2-C | done | metrics-gate |
-| P2-E | SIG-P2-02 正式评测 | P2-D、有效预算 | blocked：无本批次有效付费预算和 B 候选清单 | ablation |
+| P2-E | SIG-P2-02 正式评测 | P2-D、有效预算 | blocked：当前隔离库仅有 `pm-schema-repair-v12` 一个已发布版本，缺少可绑定 A/B/C/D 的当前 manifest、价格快照、预算授权和 B 候选 | ablation |
 | P2-F | SIG-P2-03 | P2-B；质量结论另依赖 P2-E | blocked：已补充 inventory fixture 成功六节点和交付 bundle；Redis poison、Outbox 进程中断恢复已完成并修复轮询异常；10/20 仍是全部失败的 fixture smoke，已补录失败终态 P50/P95，但未形成成功容量、生产 SLA 或质量结论 | traces-capacity |
 | P3-R1 | SIG-P3-05 watchdog | BASE-01 | done | watchdog |
 | P3-R2 | SIG-P3-05 poison / DLQ | P3-R1 | done | poison |
@@ -829,5 +829,6 @@ next_task: "前置满足的下一项"
 
 - 离线实施范围已完成：显式规格适配、评测 manifest/数据集/统计、可靠性边界、原生协议拒绝降级、项目知识上传与可信记忆、Trace/验证展示、OpenAPI 同步和 15 张问答卡片。
 - 必须保持 `blocked` 的项目：P2-E 付费正式消融、P2-F 的容量/SLA 与质量晋级、P3-K3 外部语义 embedding 对照、P4-D 的实测 A/B/C/D 证据，以及 P4-E 的仓库截图归档。P4-D 的平台管理员只读接口与前端 NOT_EVALUATED 看板已完成，当前接口明确返回四组 `NOT_EXECUTED`、空指标和 `NOT_EVALUATED` 决策，不伪造演示百分比。P4-E 的 Docker fixture 浏览器演示已走通并捕获审批、Evaluator 门禁负例、Evaluator 通过和交付 bundle 画面，但截图尚未形成 `docs/archive/` 图片文件。P2-F 已有 campus 负例和 inventory 成功六节点样本；10/20 并发仍全部因当前批次的 fixture 质量门禁失败，虽已补录失败终态 P50/P95，仍未被晋级为成功容量、生产 SLA 或质量结论。提交 `00fe70d` 已补齐 Agent Engine 本地/Compose 地址边界，并通过重建后的健康检查与首页复验。
+- 必须保持 `blocked` 的项目：P2-E 付费正式消融、P2-F 的容量/SLA 与质量晋级、P3-K3 外部语义 embedding 对照、P4-D 的实测 A/B/C/D 证据，以及 P4-E 的仓库截图归档。P2-E 续作核验确认根目录模型凭据虽已配置，但隔离库只有 `pm-schema-repair-v12` 一个 `PUBLISHED` 版本，缺少当前 A/B/C/D manifest、价格快照、预算授权和 B 候选，不能误用归档 v4 配置。P4-D 的平台管理员只读接口与前端 NOT_EVALUATED 看板已完成，当前接口明确返回四组 `NOT_EXECUTED`、空指标和 `NOT_EVALUATED` 决策，不伪造演示百分比。P4-E 的 Docker fixture 浏览器演示已走通并捕获审批、Evaluator 门禁负例、Evaluator 通过和交付 bundle 画面，但截图尚未形成 `docs/archive/` 图片文件。P2-F 已有 campus 负例和 inventory 成功六节点样本；10/20 并发仍全部因当前批次的 fixture 质量门禁失败，虽已补录失败终态 P50/P95，仍未被晋级为成功容量、生产 SLA 或质量结论。提交 `00fe70d` 已补齐 Agent Engine 本地/Compose 地址边界，并通过重建后的健康检查与首页复验。
 - P3-MCP、P3-I 继续 `deferred`，因为本轮没有明确外部集成或变更影响范围选择。
 - 可复核命令、实际结果、变更文件、阻塞条件和下一步写入 [p2-p4-2026-09-30.md](archive/evidence/p2-p4-2026-09-30.md)；浏览器演示补充写入 [p2-p4-2026-10-01.md](archive/evidence/p2-p4-2026-10-01.md)。后续续做先读最新记录和实际工作区，不依赖口头结论。
