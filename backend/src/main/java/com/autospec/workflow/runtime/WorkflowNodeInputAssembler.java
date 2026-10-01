@@ -129,7 +129,7 @@ public class WorkflowNodeInputAssembler {
         input.set(
                 "project_memory",
                 objectMapper.valueToTree(
-                        projectMemoryService.recallForNode(projectId, target.getNodeId())
+                        projectMemoryService.recallTrustedForNode(projectId, target.getNodeId())
                 )
         );
     }

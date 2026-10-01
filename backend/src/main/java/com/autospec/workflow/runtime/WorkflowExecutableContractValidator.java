@@ -31,7 +31,7 @@ public final class WorkflowExecutableContractValidator {
             "cached_input_cost_per_million",
             "output_cost_per_million",
             "required_capabilities"
-            , "structured_output_repair"
+             , "structured_output_repair", "output_protocol"
     );
     private static final Set<String> CONTEXT_FIELDS = Set.of(
             "version",

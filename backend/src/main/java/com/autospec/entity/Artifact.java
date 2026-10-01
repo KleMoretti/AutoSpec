@@ -51,6 +51,7 @@ public class Artifact {
     private String sourceCitationsJson;
 
     private String provenanceJson;
+    private String uploadIdempotencyKey;
 
     private LocalDateTime approvedAt;
 

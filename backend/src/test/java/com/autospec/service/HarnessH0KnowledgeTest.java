@@ -1,6 +1,7 @@
 package com.autospec.service;
 
 import com.autospec.dto.KnowledgeSourceResponse;
+import com.autospec.dto.KnowledgeUploadRequest;
 import com.autospec.entity.Artifact;
 import com.autospec.entity.KnowledgeChunk;
 import com.autospec.entity.KnowledgeDocument;
@@ -26,6 +27,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 class HarnessH0KnowledgeTest {
     @Autowired
     private KnowledgeIndexService knowledgeIndexService;
+
+    @Autowired
+    private KnowledgeUploadService knowledgeUploadService;
 
     @Autowired
     private KnowledgeDocumentService knowledgeDocumentService;
@@ -171,6 +175,33 @@ class HarnessH0KnowledgeTest {
 
         assertThat(approvedRestore.getParentArtifactId()).isEqualTo(approved.getId());
         assertThat(eventsFor(approvedRestore.getId())).hasSize(1);
+    }
+
+    @Test
+    void projectKnowledgeUploadIsIdempotentAndIndexed() {
+        UserAccount owner = user("upload-owner");
+        Project project = project(owner, "uploads");
+        member(project, owner, "OWNER");
+        KnowledgeUploadRequest request = new KnowledgeUploadRequest(
+                "rules.md",
+                "# Approved project rules\n- owner can upload knowledge",
+                "text/markdown",
+                "upload-key-1"
+        );
+
+        var first = knowledgeUploadService.upload(project.getId(), owner.getId(), request);
+        var repeated = knowledgeUploadService.upload(project.getId(), owner.getId(), request);
+
+        assertThat(repeated.artifactId()).isEqualTo(first.artifactId());
+        assertThat(repeated.contentHash()).isEqualTo(first.contentHash());
+        assertThat(artifactService.lambdaQuery()
+                .eq(Artifact::getProjectId, project.getId())
+                .eq(Artifact::getType, KnowledgeUploadService.UPLOAD_TYPE)
+                .eq(Artifact::getUploadIdempotencyKey, request.idempotencyKey())
+                .count()).isEqualTo(1);
+        assertThat(knowledgeIndexService.retrieveForProject(
+                "approved project rules", 10, project.getId(), owner.getId()
+        )).isNotEmpty();
     }
 
     private UserAccount user(String prefix) {

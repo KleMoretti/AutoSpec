@@ -27,6 +27,7 @@ public class ProjectMemoryFact {
     private Integer version;
 
     private String conflictStatus;
+    private String trustStatus;
 
     private String sourceType;
 

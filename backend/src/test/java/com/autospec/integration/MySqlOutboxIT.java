@@ -60,7 +60,7 @@ class MySqlOutboxIT extends MySqlIntegrationTestSupport {
     @Test
     void flywayCreatesRuntimeTablesAndPublishIndexInMySql() {
         Integer migrationApplied = jdbcTemplate.queryForObject(
-                "select count(*) from flyway_schema_history where version = '73' and success = 1",
+                "select count(*) from flyway_schema_history where version = '1' and success = 1",
                 Integer.class
         );
         Integer publishIndex = jdbcTemplate.queryForObject(

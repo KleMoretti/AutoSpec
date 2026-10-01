@@ -717,6 +717,31 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+  /api/projects/{projectId}/knowledge/uploads:
+    post:
+      summary: Upload a project-scoped TXT or Markdown knowledge source.
+      parameters:
+      - $ref: '#/components/parameters/ProjectId'
+      - $ref: '#/components/parameters/SessionToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/KnowledgeUploadRequest'
+      responses:
+        '200':
+          description: Knowledge artifact accepted and indexed for the project.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KnowledgeUploadResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
   /api/projects/{projectId}/memory/facts:
     get:
       summary: List active versioned Project Memory facts for a project.
@@ -1588,6 +1613,58 @@ components:
         relevanceScore:
           type: number
           nullable: true
+    KnowledgeUploadRequest:
+      type: object
+      required:
+      - fileName
+      - content
+      - idempotencyKey
+      properties:
+        fileName:
+          type: string
+          maxLength: 256
+          pattern: '(?i)^.*\.(txt|md|markdown)$'
+        content:
+          type: string
+          maxLength: 1000000
+        contentType:
+          type: string
+          maxLength: 128
+          nullable: true
+        idempotencyKey:
+          type: string
+          minLength: 1
+          maxLength: 128
+          pattern: '^[A-Za-z0-9_-]+$'
+    KnowledgeUploadResponse:
+      type: object
+      required:
+      - projectId
+      - artifactId
+      - fileName
+      - version
+      - contentHash
+      - status
+      - corpusEpoch
+      properties:
+        projectId:
+          type: integer
+          format: int64
+        artifactId:
+          type: integer
+          format: int64
+        fileName:
+          type: string
+        version:
+          type: integer
+        contentHash:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        status:
+          type: string
+        corpusEpoch:
+          type: integer
+          format: int64
     ProjectMemoryFactResponse:
       type: object
       required:
@@ -2480,6 +2557,56 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/WorkflowTraceInvocationResponse'
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowTraceStepResponse'
+    WorkflowTraceStepResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          nullable: true
+        step:
+          type: integer
+          nullable: true
+        phase:
+          type: string
+          nullable: true
+        status:
+          type: string
+          nullable: true
+        reasonCode:
+          type: string
+          nullable: true
+        planHash:
+          type: string
+          nullable: true
+        observationHash:
+          type: string
+          nullable: true
+        validationIssueCodes:
+          type: array
+          items:
+            type: string
+        modelCallRef:
+          type: string
+          nullable: true
+        toolCallRef:
+          type: string
+          nullable: true
+        startedAtEpochMs:
+          type: integer
+          format: int64
+          nullable: true
+        finishedAtEpochMs:
+          type: integer
+          format: int64
+          nullable: true
+        durationMs:
+          type: integer
+          nullable: true
     WorkflowTraceInvocationResponse:
       type: object
       properties:

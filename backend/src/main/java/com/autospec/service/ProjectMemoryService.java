@@ -72,6 +72,29 @@ public class ProjectMemoryService {
         return recall(projectId, factTypesForNode(nodeId));
     }
 
+    public List<ProjectMemoryFactResponse> recallTrustedForNode(Long projectId, String nodeId) {
+        return recallTrusted(projectId, factTypesForNode(nodeId));
+    }
+
+    public List<ProjectMemoryFactResponse> recallTrusted(Long projectId, Set<String> factTypes) {
+        LocalDateTime now = LocalDateTime.now();
+        LambdaQueryWrapper<ProjectMemoryFact> query = new LambdaQueryWrapper<ProjectMemoryFact>()
+                .eq(ProjectMemoryFact::getProjectId, projectId)
+                .eq(ProjectMemoryFact::getTrustStatus, "APPROVED")
+                .eq(ProjectMemoryFact::getConflictStatus, "ACTIVE")
+                .le(ProjectMemoryFact::getValidFromAt, now)
+                .and(wrapper -> wrapper.isNull(ProjectMemoryFact::getValidUntilAt)
+                        .or().gt(ProjectMemoryFact::getValidUntilAt, now))
+                .and(wrapper -> wrapper.isNull(ProjectMemoryFact::getExpiresAt)
+                        .or().gt(ProjectMemoryFact::getExpiresAt, now))
+                .orderByAsc(ProjectMemoryFact::getFactType)
+                .orderByAsc(ProjectMemoryFact::getFactKey);
+        if (factTypes != null && !factTypes.isEmpty()) {
+            query.in(ProjectMemoryFact::getFactType, factTypes);
+        }
+        return factMapper.selectList(query).stream().map(this::response).toList();
+    }
+
     public List<ProjectMemoryFactResponse> recall(Long projectId, Set<String> factTypes) {
         LocalDateTime now = LocalDateTime.now();
         LambdaQueryWrapper<ProjectMemoryFact> query = new LambdaQueryWrapper<ProjectMemoryFact>()
@@ -126,6 +149,7 @@ public class ProjectMemoryService {
         fact.setContentHash(hash);
         fact.setVersion(version);
         fact.setConflictStatus("ACTIVE");
+        fact.setTrustStatus("APPROVED".equals(artifact.getStatus()) ? "APPROVED" : "UNTRUSTED");
         fact.setSourceType(sourceType(artifact));
         fact.setSourceRef("artifact:" + artifact.getId() + ":v" + artifact.getVersion());
         fact.setSourceWorkflowRunId(
