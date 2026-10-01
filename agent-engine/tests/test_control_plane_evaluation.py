@@ -143,11 +143,11 @@ async def test_fixture_auto_approval_is_explicit_and_journaled(eval_output: Path
     assert result.status == "SUCCEEDED"
     journal = next(eval_output.glob("test-A-*.json"))
     payload = json.loads(journal.read_text(encoding="utf-8"))
-    assert payload["fixture_approval"] == {
+    assert payload["fixture_approvals"] == [{
         "policy": "AUTO_APPROVE_FOR_TEST",
         "reason": "bounded test approval",
         "approval_ids": [17],
-    }
+    }]
     assert ("POST", "/api/workflow-approvals/17/decide") in requests
 
 

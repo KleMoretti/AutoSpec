@@ -264,12 +264,14 @@ class ControlPlaneCollector:
 
         started = time.monotonic()
         while run["status"] not in {"SUCCEEDED", "FAILED", "CANCELLED", "COMPLETED"}:
-            if run["status"] == "WAITING_APPROVAL" and self.config.fixture_approval_policy == "AUTO_APPROVE_FOR_TEST":
-                journal_data["fixture_approval"] = await self.approve_fixture(project_id, journal_data)
-                journal.write_text(json.dumps(journal_data, ensure_ascii=False, indent=2), encoding="utf-8")
-                await asyncio.sleep(self.config.poll_seconds)
-                run = await self.request("GET", f"/api/workflow-runs/{run_id}")
-                continue
+            if self.config.fixture_approval_policy == "AUTO_APPROVE_FOR_TEST":
+                approval_event = await self.approve_fixture(project_id, journal_data)
+                if approval_event is not None:
+                    journal_data.setdefault("fixture_approvals", []).append(approval_event)
+                    journal.write_text(json.dumps(journal_data, ensure_ascii=False, indent=2), encoding="utf-8")
+                    await asyncio.sleep(self.config.poll_seconds)
+                    run = await self.request("GET", f"/api/workflow-runs/{run_id}")
+                    continue
             if run["status"] in {"WAITING_APPROVAL", "PAUSED"} or time.monotonic() - started >= self.config.run_timeout_seconds:
                 # Never silently approve a human gate. Cancel only the experiment's own run.
                 await self.request("POST", f"/api/projects/{project_id}/workflow-runs/{run_id}/cancel")
@@ -303,7 +305,7 @@ class ControlPlaneCollector:
         journal.write_text(json.dumps(journal_data, ensure_ascii=False, indent=2), encoding="utf-8")
         return result, trace
 
-    async def approve_fixture(self, project_id: int, journal_data: dict[str, Any]) -> dict[str, Any]:
+    async def approve_fixture(self, project_id: int, journal_data: dict[str, Any]) -> dict[str, Any] | None:
         """Apply only the explicitly pre-registered fixture approval rule.
 
         Live collections and ordinary fixture runs remain manual.  The journal
@@ -314,7 +316,7 @@ class ControlPlaneCollector:
         approvals = await self.request("GET", f"/api/projects/{project_id}/workflow-approvals")
         pending = [approval for approval in approvals if approval.get("status") == "PENDING"]
         if not pending:
-            raise RuntimeError("fixture run is waiting for approval but no pending approval was returned")
+            return None
         approved_ids: list[int] = []
         for approval in pending:
             if "APPROVE" not in (approval.get("allowedActions") or []):
