@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import time
@@ -15,8 +16,10 @@ from runtime.tool_harness import (
     ToolRuntimeError,
     current_tool_runtime_context,
 )
+from runtime.execution_context import current_model_execution_contract
 from schemas.tool import ToolCallRequest
 from schemas.tool_gateway import ToolGatewayRequest, ToolGatewayResult
+from schemas.verification import VerificationFact, VerificationReport
 from schemas.workflow_spec import ToolPolicy, ToolRef
 
 
@@ -58,6 +61,7 @@ class InMemoryToolGateway:
         self._scope_checker = scope_checker or (lambda _request: True)
         self._policies: dict[str, ToolPolicy] = {}
         self._results: dict[str, tuple[str, ToolGatewayResult]] = {}
+        self._execution_lock = asyncio.Lock()
 
     def register_policy(self, policy: ToolPolicy) -> str:
         policy_hash = _hash_json(policy.model_dump(mode="json"))
@@ -65,6 +69,18 @@ class InMemoryToolGateway:
         return policy_hash
 
     async def execute(
+        self,
+        request: ToolGatewayRequest,
+        *,
+        policy: ToolPolicy | None = None,
+    ) -> ToolGatewayResult:
+        # The control-plane adapter has a database unique key in production;
+        # this lock gives the in-memory implementation the same exactly-once
+        # behavior for concurrent duplicate requests.
+        async with self._execution_lock:
+            return await self._execute_locked(request, policy=policy)
+
+    async def _execute_locked(
         self,
         request: ToolGatewayRequest,
         *,
@@ -194,6 +210,15 @@ class ArtifactGetArguments(GatewayToolArguments):
     version: int | None = Field(default=None, ge=1)
 
 
+class SpecVerifyArguments(GatewayToolArguments):
+    contract: dict[str, Any]
+    scope: str = Field(default="FULL", pattern=r"^(BACKEND|FULL)$")
+    required_level: str = Field(pattern=r"^(L1|L2)$")
+    rule_profile: str = Field(default="spec-full-v1", min_length=1, max_length=128)
+    source_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    timeout_ms: int = Field(default=30_000, ge=1_000, le=900_000)
+
+
 class ContractLookupArguments(GatewayToolArguments):
     node_id: str | None = Field(default=None, min_length=1)
 
@@ -216,9 +241,11 @@ def register_controlled_gateway_tools(
         ("contract.lookup", "workflow", "DETERMINISTIC"),
         ("trace.query", "workflow", "READ_ONLY"),
         ("bundle.verify", "workflow", "DETERMINISTIC"),
+        ("spec.verify", "workflow", "SANDBOXED"),
     )
     inputs = {"knowledge.search": KnowledgeSearchArguments, "artifact.get": ArtifactGetArguments,
-              "contract.lookup": ContractLookupArguments}
+              "contract.lookup": ContractLookupArguments,
+              "spec.verify": SpecVerifyArguments}
     for name, permission_policy, side_effect in definitions:
         async def handler(
             arguments: GatewayToolArguments,
@@ -260,7 +287,10 @@ def register_controlled_gateway_tools(
                     response.error_message or "tool gateway execution failed",
                     response.error_code,
                 )
-            return GatewayToolOutput(result=response.result)
+            result = response.result
+            if _name == "spec.verify":
+                result = _with_verification_fact(result, context)
+            return GatewayToolOutput(result=result)
 
         registry.register(
             name,
@@ -297,3 +327,40 @@ def _hash_json(value: Any) -> str:
         default=str,
     )
     return hashlib.sha256(material.encode("utf-8")).hexdigest()
+
+
+def _with_verification_fact(result: Any, context) -> dict[str, Any]:
+    report = VerificationReport.model_validate(result)
+    model_contract = current_model_execution_contract()
+    verification_policy = (
+        dict(model_contract.verification_policy)
+        if model_contract is not None
+        else {}
+    )
+    policy_hash = verification_policy.get("policy_hash") or _hash_json(
+        {
+            key: value
+            for key, value in verification_policy.items()
+            if key != "policy_hash"
+        }
+    )
+    report_json = report.model_dump(mode="json")
+    fact = VerificationFact(
+        execution_id=context.execution_id or "unknown",
+        workflow_run_id=max(1, context.workflow_run_id),
+        node_run_id=max(1, context.node_run_id),
+        fencing_token=max(1, context.fencing_token),
+        policy_hash=policy_hash,
+        source_digest=report.source_digest,
+        scope=verification_policy.get("scope", "FULL"),
+        verifier_version=report.verifier_version,
+        compiler_version=report.compiler_version,
+        achieved_level=report.level,
+        status=report.status,
+        expires_at_epoch_ms=int(time.time() * 1000) + max(
+            1_000,
+            int(verification_policy.get("evidence_ttl_ms", 3_600_000)),
+        ),
+        report_hash=_hash_json(report_json),
+    )
+    return {**report_json, "verification_fact": fact.model_dump(mode="json")}

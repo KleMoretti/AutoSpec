@@ -73,6 +73,19 @@ def test_live_mode_fails_closed_when_credentials_are_missing() -> None:
         build_model_client({"AGENT_MODEL_MODE": "live"})
 
 
+def test_native_tool_protocol_does_not_fallback_to_json() -> None:
+    gateway = OpenAICompatibleModelClient(
+        api_key="test-key",
+        base_url="https://model.invalid/v1",
+        model_name="test-model",
+        capabilities={"json_object", "usage", "idempotency", "native_tool_calls"},
+        output_protocol="NATIVE_TOOL_CALL",
+        client=SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=lambda **_: None))),
+    )
+    with pytest.raises(ModelConfigurationError, match="fallback is disabled"):
+        gateway.generate_json("ProductManagerAgent_v1", {"requirement": "clinic"})
+
+
 def test_explicit_empty_environment_does_not_inherit_process_model_configuration(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -9,6 +9,7 @@ from uuid import uuid4
 
 from evaluation.autospec_case_catalog import list_autospec_cases
 from evaluation.metrics import aggregate_case_metrics
+from evaluation.statistics import STATISTICS_VERSION, paired_cluster_bootstrap_difference
 from schemas.evaluation import (
     AutoSpecAblationMatrix,
     AutoSpecEvalCase,
@@ -22,7 +23,7 @@ GROUPS: tuple[tuple[str, str], ...] = (
     ("A", "single-shot"),
     ("B", "loop-no-tools"),
     ("C", "loop-with-tools"),
-    ("D", "loop-tools-replan"),
+    ("D", "loop-tools-verify"),
 )
 
 LiveAblationRunner = Callable[
@@ -41,6 +42,9 @@ def ablation_configs() -> list[dict[str, Any]]:
             "agent_loop_enabled": False,
             "tool_enabled": False,
             "replan_enabled": False,
+            "deterministic_feedback_enabled": False,
+            "spec_verify_feedback_enabled": False,
+            "feedback_mode": "none",
         },
         {
             "group": "B",
@@ -48,6 +52,9 @@ def ablation_configs() -> list[dict[str, Any]]:
             "agent_loop_enabled": True,
             "tool_enabled": False,
             "replan_enabled": True,
+            "deterministic_feedback_enabled": True,
+            "spec_verify_feedback_enabled": False,
+            "feedback_mode": "deterministic-review",
         },
         {
             "group": "C",
@@ -55,13 +62,19 @@ def ablation_configs() -> list[dict[str, Any]]:
             "agent_loop_enabled": True,
             "tool_enabled": True,
             "replan_enabled": False,
+            "deterministic_feedback_enabled": True,
+            "spec_verify_feedback_enabled": False,
+            "feedback_mode": "deterministic-review",
         },
         {
             "group": "D",
-            "name": "loop-tools-replan",
+            "name": "loop-tools-verify",
             "agent_loop_enabled": True,
             "tool_enabled": True,
             "replan_enabled": True,
+            "deterministic_feedback_enabled": True,
+            "spec_verify_feedback_enabled": True,
+            "feedback_mode": "spec.verify",
         },
     ]
 
@@ -75,6 +88,8 @@ async def run_ablation_matrix(
     workflow_version: str = "v5-agent-execution",
     code_version: str = "workspace-v5",
     random_seed: int | None = None,
+    dataset_split: str | None = None,
+    groups: Sequence[str] | None = None,
 ) -> AutoSpecAblationMatrix:
     """Run a supplied control-plane adapter or emit an explicit unexecuted matrix.
 
@@ -92,8 +107,16 @@ async def run_ablation_matrix(
     if len({case.dataset_version for case in selected}) != 1:
         raise ValueError("mixed datasets in ablation matrix")
     resolved_dataset = selected[0].dataset_version if cases else dataset_version
+    configurations = ablation_configs()
+    if groups is not None:
+        requested = list(groups)
+        if len(set(requested)) != len(requested) or any(group not in {"A", "B", "C", "D"} for group in requested):
+            raise ValueError("groups must be a unique subset of A/B/C/D")
+        configurations = [config for config in configurations if config["group"] in requested]
+        if not configurations:
+            raise ValueError("at least one ablation group is required")
     runs: list[AutoSpecEvalRun] = []
-    for config in ablation_configs():
+    for config in configurations:
         if live_runner is not None:
             run = await live_runner(config["group"], selected, config)
             if run.group != config["group"] or run.group_name != config["name"]:
@@ -112,6 +135,7 @@ async def run_ablation_matrix(
     return AutoSpecAblationMatrix(
         matrix_id=matrix_id or f"ablation-{uuid4().hex}",
         dataset_version=resolved_dataset,
+        dataset_split=dataset_split,
         generated_at_epoch_ms=int(time.time() * 1000),
         runs=runs,
     )
@@ -231,11 +255,13 @@ def evaluate_release_gate(
             reasons.append(f"D exceeds the {metric} budget ratio")
     if reasons:
         return AutoSpecGateDecision(
-            decision="REVISE",
+            decision="REJECT" if candidate_values["unauthorized_execution_count"] != 0 else "REVISE",
             gate_status="BLOCKED",
             reasons=reasons,
             baseline_run_id=baseline.run_id,
             candidate_run_id=candidate.run_id,
+            statistics_version=STATISTICS_VERSION,
+            paired_statistics=_paired_statistics(baseline, candidate),
         )
     return AutoSpecGateDecision(
         decision="PROMOTE",
@@ -243,6 +269,8 @@ def evaluate_release_gate(
         reasons=["D satisfies the deterministic quality, safety, and budget gate"],
         baseline_run_id=baseline.run_id,
         candidate_run_id=candidate.run_id,
+        statistics_version=STATISTICS_VERSION,
+        paired_statistics=_paired_statistics(baseline, candidate),
     )
 
 
@@ -299,6 +327,25 @@ def _validate_evidence(run: AutoSpecEvalRun, min_cases: int, min_repetitions: in
     if len(repetitions) < min_cases or any(len(v) < min_repetitions for v in repetitions.values()):
         return "insufficient distinct cases or repetitions for the declared release gate"
     return None
+
+
+def _paired_statistics(baseline: AutoSpecEvalRun, candidate: AutoSpecEvalRun) -> dict[str, Any]:
+    def clustered(run: AutoSpecEvalRun, field: str) -> dict[str, list[float]]:
+        values: dict[str, list[float]] = {}
+        for result in run.case_results:
+            value = getattr(result, field)
+            if value is not None:
+                values.setdefault(result.case_id, []).append(float(bool(value)) if field == "gate_pass" else float(value))
+        return values
+
+    return {
+        "gate_pass_rate": paired_cluster_bootstrap_difference(
+            clustered(baseline, "gate_pass"), clustered(candidate, "gate_pass"), seed=baseline.random_seed or candidate.random_seed or 20260930,
+        ),
+        "blocking_issue_count": paired_cluster_bootstrap_difference(
+            clustered(baseline, "blocking_issue_count"), clustered(candidate, "blocking_issue_count"), seed=baseline.random_seed or candidate.random_seed or 20260930,
+        ),
+    }
 
 
 def _not_executed_run(

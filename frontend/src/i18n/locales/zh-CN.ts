@@ -159,6 +159,30 @@ const zhCN = {
       cost: '成本'
     }
   },
+  evaluation: {
+    title: 'A/B/C/D 评测对照',
+    description: '只读展示已发布的评测证据；缺少授权批次时明确显示未执行。',
+    loading: '正在加载评测证据…',
+    loadFailed: '无法加载评测证据',
+    notEvaluated: '尚未执行评测',
+    unknown: '未知',
+    splitUnknown: '未声明 split',
+    measuredGroups: '已测量 {{count}} 组',
+    noGroups: '没有可展示的评测组',
+    decision: '最终决策：{{value}}',
+    sampleCount: '样本数',
+    passRate: '通过率',
+    passInterval: '通过率区间',
+    p95Latency: 'P95 时延',
+    tokens: '平均 Token',
+    cost: '平均成本',
+    mustCoverage: 'MUST 覆盖',
+    blockingIssues: '阻断问题中位数',
+    caseDetails: '逐 Case 详情（{{count}}）',
+    repetition: '重复 {{value}}',
+    passed: '通过',
+    failed: '失败'
+  },
   projectDetail: {
     invalidProjectId: '项目 ID 无效',
     dataRefreshFailed: '无法刷新{{details}}',
@@ -175,7 +199,7 @@ const zhCN = {
     pdfExportFailed: 'PDF 导出失败',
     refreshCoreFailed: '部分核心项目数据刷新失败',
     partialDataTitle: '部分项目数据暂时不可用',
-    canonicalWorkflow: 'V5 标准工作流',
+    canonicalWorkflow: '标准工作流',
     exportMarkdown: '导出 Markdown',
     exportPdf: '导出 PDF',
     stagesLabel: '项目阶段',
@@ -244,7 +268,17 @@ const zhCN = {
     metricsResource: '运行指标',
     traceResource: 'Trace',
     trace: {
-      title: '工具与 Trace 证据'
+      title: '工具与 Trace 证据',
+      stepCount: 'Agent 步骤',
+      step: '步骤',
+      reason: '原因',
+      validation: '校验问题',
+      duration: '耗时',
+      planHash: '计划哈希',
+      observationHash: '观察哈希',
+      modelCall: '模型调用',
+      toolCall: '工具调用',
+      noSteps: '没有记录 Agent 步骤。'
     },
     metrics: {
       queueTime: '排队时间',
@@ -386,7 +420,18 @@ const zhCN = {
     nodeRun: '节点运行',
     parentArtifact: '父 Artifact',
     upstreamVersions: '上游版本',
-    citations: '引用（{{count}}）'
+    citations: '引用（{{count}}）',
+    traceabilityMatrix: '需求追踪矩阵',
+    covered: '已覆盖',
+    missing: '缺失',
+    traceEvidence: 'API {{api}} · 数据 {{data}} · UI {{ui}} · 验收 {{acceptance}}',
+    verificationEvidence: '验证证据',
+    verificationStatus: '状态',
+    verificationLevel: '达到级别',
+    verifier: 'Verifier',
+    compiler: 'Compiler',
+    sourceDigest: '源摘要',
+    expiresAt: '过期时间'
   },
   skeleton: {
     invalidJson: '前端骨架 JSON 无效',

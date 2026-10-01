@@ -42,7 +42,8 @@
         "artifact.get",
         "contract.lookup",
         "trace.query",
-        "bundle.verify"
+        "bundle.verify",
+        "spec.verify"
       ]
     },
     "version": {"const": "v1"},

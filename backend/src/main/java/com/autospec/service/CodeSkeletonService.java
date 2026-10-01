@@ -609,7 +609,7 @@ public class CodeSkeletonService {
         try {
             Map<String, Object> manifest = new LinkedHashMap<>();
             manifest.put("project_id", projectId);
-            manifest.put("generated_by", "AutoSpec V5");
+            manifest.put("generated_by", "AutoSpec");
             manifest.put("generator_version", "bundle-v2");
             manifest.put("artifacts", artifacts.stream().map(artifact -> {
                 Map<String, Object> value = new LinkedHashMap<>();

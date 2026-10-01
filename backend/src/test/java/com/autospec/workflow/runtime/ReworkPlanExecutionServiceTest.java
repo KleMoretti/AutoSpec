@@ -85,6 +85,8 @@ class ReworkPlanExecutionServiceTest {
                         Tuple.tuple(1, "STALE"),
                         Tuple.tuple(2, "QUEUED")
                 );
+        assertThat(runsByNode.get("backend").get(1).getExecutionBundleHash())
+                .isEqualTo("a".repeat(64));
         assertThat(runsByNode.get("reviewer"))
                 .extracting(WorkflowNodeRun::getRevision, WorkflowNodeRun::getStatus)
                 .containsExactly(
@@ -249,6 +251,7 @@ class ReworkPlanExecutionServiceTest {
         workflowRun.setWorkflowSnapshotJson(snapshot());
         workflowRun.setReviewRound(reviewRound);
         workflowRun.setMaxReviewRounds(maxReviewRounds);
+        workflowRun.setExecutionBundleHash("a".repeat(64));
         workflowRun.setLockVersion(0);
         workflowRun.setStatus("RUNNING");
         workflowRun.setStartedAt(LocalDateTime.now());
@@ -266,6 +269,7 @@ class ReworkPlanExecutionServiceTest {
             nodeRun.setStatus("SUCCEEDED");
             nodeRun.setHandlerKey(nodeId + "_agent");
             nodeRun.setHandlerVersion("v1");
+            nodeRun.setExecutionBundleHash("a".repeat(64));
             nodeRun.setTimeoutMs(30000);
             nodeRun.setInputJson(invalidBackendInput && "backend".equals(nodeId)
                     ? "{invalid"

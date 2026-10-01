@@ -15,6 +15,7 @@ CONTROLLED_TOOL_NAMES = frozenset(
         "contract.lookup",
         "trace.query",
         "bundle.verify",
+        "spec.verify",
     }
 )
 

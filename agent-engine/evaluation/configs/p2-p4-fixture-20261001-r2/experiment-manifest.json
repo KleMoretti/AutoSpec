@@ -1,0 +1,84 @@
+{
+  "manifest_version": "autospec-experiment-manifest-v1",
+  "experiment_id": "autospec-p2-p4-fixture-ablation-20261001-r1",
+  "workflow_key": "autospec-v5",
+  "dataset_version": "autospec-v5-agent-execution-eval-v1",
+  "dataset_split": "smoke",
+  "random_seed": 20261001,
+  "budget": {
+    "repetitions": 1,
+    "run_max_cost": 10.0,
+    "total_max_cost": 40.0,
+    "max_runs": 4,
+    "run_max_tokens": 500000,
+    "run_max_model_calls": 16
+  },
+  "groups": [
+    {
+      "group": "A",
+      "name": "single-shot",
+      "workflow_version_id": 6,
+      "contract_path": "autospec-pm-schema-repair-v12-ablation-a-20261001-r2.workflow.json",
+      "contract_hash": "77ee38ad1688e6879259b8aa93ff72de83bedfe5f2df50ec18b7eedf2c17a0f2",
+      "prompt_schema_versions": {
+        "product_manager": "product_manager_schema:v1:86e9680fe28afcd4f0c884c90ad8a52b8da54be00d0edbdcaf2ebb1a7329dd53",
+        "architect": "architect_schema:v1:62b1d1d44432e80f5ee1863837efc45c426635bd5618e20b53c8ed1fc3f4c729",
+        "backend_engineer": "backend_engineer_loop_v3:v1:2678cf7396c34995cf38731ca5da9626bcde8d438378efabdf1c21a736e290b0",
+        "frontend_engineer": "frontend_schema:v1:2490b7c0f0e5f8dfaaf62c4a2a8807f2f05d85ae75fb670fa0cbfbe9789e5dbd",
+        "reviewer": "reviewer_schema_v2:v1:620549ea2a9afda11a3b07ddc10a8158770e65619690cc1193f2cb4241c90824",
+        "evaluator": "evaluator:v1:105c4913d48de2f875f8eafd17adc0870e1abb58d89eae44aeebfe0905ee9cf3"
+      }
+    },
+    {
+      "group": "B",
+      "name": "loop-no-tools",
+      "workflow_version_id": 7,
+      "contract_path": "autospec-pm-schema-repair-v12-ablation-b-20261001-r2.workflow.json",
+      "contract_hash": "c0cc2c40b2f92e9a061e89f9f6c2b2ece8eacb0e22cdcde0f9f24e4239e08f91",
+      "prompt_schema_versions": {
+        "product_manager": "product_manager_schema:v1:86e9680fe28afcd4f0c884c90ad8a52b8da54be00d0edbdcaf2ebb1a7329dd53",
+        "architect": "architect_schema:v1:62b1d1d44432e80f5ee1863837efc45c426635bd5618e20b53c8ed1fc3f4c729",
+        "backend_engineer": "backend_engineer_loop_v3:v1:2678cf7396c34995cf38731ca5da9626bcde8d438378efabdf1c21a736e290b0",
+        "frontend_engineer": "frontend_schema:v1:2490b7c0f0e5f8dfaaf62c4a2a8807f2f05d85ae75fb670fa0cbfbe9789e5dbd",
+        "reviewer": "reviewer_schema_v2:v1:620549ea2a9afda11a3b07ddc10a8158770e65619690cc1193f2cb4241c90824",
+        "evaluator": "evaluator:v1:105c4913d48de2f875f8eafd17adc0870e1abb58d89eae44aeebfe0905ee9cf3"
+      }
+    },
+    {
+      "group": "C",
+      "name": "loop-with-tools",
+      "workflow_version_id": 8,
+      "contract_path": "autospec-pm-schema-repair-v12-ablation-c-20261001-r2.workflow.json",
+      "contract_hash": "39aaeda02b1def7716a9e65eabc5a5a03d03a9d3ddac29f17227a79dd293a832",
+      "prompt_schema_versions": {
+        "product_manager": "product_manager_schema:v1:86e9680fe28afcd4f0c884c90ad8a52b8da54be00d0edbdcaf2ebb1a7329dd53",
+        "architect": "architect_schema:v1:62b1d1d44432e80f5ee1863837efc45c426635bd5618e20b53c8ed1fc3f4c729",
+        "backend_engineer": "backend_engineer_loop_v3:v1:2678cf7396c34995cf38731ca5da9626bcde8d438378efabdf1c21a736e290b0",
+        "frontend_engineer": "frontend_schema:v1:2490b7c0f0e5f8dfaaf62c4a2a8807f2f05d85ae75fb670fa0cbfbe9789e5dbd",
+        "reviewer": "reviewer_schema_v2:v1:620549ea2a9afda11a3b07ddc10a8158770e65619690cc1193f2cb4241c90824",
+        "evaluator": "evaluator:v1:105c4913d48de2f875f8eafd17adc0870e1abb58d89eae44aeebfe0905ee9cf3"
+      }
+    },
+    {
+      "group": "D",
+      "name": "loop-tools-verify",
+      "workflow_version_id": 9,
+      "contract_path": "autospec-pm-schema-repair-v12-ablation-d-20261001-r2.workflow.json",
+      "contract_hash": "90263a69efed3b3e453095f3504bc33eb55f48685a2c2c510edb2d3f82bcea58",
+      "prompt_schema_versions": {
+        "product_manager": "product_manager_schema:v1:86e9680fe28afcd4f0c884c90ad8a52b8da54be00d0edbdcaf2ebb1a7329dd53",
+        "architect": "architect_schema:v1:62b1d1d44432e80f5ee1863837efc45c426635bd5618e20b53c8ed1fc3f4c729",
+        "backend_engineer": "backend_engineer_loop_v3:v1:2678cf7396c34995cf38731ca5da9626bcde8d438378efabdf1c21a736e290b0",
+        "frontend_engineer": "frontend_schema:v1:2490b7c0f0e5f8dfaaf62c4a2a8807f2f05d85ae75fb670fa0cbfbe9789e5dbd",
+        "reviewer": "reviewer_schema_v2:v1:620549ea2a9afda11a3b07ddc10a8158770e65619690cc1193f2cb4241c90824",
+        "evaluator": "evaluator:v1:105c4913d48de2f875f8eafd17adc0870e1abb58d89eae44aeebfe0905ee9cf3"
+      }
+    }
+  ],
+  "pricing_snapshot": {
+    "mode": "FIXTURE_BASELINE",
+    "cost_status": "NOT_APPLICABLE_EXTERNAL",
+    "source": "local-fixture",
+    "observed_at": "2026-10-01"
+  }
+}

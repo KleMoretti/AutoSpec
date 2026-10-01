@@ -1,5 +1,6 @@
 import pytest
 import json
+import time
 from dataclasses import asdict
 from pathlib import Path
 from pydantic import BaseModel, ConfigDict, Field
@@ -16,13 +17,14 @@ from runtime.tool_harness import (
     ToolRuntimeContext,
     bind_tool_runtime_context,
 )
-from schemas.agent_loop import LoopPolicy, StopReason
+from schemas.agent_loop import LoopPolicy, StopReason, stable_hash
 from schemas.workflow_spec import ToolPolicy, ToolRef
 from schemas.workflow_spec import WorkflowSpec
 from runtime.model_telemetry import capture_model_invocations, record_model_invocation, ModelInvocationTelemetry
 from runtime.node_executor import InvocationRecord
 from runtime.tool_gateway import register_controlled_gateway_tools
 from schemas.tool_gateway import ToolGatewayResult
+from spec_verifier.validators import validate_l1
 
 
 def _inputs():
@@ -150,6 +152,132 @@ async def test_backend_loop_replans_after_deterministic_validation_failure() -> 
     assert result.completed is True
     assert result.stop_reason == StopReason.COMPLETED
     assert any(step.phase == "REPLAN" for step in result.steps)
+
+
+@pytest.mark.asyncio
+async def test_candidate_backend_loop_replans_after_verifier_feedback() -> None:
+    requirement, prd, architecture = _inputs()
+    valid = BackendEngineerAgent().run(requirement, prd, architecture).model_dump(mode="json")
+    invalid = json.loads(json.dumps(valid))
+    product_id = next(
+        field
+        for table in invalid["tables"]
+        for field in table["fields"]
+        if field["name"] == "product_id"
+    )
+    product_id["type"] = "VARCHAR(64)"
+    responses = iter(
+        [
+            {"type": "PLAN", "goal": "design", "steps": ["draft", "verify"]},
+            {"type": "FINAL_CANDIDATE", "candidate": invalid},
+            {
+                "type": "REPLAN",
+                "issue_codes": ["TABLE_FOREIGN_KEY_TYPE_MISMATCH"],
+                "required_changes": ["match the foreign-key field type"],
+                "reason": "the verifier found a foreign-key type mismatch",
+            },
+            {"type": "FINAL_CANDIDATE", "candidate": valid},
+        ]
+    )
+
+    class Model:
+        def generate_json(self, _prompt_name, _payload):
+            return next(responses)
+
+    tool_policy = ToolPolicy(
+        enabled=True,
+        allowed_tools=[ToolRef(name="spec.verify", version="v1")],
+        max_calls=2,
+        allowed_side_effects=["SANDBOXED"],
+    )
+    loop_policy = LoopPolicy(
+        version="agent-loop-v2",
+        enabled=True,
+        max_steps=7,
+        max_replans=1,
+        validator_profile="backend-design-v2",
+    )
+
+    class Gateway:
+        calls = 0
+
+        async def execute(self, request, **_kwargs):
+            self.calls += 1
+            report = validate_l1(
+                request.arguments["contract"],
+                execution_id=request.execution_id,
+                scope=request.arguments["scope"],
+            )
+            return ToolGatewayResult(
+                request_id=request.request_id,
+                idempotency_key=request.idempotency_key,
+                status="SUCCEEDED",
+                result=report.model_dump(mode="json"),
+                result_hash="a" * 64,
+            )
+
+    gateway = Gateway()
+    registry = ToolRegistry()
+    register_controlled_gateway_tools(registry, gateway)
+    execution = ModelExecutionContract(
+        execution_id="backend-verifier-loop",
+        prompt_key="backend_engineer_shared",
+        prompt_version="v1",
+        prompt_checksum="a" * 64,
+        model_policy={"max_calls": 5},
+        deadline_epoch_ms=int(time.time() * 1000) + 30_000,
+        protocol_version=2,
+        contract_hash="b" * 64,
+        schema_version="BackendDesignArtifact",
+        tool_policy=tool_policy.model_dump(mode="json"),
+        agent_loop_policy=loop_policy.model_dump(mode="json"),
+        verification_policy={
+            "enabled": True,
+            "scope": "BACKEND",
+            "required_level": "L1",
+            "rule_profile": "spec-backend-v1",
+            "verifier_version": "spec-verifier-v1",
+            "compiler_version": "spec-compiler-v1",
+            "timeout_ms": 30_000,
+        },
+    )
+    context = ToolRuntimeContext(
+        execution_id=execution.execution_id,
+        node_id="backend_engineer",
+        attempt=1,
+        policy=tool_policy,
+        deadline_epoch_ms=execution.deadline_epoch_ms,
+        contract_hash=execution.contract_hash,
+        schema_version="BackendDesignArtifact",
+        harness=ToolHarness(registry),
+        workflow_run_id=1,
+        node_run_id=2,
+        actor_user_id="3",
+        project_id="4",
+        fencing_token=1,
+    )
+
+    with bind_model_execution_contract(execution), bind_tool_runtime_context(context):
+        result = await run_backend_agent_loop(
+            requirement=requirement,
+            prd=prd,
+            architecture_design=architecture.model_dump(mode="json"),
+            retrieved_sources=[],
+            context_manifest={},
+            rework_directive=None,
+            model_client=Model(),
+            policy=loop_policy,
+        )
+
+    assert result.completed is True
+    assert result.stop_reason == StopReason.COMPLETED
+    assert gateway.calls == 2
+    failed = [step for step in result.steps if step.reason_code == "SPEC_VERIFY_FAILED"]
+    assert len(failed) == 1
+    assert failed[0].candidate_hash == stable_hash(invalid)
+    assert failed[0].verification_fact_ref
+    assert any(step.phase == "REPLAN" for step in result.steps)
+    assert result.steps[-1].verification_fact_ref
 
 
 @pytest.mark.asyncio

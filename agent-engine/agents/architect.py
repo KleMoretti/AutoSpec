@@ -1,6 +1,8 @@
 from typing import Any, Mapping
 
 from agents.base import ModelClient
+from fixtures.software_domains import fixture_for_requirement
+from runtime.structured_output import generate_structured_output
 from schemas.architecture_design import ArchitectureDesignArtifact, ArchitectureDesignArtifactV2
 from schemas.prd import PrdArtifact
 from schemas.traceability import fallback_requirement_mapping, remap_requirement_refs
@@ -31,9 +33,15 @@ class ArchitectAgent:
             input_payload["rework_directive"] = rework_directive
         if self.model_client is not None:
             output_model = ArchitectureDesignArtifactV2 if shared_contract_required else ArchitectureDesignArtifact
-            return output_model.model_validate(
-                self.model_client.generate_json("ArchitectAgent_v2" if shared_contract_required else self.prompt_name, input_payload)
+            return generate_structured_output(
+                self.model_client,
+                "ArchitectAgent_v2" if shared_contract_required else self.prompt_name,
+                input_payload,
+                output_model,
             )
+
+        fixture = fixture_for_requirement(requirement)
+        return fixture.shared_architecture() if shared_contract_required else fixture.architecture
 
         fallback = {
                 "system_context": "AutoSpec coordinates frontend, backend, and agent-engine services with persisted Agent events.",

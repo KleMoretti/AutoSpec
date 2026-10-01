@@ -57,7 +57,7 @@ class RetrievalEvaluation(BaseModel):
     case_results: list[RetrievalCaseResult] = Field(default_factory=list)
 
 
-RETRIEVAL_DATASET_VERSION = "autospec-retrieval-gold-v2"
+RETRIEVAL_DATASET_VERSION = "autospec-retrieval-gold-v3"
 
 
 def run_retrieval_evaluation(
@@ -118,13 +118,53 @@ def run_retrieval_evaluation(
 )
 
 
-def load_gold_dataset() -> tuple[list[RagDocument], list[RetrievalEvalCase]]:
+def load_gold_dataset(*, include_quick_regression: bool = True) -> tuple[list[RagDocument], list[RetrievalEvalCase]]:
     path = Path(__file__).parent / "datasets" / "autospec_retrieval_gold_v2.json"
     payload = json.loads(path.read_text(encoding="utf-8"))
+    documents = [RagDocument.model_validate(item) for item in payload["documents"]]
+    cases = [RetrievalEvalCase.model_validate(item) for item in payload["cases"]]
+    expanded_documents, expanded_cases = _expanded_retrieval_gold()
+    if not include_quick_regression:
+        return expanded_documents, expanded_cases
     return (
-        [RagDocument.model_validate(item) for item in payload["documents"]],
-        [RetrievalEvalCase.model_validate(item) for item in payload["cases"]],
+        documents + expanded_documents,
+        cases + expanded_cases,
     )
+
+
+def _expanded_retrieval_gold() -> tuple[list[RagDocument], list[RetrievalEvalCase]]:
+    """Generate the reviewed-size offline benchmark deterministically.
+
+    Each row has a domain, a unique gold document and a query whose lexical
+    anchor is present only in that document. This is a compact source form for
+    100 frozen rows; the emitted IDs and ordering are stable and hashable.
+    """
+
+    domains = ("finance", "healthcare", "education", "logistics", "commerce")
+    documents: list[RagDocument] = []
+    cases: list[RetrievalEvalCase] = []
+    for index in range(100):
+        domain = domains[index % len(domains)]
+        token = f"autospecgold{index:03d}"
+        document_id = f"gold-{domain}-{index:03d}"
+        documents.append(RagDocument(
+            document_id=document_id,
+            corpus=CorpusType.PROJECT_ARTIFACT,
+            project_id="retrieval-benchmark",
+            version="v1",
+            metadata={"business_domain": domain, "benchmark_row": str(index)},
+            content=f"{domain} benchmark evidence {token} approved project rule",
+        ))
+        cases.append(RetrievalEvalCase(
+            case_id=f"retrieval-{index:03d}",
+            query=f"{domain} {token} approved project rule",
+            project_id="retrieval-benchmark",
+            user_id="benchmark-reviewer",
+            corpus=CorpusType.PROJECT_ARTIFACT,
+            gold_document_ids=[document_id],
+            top_k=5,
+        ))
+    return documents, cases
 
 
 def fixture_retrieval_evaluation() -> RetrievalEvaluation:

@@ -12,6 +12,7 @@ import javax.tools.StandardJavaFileManager;
 import javax.tools.ToolProvider;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.lang.reflect.Method;
 import java.net.URL;
 import java.net.URLClassLoader;
@@ -22,10 +23,14 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.Enumeration;
+import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -197,6 +202,7 @@ public class GeneratedBundleVerificationService {
                 Files.writeString(target, files.getOrDefault(entry, ""), StandardCharsets.UTF_8);
                 sources.add(target);
             }
+            String compilerClasspath = compilerClasspath(workspace);
             try (StandardJavaFileManager manager = compiler.getStandardFileManager(null, null, StandardCharsets.UTF_8)) {
                 boolean compiled = Boolean.TRUE.equals(compiler.getTask(
                         null,
@@ -204,7 +210,7 @@ public class GeneratedBundleVerificationService {
                         null,
                         List.of(
                                 "--release", "17",
-                                "-classpath", System.getProperty("java.class.path"),
+                                "-classpath", compilerClasspath,
                                 "-d", classes.toString()
                         ),
                         null,
@@ -240,6 +246,56 @@ public class GeneratedBundleVerificationService {
                     exception.getMessage() == null ? exception.getClass().getSimpleName() : exception.getMessage());
         } finally {
             deleteWorkspace(workspace);
+        }
+    }
+
+    private String compilerClasspath(Path workspace) {
+        LinkedHashSet<String> entries = new LinkedHashSet<>();
+        String runtimeClasspath = System.getProperty("java.class.path", "");
+        for (String entry : runtimeClasspath.split(java.util.regex.Pattern.quote(java.io.File.pathSeparator))) {
+            if (!entry.isBlank()) {
+                entries.add(entry);
+            }
+        }
+        Path nestedLibraries = workspace.resolve("runtime-libs").normalize();
+        try {
+            Files.createDirectories(nestedLibraries);
+            for (String entry : List.copyOf(entries)) {
+                Path runtimeEntry = Path.of(entry).toAbsolutePath().normalize();
+                if (Files.isRegularFile(runtimeEntry) && entry.endsWith(".jar")) {
+                    extractBootLibraries(runtimeEntry, nestedLibraries, entries);
+                }
+            }
+        } catch (IOException exception) {
+            throw new IllegalStateException("Unable to prepare generated bundle compiler classpath", exception);
+        }
+        return String.join(java.io.File.pathSeparator, entries);
+    }
+
+    private void extractBootLibraries(
+            Path executableJar,
+            Path nestedLibraries,
+            Set<String> classpath
+    ) throws IOException {
+        try (JarFile jar = new JarFile(executableJar.toFile())) {
+            Enumeration<JarEntry> entries = jar.entries();
+            while (entries.hasMoreElements()) {
+                JarEntry entry = entries.nextElement();
+                String name = entry.getName();
+                if (entry.isDirectory() || !name.startsWith("BOOT-INF/lib/") || !name.endsWith(".jar")) {
+                    continue;
+                }
+                Path target = nestedLibraries.resolve(Path.of(name).getFileName().toString()).normalize();
+                if (!target.startsWith(nestedLibraries)) {
+                    throw new IllegalStateException("Nested dependency escaped verification workspace");
+                }
+                if (Files.notExists(target)) {
+                    try (InputStream input = jar.getInputStream(entry)) {
+                        Files.copy(input, target);
+                    }
+                }
+                classpath.add(target.toString());
+            }
         }
     }
 

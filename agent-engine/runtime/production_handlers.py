@@ -18,14 +18,26 @@ from runtime.handler_registry import HandlerRegistry
 from runtime.context_policy import ContextPolicyError, apply_context_policy
 from runtime.execution_context import current_model_execution_contract
 from runtime.model_telemetry import ModelInvocationTelemetry, record_model_invocation
+from runtime.tool_harness import execute_current_tool
 from schemas.architecture_design import ArchitectureDesignArtifact, ArchitectureDesignArtifactV2
 from schemas.agent_loop import LoopPolicy
 from schemas.backend_design import BackendDesignArtifact
-from schemas.evaluation import EvaluationInput, EvaluationRuntimeInput, EvaluationReport
+from schemas.evaluation import (
+    EvaluationInput,
+    EvaluationInputV2,
+    EvaluationInputV3,
+    EvaluationRuntimeInput,
+    EvaluationReport,
+    EvaluationReportV2,
+)
 from schemas.frontend_skeleton import FrontendSkeletonArtifact
 from schemas.prd import PrdArtifact
 from schemas.rework import ReworkDirective
-from schemas.review import ReviewReport
+from schemas.review import ReviewReport, ReviewReportV2
+from schemas.tool import ToolCallRequest
+from schemas.verification import VerificationFact, VerificationReport
+from spec_verifier.compiler import compile_spec
+from spec_verifier.fixtures import spec_contract_from_artifacts
 from review.shared_contract import validate_backend_contract
 
 
@@ -136,11 +148,31 @@ def build_production_registry(model_client: ModelClient | None = None) -> Handle
     )
     for handler_key, version, node_name, input_model, output_model, input_name, output_name, prompt_key in (
         ("ArchitectAgent", "v2", "architect", PrdNodeInput, ArchitectureDesignArtifactV2, "ArchitectureInput", "ArchitectureDesignArtifactV2", "architect_shared"),
+        ("ArchitectAgent", "v3", "architect", PrdNodeInput, ArchitectureDesignArtifactV2, "ArchitectureInput", "ArchitectureDesignArtifactV2", "architect_schema"),
         ("BackendEngineerAgent", "v3", "backend_engineer", BackendDesignInput, BackendDesignArtifact, "BackendDesignInput", "BackendDesignArtifact", "backend_engineer_shared"),
+        ("BackendEngineerAgent", "v4", "backend_engineer", BackendDesignInput, BackendDesignArtifact, "BackendDesignInput", "BackendDesignArtifact", "backend_engineer_loop"),
+        ("BackendEngineerAgent", "v5", "backend_engineer", BackendDesignInput, BackendDesignArtifact, "BackendDesignInput", "BackendDesignArtifact", "backend_engineer_loop_v2"),
+        ("BackendEngineerAgent", "v6", "backend_engineer", BackendDesignInput, BackendDesignArtifact, "BackendDesignInput", "BackendDesignArtifact", "backend_engineer_loop_v3"),
         ("FrontendEngineerAgent", "v2", "frontend_engineer", FrontendNodeInputV2, FrontendSkeletonArtifact, "FrontendSkeletonInputV2", "FrontendSkeletonArtifact", "frontend_engineer_shared"),
+        ("FrontendEngineerAgent", "v3", "frontend_engineer", FrontendNodeInputV2, FrontendSkeletonArtifact, "FrontendSkeletonInputV2", "FrontendSkeletonArtifact", "frontend_schema"),
         ("ReviewerAgent", "v2", "reviewer", ReviewerNodeInputV2, ReviewReport, "ReviewInputV2", "ReviewReport", "reviewer_shared"),
+        ("ReviewerAgent", "v4", "reviewer", ReviewerNodeInputV2, ReviewReportV2, "ReviewInputV4", "ReviewReportV2", "reviewer_schema"),
+        ("ReviewerAgent", "v5", "reviewer", ReviewerNodeInputV2, ReviewReportV2, "ReviewInputV4", "ReviewReportV2", "reviewer_schema_v2"),
     ):
         _register_agent_node(registry, handler_key, version, node_name, input_model, output_model, input_name, output_name, prompt_key, model_client)
+    _register_agent_node(
+        registry,
+        "ReviewerAgent",
+        "v3",
+        "reviewer",
+        ReviewerNodeInputV2,
+        ReviewReportV2,
+        "ReviewInputV3",
+        "ReviewReportV2",
+        "reviewer_shared",
+        model_client,
+        rule_profile="spec-full-v1",
+    )
     _register_agent_node(
         registry, "BackendEngineerAgent", "v2", "backend_engineer",
         BackendDesignInput, BackendDesignArtifact, "BackendDesignInput",
@@ -169,6 +201,18 @@ def build_production_registry(model_client: ModelClient | None = None) -> Handle
         prompt_key="evaluator", prompt_version="v1",
         prompt_checksum=_prompt_checksum("evaluator", "v1"),
     )
+    registry.register(
+        "EvaluatorAgent", "v3", EvaluationInputV2, EvaluationReportV2, _execute_evaluator,
+        input_schema="EvaluationInputV2", output_schema="EvaluationReportV2",
+        prompt_key="evaluator", prompt_version="v1",
+        prompt_checksum=_prompt_checksum("evaluator", "v1"),
+    )
+    registry.register(
+        "EvaluatorAgent", "v4", EvaluationInputV3, EvaluationReportV2, _execute_evaluator,
+        input_schema="EvaluationInputV3", output_schema="EvaluationReportV2",
+        prompt_key="evaluator", prompt_version="v1",
+        prompt_checksum=_prompt_checksum("evaluator", "v1"),
+    )
     return registry
 
 
@@ -183,6 +227,7 @@ def _register_agent_node(
     output_schema: str,
     prompt_key: str,
     model_client: ModelClient | None,
+    rule_profile: str | None = None,
 ) -> None:
     def compact_input(input_payload: BaseModel) -> tuple[dict[str, Any], str | None]:
         serialized_input = input_payload.model_dump(mode="json")
@@ -202,8 +247,23 @@ def _register_agent_node(
 
     def execute_single_shot(input_payload: BaseModel) -> dict[str, Any]:
         compacted_input, quality_profile = compact_input(input_payload)
-        if prompt_key.endswith("_shared"):
+        if prompt_key.endswith("_shared") or (
+            handler_key in {"ArchitectAgent", "FrontendEngineerAgent"}
+            and handler_version == "v3"
+        ) or (
+            handler_key == "BackendEngineerAgent"
+            and handler_version in {"v3", "v4", "v5", "v6"}
+        ):
             compacted_input["shared_contract_required"] = True
+        if rule_profile is not None:
+            compacted_input["rule_profile"] = rule_profile
+        elif handler_key == "ReviewerAgent" and handler_version in {"v2", "v3"}:
+            # v5-parallel publishes the shared-contract reviewer as v2.  Its
+            # legacy profile contains marketplace/control-plane assumptions;
+            # shared-contract runs must use the domain-neutral checks so a
+            # valid inventory or leave fixture is not forced to implement
+            # unrelated AutoSpec APIs.
+            compacted_input["rule_profile"] = "spec-full-v1"
         with model_routing_request(quality_profile, node_name):
             record = run_agent_node(
                 node_name,
@@ -221,9 +281,86 @@ def _register_agent_node(
         )
         return record.output_payload
 
+    async def execute_reviewer(input_payload: BaseModel) -> dict[str, Any]:
+        compacted_input, quality_profile = compact_input(input_payload)
+        compacted_input["shared_contract_required"] = True
+        if handler_version in {"v4", "v5"}:
+            compacted_input["reviewer_prompt_name"] = (
+                "ReviewerAgent_v5" if handler_version == "v5" else "ReviewerAgent_v4"
+            )
+        frozen = current_model_execution_contract()
+        verification_policy = dict(frozen.verification_policy if frozen else {})
+        if rule_profile is not None:
+            compacted_input["rule_profile"] = rule_profile
+        elif handler_version == "v5":
+            # Candidate reviewers use the domain-neutral profile. The older
+            # v4 handler intentionally remains unchanged for replay fidelity.
+            compacted_input["rule_profile"] = verification_policy.get(
+                "rule_profile", "spec-full-v1"
+            )
+        if not verification_policy.get("enabled"):
+            raise RuntimeError("candidate reviewer requires an enabled verification policy")
+        prd = PrdArtifact.model_validate(compacted_input["prd"])
+        backend = BackendDesignArtifact.model_validate(compacted_input["backend_design"])
+        frontend = FrontendSkeletonArtifact.model_validate(compacted_input["frontend_skeleton"])
+        contract = spec_contract_from_artifacts(
+            prd,
+            backend,
+            frontend,
+            contract_id="GeneratedSpec",
+        )
+        compiled = compile_spec(contract)
+        result = await execute_current_tool(
+            ToolCallRequest(
+                name="spec.verify",
+                version="v1",
+                arguments={
+                    "contract": contract.model_dump(mode="json"),
+                    "required_level": verification_policy.get("required_level", "L1"),
+                    "rule_profile": verification_policy.get("rule_profile", "spec-full-v1"),
+                    "source_digest": compiled.source_digest,
+                    "timeout_ms": verification_policy.get("timeout_ms", 30_000),
+                },
+            )
+        )
+        if result.status != "SUCCEEDED" or not isinstance(result.result, dict):
+            raise RuntimeError(result.error_message or "spec.verify failed")
+        verifier_payload = result.result.get("result", result.result)
+        if not isinstance(verifier_payload, dict):
+            raise RuntimeError("spec.verify returned an invalid result")
+        report_payload = {
+            key: value
+            for key, value in verifier_payload.items()
+            if key != "verification_fact"
+        }
+        report = VerificationReport.model_validate(report_payload)
+        trusted_fact = VerificationFact.model_validate(
+            verifier_payload.get("verification_fact")
+        )
+        if report.gate_status != "PASSED" or trusted_fact.status != "PASSED":
+            raise RuntimeError("spec.verify blocked the candidate")
+        with model_routing_request(quality_profile, node_name):
+            record = await asyncio.to_thread(
+                run_agent_node,
+                node_name,
+                compacted_input,
+                model_client,
+                verification_fact=trusted_fact.model_dump(mode="json"),
+            )
+        if record.status != "SUCCEEDED" or record.output_payload is None:
+            raise RuntimeError(record.error_message or f"{node_name} execution failed")
+        _record_fixture_invocation(
+            model_client=model_client,
+            record=record,
+            compacted_input=compacted_input,
+            prompt_key=prompt_key,
+            output_schema=output_schema,
+        )
+        return record.output_payload
+
     async def execute_backend(input_payload: BaseModel) -> dict[str, Any]:
         compacted_input, quality_profile = compact_input(input_payload)
-        if handler_version == "v3":
+        if handler_version in {"v3", "v4", "v5", "v6"}:
             compacted_input["shared_contract_required"] = True
         contract = current_model_execution_contract()
         policy = LoopPolicy.model_validate(
@@ -255,7 +392,12 @@ def _register_agent_node(
             )
         return result.candidate
 
-    execute = execute_backend if node_name == "backend_engineer" else execute_single_shot
+    if node_name == "backend_engineer":
+        execute = execute_backend
+    elif handler_key == "ReviewerAgent" and handler_version in {"v3", "v4", "v5"}:
+        execute = execute_reviewer
+    else:
+        execute = execute_single_shot
 
     registry.register(
         handler_key,
@@ -349,7 +491,10 @@ def _validate_artifact_context(payload: dict[str, Any]) -> None:
     for field, model in artifact_models.items():
         value = payload.get(field)
         if value is not None:
-            parsed[field] = model.model_validate(value)
+            if field == "review_report" and isinstance(value, dict) and "verification_fact" in value:
+                parsed[field] = ReviewReportV2.model_validate(value)
+            else:
+                parsed[field] = model.model_validate(value)
 
     prd = parsed.get("prd")
     if isinstance(prd, PrdArtifact):
@@ -404,7 +549,7 @@ def _values_for_key(value: Any, target: str) -> list[Any]:
     return values
 
 
-def _execute_evaluator(input_payload: EvaluationInput) -> EvaluationReport:
+def _execute_evaluator(input_payload: EvaluationInput) -> EvaluationReport | EvaluationReportV2:
     serialized = input_payload.model_dump(mode="json")
     execution_policy = serialized.get("execution_policy", {})
     quality_profile = (
@@ -421,7 +566,7 @@ def _execute_evaluator(input_payload: EvaluationInput) -> EvaluationReport:
     return _evaluate(type(input_payload).model_validate(compiled))
 
 
-def _evaluate(input_payload: EvaluationInput) -> EvaluationReport:
+def _evaluate(input_payload: EvaluationInput) -> EvaluationReport | EvaluationReportV2:
     report = evaluate_artifacts(
         requirement=input_payload.requirement,
         prd=PrdArtifact.model_validate(input_payload.prd),
@@ -432,11 +577,17 @@ def _evaluate(input_payload: EvaluationInput) -> EvaluationReport:
         frontend_skeleton=FrontendSkeletonArtifact.model_validate(
             input_payload.frontend_skeleton
         ),
-        review_report=ReviewReport.model_validate(input_payload.review_report),
+        review_report=(
+            ReviewReportV2.model_validate(input_payload.review_report)
+            if "verification_fact" in input_payload.review_report
+            else ReviewReport.model_validate(input_payload.review_report)
+        ),
         records=input_payload.records,
         model_invocations=input_payload.model_invocations,
         retrieved_sources=input_payload.retrieved_sources,
         generated_files=input_payload.generated_files,
+        verification_policy=getattr(input_payload, "verification_policy", {}),
+        verification_fact=getattr(input_payload, "verification_fact", None),
     )
     if report.gate_status == "BLOCKED":
         blockers = [

@@ -136,6 +136,43 @@ class DeliveryGateServiceTest {
     }
 
     @Test
+    void acceptsFullVerificationEvidenceWhenBackendPolicyUsesAnotherScope() {
+        when(workflowRunService.list(org.mockito.ArgumentMatchers.<Wrapper<WorkflowRun>>any()))
+                .thenReturn(List.of(verifiedRun("COMPLETED")));
+        WorkflowNodeRun evaluator = evaluator(71L);
+        when(workflowNodeRunMapper.selectOne(any())).thenReturn(evaluator);
+        when(workflowNodeRunMapper.selectList(any())).thenReturn(List.of(evaluator));
+        when(artifactService.list(org.mockito.ArgumentMatchers.<Wrapper<Artifact>>any()))
+                .thenReturn(
+                        List.of(evaluationWithVerification(71L, System.currentTimeMillis() + 60_000)),
+                        completeArtifacts(71L)
+                );
+
+        assertThatCode(() -> deliveryGateService.requireDeliverable(9L))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void rejectsExpiredFullVerificationEvidence() {
+        when(workflowRunService.list(org.mockito.ArgumentMatchers.<Wrapper<WorkflowRun>>any()))
+                .thenReturn(List.of(verifiedRun("COMPLETED")));
+        WorkflowNodeRun evaluator = evaluator(71L);
+        when(workflowNodeRunMapper.selectOne(any())).thenReturn(evaluator);
+        when(workflowNodeRunMapper.selectList(any())).thenReturn(List.of(evaluator));
+        when(artifactService.list(org.mockito.ArgumentMatchers.<Wrapper<Artifact>>any()))
+                .thenReturn(
+                        List.of(evaluationWithVerification(71L, 1L)),
+                        completeArtifacts(71L)
+                );
+
+        assertThatThrownBy(() -> deliveryGateService.requireDeliverable(9L))
+                .isInstanceOfSatisfying(ResponseStatusException.class, ex -> {
+                    assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                    assertThat(ex.getReason()).contains("missing, expired, or below");
+                });
+    }
+
+    @Test
     void doesNotReuseBuildVerificationFromDifferentArtifactVersions() {
         when(workflowRunService.list(org.mockito.ArgumentMatchers.<Wrapper<WorkflowRun>>any()))
                 .thenReturn(List.of(run("COMPLETED")));
@@ -172,6 +209,17 @@ class DeliveryGateServiceTest {
         return run;
     }
 
+    private WorkflowRun verifiedRun(String status) {
+        WorkflowRun run = run(status);
+        run.setExecutionBundleJson("""
+                {"nodes":[
+                  {"node_id":"backend_engineer","verification_policy":{"enabled":true,"scope":"BACKEND","required_level":"L1","policy_hash":"07f90333460fec2a396e2dabd8e275cfac90edf9e842af49083ff878f75e207e"}},
+                  {"node_id":"reviewer","verification_policy":{"enabled":true,"scope":"FULL","required_level":"L1","policy_hash":"cf6d443ed5f255c2e811b179632fb7b23862466f71baa45341a2b0d832ae3794"}}
+                ]}
+                """);
+        return run;
+    }
+
     private WorkflowNodeRun evaluator(Long id) {
         WorkflowNodeRun node = new WorkflowNodeRun();
         node.setId(id);
@@ -190,6 +238,18 @@ class DeliveryGateServiceTest {
         artifact.setStatus("GENERATED");
         artifact.setWorkflowNodeRunId(nodeRunId);
         artifact.setContent("{\"gate_status\":\"" + gateStatus + "\"}");
+        return artifact;
+    }
+
+    private Artifact evaluationWithVerification(Long nodeRunId, long expiresAtEpochMs) {
+        Artifact artifact = evaluation(nodeRunId, "PASSED");
+        artifact.setContent("""
+                {"gate_status":"PASSED","blocking_issue_count":0,"verification_fact":{
+                  "scope":"FULL","policy_hash":"cf6d443ed5f255c2e811b179632fb7b23862466f71baa45341a2b0d832ae3794",
+                  "source_digest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                  "status":"PASSED","achieved_level":"L1","expires_at_epoch_ms":%d
+                }}
+                """.formatted(expiresAtEpochMs));
         return artifact;
     }
 

@@ -79,4 +79,32 @@ class MarkdownExportServiceTest {
         assertThat(markdown).contains("| Severity | Type | Description | Suggestion |");
         assertThat(markdown.indexOf("HIGH")).isLessThan(markdown.indexOf("LOW"));
     }
+
+    @Test
+    void rendersStructuredAcceptanceCriteriaWithTraceability() {
+        String prdJson = """
+                {
+                  "project_name": "Inventory Workspace",
+                  "target_users": ["member"],
+                  "core_features": [],
+                  "user_stories": [
+                    {"role": "member", "goal": "add an item", "benefit": "store inventory", "acceptance_criteria": [
+                      {"acceptance_id": "AC-ADD-ITEM-1", "criterion": "The item is saved.", "requirement_refs": ["REQ-ADD-ITEM"]}
+                    ]}
+                  ],
+                  "business_boundaries": [],
+                  "non_functional_requirements": [],
+                  "risks": []
+                }
+                """;
+
+        String markdown = markdownExportService.render(
+                prdJson,
+                "{\"tables\":[],\"apis\":[]}",
+                "{\"score\":100,\"issues\":[]}"
+        );
+
+        assertThat(markdown)
+                .contains("AC-ADD-ITEM-1: The item is saved. (REQ-ADD-ITEM)");
+    }
 }

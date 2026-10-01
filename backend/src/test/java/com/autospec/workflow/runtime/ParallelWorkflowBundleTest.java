@@ -22,7 +22,7 @@ class ParallelWorkflowBundleTest {
     @Test
     void publishedParallelVersionFreezesAllNewPromptsAndHandlers() {
         WorkflowVersion version = versions.selectOne(new LambdaQueryWrapper<WorkflowVersion>()
-                .eq(WorkflowVersion::getVersion, "v5-parallel"));
+                .eq(WorkflowVersion::getVersion, "pm-schema-repair-v12"));
         assertThat(version).isNotNull();
         assertThat(version.getStatus()).isEqualTo("PUBLISHED");
         assertThat(version.getImmutableAt()).isNotNull();
@@ -34,6 +34,6 @@ class ParallelWorkflowBundleTest {
         }
         var bundle = bundles.ensureFor(version, spec);
         assertThat(bundle.getBundleHash()).hasSize(64);
-        assertThat(bundle.getBundleJson()).contains("architect_shared", "frontend_engineer_shared");
+        assertThat(bundle.getBundleJson()).contains("architect_schema", "frontend_schema");
     }
 }

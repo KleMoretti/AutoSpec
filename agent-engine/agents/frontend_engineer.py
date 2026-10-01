@@ -1,6 +1,8 @@
 from typing import Any
 
 from agents.base import ModelClient
+from fixtures.software_domains import fixture_for_requirement
+from runtime.structured_output import generate_structured_output
 from schemas.architecture_design import ArchitectureDesignArtifact
 from schemas.backend_design import BackendDesignArtifact
 from schemas.frontend_skeleton import FrontendSkeletonArtifact
@@ -37,9 +39,14 @@ class FrontendEngineerAgent:
         if backend_design is not None and not shared_contract_required:
             input_payload["backend_design"] = backend_design.model_dump()
         if self.model_client is not None:
-            return FrontendSkeletonArtifact.model_validate(
-                self.model_client.generate_json("FrontendEngineerAgent_v2" if shared_contract_required else self.prompt_name, input_payload)
+            return generate_structured_output(
+                self.model_client,
+                "FrontendEngineerAgent_v2" if shared_contract_required else self.prompt_name,
+                input_payload,
+                FrontendSkeletonArtifact,
             )
+
+        return fixture_for_requirement(requirement).frontend
 
         fallback = {
                 "routes": [

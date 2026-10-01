@@ -3,8 +3,11 @@ package com.autospec.workflow.transport;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -115,6 +118,32 @@ class WorkflowEventPollerTest {
         assertThat(client.acknowledged).containsExactly("2-0", "3-0");
     }
 
+    @Test
+    void quarantinesPoisonMessageAfterPersistentDeliveryCount() {
+        FakeEventStreamClient client = new FakeEventStreamClient();
+        client.freshMessages = List.of(new WorkflowStreamEventMessage("6-0", "poison"));
+        ArrayList<String> quarantined = new ArrayList<>();
+        DeliveryAttempts attempts = new DeliveryAttempts();
+        WorkflowEventPoller poller = new WorkflowEventPoller(
+                client,
+                payload -> { throw new IllegalStateException(payload); },
+                "control-1",
+                10,
+                Duration.ofSeconds(30),
+                WorkflowTransportMetrics.isolated(),
+                (message, failure) -> quarantined.add(message.messageId()),
+                attempts
+        );
+
+        assertThatThrownBy(poller::pollOnce).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(poller::pollOnce).isInstanceOf(IllegalStateException.class);
+        assertThat(poller.pollOnce()).isEqualTo(1);
+
+        assertThat(attempts.counts).containsEntry("6-0", 3);
+        assertThat(quarantined).containsExactly("6-0");
+        assertThat(client.acknowledged).containsExactly("6-0");
+    }
+
     private static class FakeEventStreamClient implements WorkflowEventStreamClient {
         private List<WorkflowStreamEventMessage> reclaimedMessages = List.of();
         private List<WorkflowStreamEventMessage> freshMessages = List.of();
@@ -161,6 +190,15 @@ class WorkflowEventPollerTest {
         @Override
         public void handle(String payloadJson) {
             payloads.add(payloadJson);
+        }
+    }
+
+    private static class DeliveryAttempts implements WorkflowEventDeliveryAttemptStore {
+        private final Map<String, Integer> counts = new HashMap<>();
+
+        @Override
+        public int recordAttempt(String streamMessageId, String consumerGroup, LocalDateTime now) {
+            return counts.merge(streamMessageId, 1, Integer::sum);
         }
     }
 }

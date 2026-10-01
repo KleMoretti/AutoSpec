@@ -24,6 +24,7 @@ class ModelExecutionContract:
     schema_version: str | None = None
     tool_policy: dict[str, Any] = field(default_factory=dict)
     agent_loop_policy: dict[str, Any] = field(default_factory=dict)
+    verification_policy: dict[str, Any] = field(default_factory=dict)
 
 
 _CONTRACT: ContextVar[ModelExecutionContract | None] = ContextVar(

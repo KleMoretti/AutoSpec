@@ -24,6 +24,9 @@ public class WorkflowOutbox {
     private LocalDateTime lastErrorAt;
     private LocalDateTime deadLetteredAt;
     private LocalDateTime closedAt;
+    private String claimOwner;
+    private LocalDateTime claimUntil;
+    private Integer claimVersion;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

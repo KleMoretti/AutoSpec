@@ -1,3 +1,4 @@
+import asyncio
 import hashlib
 import json
 from pathlib import Path
@@ -153,8 +154,33 @@ def test_production_registry_only_contains_fixed_gateway_catalog() -> None:
         ("bundle.verify", "v1"),
         ("contract.lookup", "v1"),
         ("knowledge.search", "v1"),
+        ("spec.verify", "v1"),
         ("trace.query", "v1"),
     }
+
+
+@pytest.mark.asyncio
+async def test_in_memory_gateway_serializes_concurrent_duplicate_idempotency_keys() -> None:
+    calls = 0
+    registry = ToolRegistry()
+
+    async def handler(value: Input) -> Output:
+        nonlocal calls
+        calls += 1
+        await asyncio.sleep(0.01)
+        return Output(answer=value.query)
+
+    registry.register("knowledge.search", "v1", Input, Output, handler)
+    gateway = InMemoryToolGateway(ToolHarness(registry))
+    frozen = policy()
+    policy_hash = gateway.register_policy(frozen)
+    first, second = await asyncio.gather(
+        gateway.execute(request(policy_hash, key="concurrent"), policy=frozen),
+        gateway.execute(request(policy_hash, key="concurrent"), policy=frozen),
+    )
+    assert {first.status, second.status} == {"SUCCEEDED"}
+    assert sum(result.cached for result in (first, second)) == 1
+    assert calls == 1
 
 
 @pytest.mark.asyncio

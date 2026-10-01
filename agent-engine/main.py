@@ -1,14 +1,20 @@
 import hmac
 import os
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from evaluation.ablation import evaluate_release_gate
+from evaluation.ablation import evaluate_release_gate, run_ablation_matrix
 from evaluation.autospec_case_catalog import list_autospec_cases
 from evaluation.retrieval import fixture_retrieval_evaluation
-from schemas.evaluation import AutoSpecEvalRun
+from evaluation.result_directory import EvaluationResultDirectoryError, load_result_directory
+from schemas.evaluation import (
+    AutoSpecEvalRun,
+    AutoSpecEvaluationComparison,
+    AutoSpecGateDecision,
+)
 
 
 app = FastAPI(title="AutoSpec Agent Engine", version="5.0.0")
@@ -56,6 +62,59 @@ def evaluation_cases() -> list[dict]:
 def retrieval_evaluation() -> dict:
     """Return the independent deterministic hybrid-retrieval baseline."""
     return fixture_retrieval_evaluation().model_dump(mode="json")
+
+
+@app.get("/evaluation/ablation")
+async def ablation_evaluation() -> dict:
+    """Return the current read-only A/B/C/D comparison evidence.
+
+    No live adapter is supplied here.  The endpoint therefore returns the
+    canonical four-group matrix in an explicit NOT_EVALUATED state until a
+    separately authorized control-plane collection publishes results.  This
+    makes the dashboard useful without fabricating fixture or live metrics.
+    """
+
+    configured_directory = os.getenv("AUTOSPEC_EVALUATION_RESULT_DIR", "").strip()
+    if configured_directory:
+        try:
+            return load_result_directory(Path(configured_directory)).model_dump(mode="json")
+        except EvaluationResultDirectoryError:
+            # Do not expose host paths or raw result contents through the API.
+            return (await _not_evaluated_comparison(
+                "The configured evaluation result directory is unavailable or invalid."
+            )).model_dump(mode="json")
+
+    return (await _not_evaluated_comparison()).model_dump(mode="json")
+
+
+async def _not_evaluated_comparison(reason: str | None = None) -> AutoSpecEvaluationComparison:
+    matrix = await run_ablation_matrix(matrix_id="not-executed")
+    matrix = matrix.model_copy(update={
+        "runs": [
+            run.model_copy(update={"run_id": f"not-executed-{run.group.lower()}"})
+            for run in matrix.runs
+        ]
+    })
+    baseline, candidate = matrix.runs[0], matrix.runs[-1]
+    decision_reason = reason or (
+        "No authorized control-plane comparison has been published; "
+        "fixture output is not used as a live metric."
+    )
+    decision = AutoSpecGateDecision(
+        decision="NOT_EVALUATED",
+        gate_status="NOT_EVALUATED",
+        reasons=[decision_reason],
+        baseline_run_id=baseline.run_id,
+        candidate_run_id=candidate.run_id,
+    )
+    comparison = AutoSpecEvaluationComparison(
+        status="NOT_EVALUATED",
+        source="NONE",
+        matrix=matrix,
+        decision=decision,
+        not_evaluated_reason=decision_reason,
+    )
+    return comparison
 
 
 @app.post("/evaluation/release-gate")

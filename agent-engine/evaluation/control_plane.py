@@ -7,13 +7,14 @@ import json
 import math
 import time
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Literal, Sequence
 
 import httpx
 from pydantic import BaseModel, ConfigDict, Field
 
 from evaluation.metrics import aggregate_case_metrics
 from evaluation.budget_ledger import BudgetLedger, DEFAULT_LEDGER_PATH, money_units
+from evaluation.experiment_manifest import load_manifest, validate_manifest_contracts
 from schemas.evaluation import AutoSpecEvalCase, AutoSpecEvalRun, AutoSpecCaseResult
 
 
@@ -29,8 +30,15 @@ class CollectionConfig(BaseModel):
     code_version: str = Field(min_length=1)
     environment: dict[str, str]
     dataset_split: str = "smoke"
+    random_seed: int = 20261001
+    fixture_approval_policy: Literal["MANUAL", "AUTO_APPROVE_FOR_TEST"] = "MANUAL"
+    fixture_approval_reason: str | None = None
     case_ids: list[str] | None = Field(default=None, min_length=1)
     contract_family: str = Field(default="v3", pattern=r"^v[3456]$")
+    manifest_path: str | None = None
+    manifest_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    groups: list[str] | None = Field(default=None, min_length=1)
+    collection_scope: str = Field(default="WORKFLOW", pattern=r"^(WORKFLOW|NODE)$")
     budget_authorization_id: str | None = Field(default=None, pattern=r"^[a-zA-Z0-9_-]{1,64}$")
     repetitions: int = Field(default=1, ge=1, le=10)
     run_max_cost: float = Field(gt=0)
@@ -52,13 +60,14 @@ class ControlPlaneCollector:
     """
 
     def __init__(self, client: httpx.AsyncClient, config: CollectionConfig, output_dir: Path,
-                 *, budget_ledger_path: Path = DEFAULT_LEDGER_PATH):
+                 *, budget_ledger_path: Path = DEFAULT_LEDGER_PATH, resume: bool = False):
         self.client, self.config, self.output_dir = client, config, output_dir
         self.started_runs = 0
         self.reserved_cost = 0.0
         self.versions: dict[str, dict[str, Any]] = {}
         self.budget_ledger_path = budget_ledger_path
         self.budget_ledger: BudgetLedger | None = None
+        self.resume = resume
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
     async def request(self, method: str, path: str, **kwargs: Any) -> Any:
@@ -68,10 +77,20 @@ class ControlPlaneCollector:
             raise RuntimeError(f"control plane returned HTTP {response.status_code} for {path}")
         return response.json()
 
-    async def preflight(self) -> None:
+    async def preflight(self, *, offline: bool = False, dataset_version: str | None = None) -> None:
         checked_versions: dict[str, dict[str, Any]] = {}
         if not self.config.version_ids or set(self.config.version_ids) - {"A", "B", "C", "D"}:
             raise ValueError("version_ids must use experimental groups A/B/C/D")
+        if self.config.groups is not None:
+            if len(set(self.config.groups)) != len(self.config.groups) or any(
+                group not in self.config.version_ids for group in self.config.groups
+            ):
+                raise ValueError("groups must be a unique subset of configured version_ids")
+        if self.config.fixture_approval_policy == "AUTO_APPROVE_FOR_TEST":
+            if self.config.environment.get("model_mode") != "fixture":
+                raise ValueError("automatic approval is restricted to fixture model mode")
+            if not self.config.fixture_approval_reason:
+                raise ValueError("fixture automatic approval requires a pre-registered reason")
         if self.config.environment.get("model_mode") == "live":
             if not self.config.budget_authorization_id:
                 raise ValueError("live collection requires a shared budget_authorization_id")
@@ -87,6 +106,53 @@ class ControlPlaneCollector:
                               for key in ("input_per_million", "cached_input_per_million", "output_per_million"))
             if upper_price * self.config.run_max_tokens / 1_000_000 > self.config.run_max_cost:
                 raise ValueError("token allowance exceeds the conservative per-run price budget")
+        manifest_entries: dict[str, dict] = {}
+        manifest = None
+        if self.config.manifest_path:
+            manifest_path = Path(self.config.manifest_path)
+            manifest, manifest_digest = load_manifest(manifest_path)
+            if manifest.experiment_id != self.config.experiment_id:
+                raise ValueError("experiment manifest experiment_id does not match config")
+            if self.config.manifest_hash and self.config.manifest_hash != manifest_digest:
+                raise ValueError("experiment manifest checksum mismatch")
+            if dataset_version is not None and manifest.dataset_version != dataset_version:
+                raise ValueError("experiment manifest dataset version does not match selected dataset")
+            manifest_entries = validate_manifest_contracts(manifest_path, manifest)
+            configured = set(self.config.version_ids)
+            if configured - set(manifest_entries):
+                raise ValueError("manifest does not contain every configured experiment group")
+            if manifest.workflow_key != "autospec-v5":
+                raise ValueError("experiment manifest must target workflow key autospec-v5")
+            if manifest.dataset_split != self.config.dataset_split:
+                raise ValueError("experiment manifest dataset split does not match config")
+            if manifest.random_seed != self.config.random_seed:
+                raise ValueError("experiment manifest random seed does not match config")
+            expected_budget = {
+                "repetitions": self.config.repetitions,
+                "run_max_cost": self.config.run_max_cost,
+                "total_max_cost": self.config.total_max_cost,
+                "max_runs": self.config.max_runs,
+                "run_max_tokens": self.config.run_max_tokens,
+                "run_max_model_calls": self.config.run_max_model_calls,
+            }
+            if manifest.budget.model_dump() != expected_budget:
+                raise ValueError("experiment manifest budget does not match config")
+            if manifest.pricing_snapshot != self.config.pricing_snapshot:
+                raise ValueError("experiment manifest pricing snapshot does not match config")
+            if offline:
+                for group, identifier in self.config.version_ids.items():
+                    entry = manifest_entries[group]["entry"]
+                    if entry["workflow_version_id"] != identifier:
+                        raise ValueError(f"manifest version ID mismatch for group {group}")
+                    spec = manifest_entries[group]["spec"]
+                    checked_versions[group] = {
+                        "id": identifier, "status": "PUBLISHED", "specJson": json.dumps(spec),
+                        "contentHash": digest(spec),
+                    }
+                self.versions = checked_versions
+                return
+        if offline:
+            raise ValueError("--validate-only requires an explicit manifest_path")
         versions = await self.request("GET", "/api/workflows/autospec-v5/versions")
         for group, identifier in self.config.version_ids.items():
             version = next((v for v in versions if v["id"] == identifier), None)
@@ -95,9 +161,16 @@ class ControlPlaneCollector:
             spec = json.loads(version["specJson"])
             if digest(spec) != version["contentHash"]:
                 raise ValueError("published spec checksum mismatch")
-            expected = Path(__file__).resolve().parents[1] / "contracts" / f"autospec-v5-agent-execution-{self.config.contract_family}-{group.lower()}.workflow.json"
-            if not expected.exists() or json.loads(expected.read_text(encoding="utf-8")) != spec:
-                raise ValueError(f"group {group} is not the reviewed experimental contract")
+            if manifest is not None:
+                entry = manifest_entries[group]["entry"]
+                if entry["workflow_version_id"] != identifier or manifest_entries[group]["spec"] != spec:
+                    raise ValueError(f"group {group} does not match the explicit experiment manifest")
+            else:
+                # Compatibility for the pre-manifest tests and historical local
+                # examples. New collection configs must use manifest_path.
+                expected = Path(__file__).resolve().parents[1] / "contracts" / f"autospec-v5-agent-execution-{self.config.contract_family}-{group.lower()}.workflow.json"
+                if not expected.exists() or json.loads(expected.read_text(encoding="utf-8")) != spec:
+                    raise ValueError(f"group {group} is not the reviewed experimental contract")
             if self.config.environment.get("model_mode") == "live":
                 validate_live_prices(spec, self.config.pricing_snapshot)
             checked_versions[group] = version
@@ -108,7 +181,9 @@ class ControlPlaneCollector:
 
     async def __call__(self, group: str, cases: Sequence[AutoSpecEvalCase], knobs: dict[str, Any]) -> AutoSpecEvalRun:
         if not self.versions:
-            await self.preflight()
+            if not cases:
+                raise ValueError("collection requires at least one evaluation case")
+            await self.preflight(dataset_version=cases[0].dataset_version)
         if group not in self.versions:
             raise ValueError(f"no published version configured for group {group}")
         results: list[AutoSpecCaseResult] = []
@@ -145,34 +220,64 @@ class ControlPlaneCollector:
     async def collect_case(self, group: str, case: AutoSpecEvalCase, repetition: int) -> tuple[AutoSpecCaseResult, dict]:
         key = f"{self.config.experiment_id}-{group}-{digest(case.case_id)[:12]}-{repetition}"
         journal = self.output_dir / f"{key}.json"
+        journal_data: dict[str, Any] | None = None
         if journal.exists():
-            raise ValueError(f"existing case journal {journal.name}; inspect it before resuming")
-        exhausted = (self.started_runs >= self.config.max_runs
-                     or (self.started_runs + 1) * money_units(self.config.run_max_cost)
-                     > money_units(self.config.total_max_cost))
-        if not exhausted and self.budget_ledger is not None:
-            exhausted = not self.budget_ledger.reserve(key, self.config.run_max_cost)
-        if exhausted:
-            return AutoSpecCaseResult(case_id=case.case_id, repetition=repetition, status="NOT_EXECUTED",
-                                      failure_codes=["EXPERIMENT_BUDGET_EXHAUSTED"]), {}
-        self.started_runs += 1
-        self.reserved_cost += self.config.run_max_cost
-        journal.write_text(json.dumps({"case_id": case.case_id, "group": group, "status": "STARTING"}), encoding="utf-8")
-        project = await self.request("POST", "/api/projects", json={"name": key, "requirement": case.requirement})
-        project_id = project["projectId"]
-        journal.write_text(json.dumps({"case_id": case.case_id, "project_id": project_id, "status": "PROJECT_CREATED"}), encoding="utf-8")
+            if not self.resume:
+                raise ValueError(f"existing case journal {journal.name}; inspect it before resuming")
+            journal_data = json.loads(journal.read_text(encoding="utf-8"))
+            if journal_data.get("case_id") != case.case_id or journal_data.get("group") != group:
+                raise ValueError(f"journal identity mismatch for {journal.name}")
+            if journal_data.get("status") == "COLLECTED" and journal_data.get("result"):
+                return AutoSpecCaseResult.model_validate(journal_data["result"]), journal_data.get("trace", {})
+
+        if journal_data is None:
+            exhausted = (self.started_runs >= self.config.max_runs
+                         or (self.started_runs + 1) * money_units(self.config.run_max_cost)
+                         > money_units(self.config.total_max_cost))
+            if not exhausted and self.budget_ledger is not None:
+                exhausted = not self.budget_ledger.reserve(key, self.config.run_max_cost)
+            if exhausted:
+                return AutoSpecCaseResult(case_id=case.case_id, repetition=repetition, status="NOT_EXECUTED",
+                                          failure_codes=["EXPERIMENT_BUDGET_EXHAUSTED"]), {}
+            self.started_runs += 1
+            self.reserved_cost += self.config.run_max_cost
+            journal_data = {"case_id": case.case_id, "group": group, "key": key, "status": "RESERVED"}
+            journal.write_text(json.dumps(journal_data), encoding="utf-8")
+
+        project_id = journal_data.get("project_id")
+        if project_id is None:
+            project = await self.request("POST", "/api/projects", json={"name": key, "requirement": case.requirement})
+            project_id = project["projectId"]
+            journal_data.update({"project_id": project_id, "status": "PROJECT_CREATED"})
+            journal.write_text(json.dumps(journal_data), encoding="utf-8")
+
+        run_id = journal_data.get("workflow_run_id")
+        if run_id is None:
+            run = await self.request("POST", "/api/workflow-runs", json={
+                "projectId": project_id, "workflowVersionId": self.versions[group]["id"],
+                "idempotencyKey": key, "input": {"requirement": case.requirement},
+                "executionPolicy": {"qualityProfile": "BALANCED", "maxTokens": self.config.run_max_tokens,
+                                    "maxModelCalls": self.config.run_max_model_calls, "maxCost": self.config.run_max_cost,
+                                    "maxWallTimeMs": self.config.run_timeout_seconds * 1000},
+            })
+            run_id = run["id"]
+            journal_data.update({"workflow_run_id": run_id, "status": "RUN_SUBMITTED", "run": run})
+            journal.write_text(json.dumps(journal_data), encoding="utf-8")
+        else:
+            run = journal_data.get("run")
+            if not isinstance(run, dict):
+                run = await self.request("GET", f"/api/workflow-runs/{run_id}")
+
         started = time.monotonic()
-        run = await self.request("POST", "/api/workflow-runs", json={
-            "projectId": project_id, "workflowVersionId": self.versions[group]["id"],
-            "idempotencyKey": key, "input": {"requirement": case.requirement},
-            "executionPolicy": {"qualityProfile": "BALANCED", "maxTokens": self.config.run_max_tokens,
-                                "maxModelCalls": self.config.run_max_model_calls, "maxCost": self.config.run_max_cost,
-                                "maxWallTimeMs": self.config.run_timeout_seconds * 1000},
-        })
-        run_id = run["id"]
-        journal.write_text(json.dumps({"case_id": case.case_id, "project_id": project_id,
-                                       "workflow_run_id": run_id, "status": "RUNNING"}), encoding="utf-8")
         while run["status"] not in {"SUCCEEDED", "FAILED", "CANCELLED", "COMPLETED"}:
+            if self.config.fixture_approval_policy == "AUTO_APPROVE_FOR_TEST":
+                approval_event = await self.approve_fixture(project_id, journal_data)
+                if approval_event is not None:
+                    journal_data.setdefault("fixture_approvals", []).append(approval_event)
+                    journal.write_text(json.dumps(journal_data, ensure_ascii=False, indent=2), encoding="utf-8")
+                    await asyncio.sleep(self.config.poll_seconds)
+                    run = await self.request("GET", f"/api/workflow-runs/{run_id}")
+                    continue
             if run["status"] in {"WAITING_APPROVAL", "PAUSED"} or time.monotonic() - started >= self.config.run_timeout_seconds:
                 # Never silently approve a human gate. Cancel only the experiment's own run.
                 await self.request("POST", f"/api/projects/{project_id}/workflow-runs/{run_id}/cancel")
@@ -181,6 +286,8 @@ class ControlPlaneCollector:
             await asyncio.sleep(self.config.poll_seconds)
             run = await self.request("GET", f"/api/workflow-runs/{run_id}")
         elapsed_ms = (time.monotonic() - started) * 1000
+        journal_data.update({"status": "TERMINAL", "run": run})
+        journal.write_text(json.dumps(journal_data), encoding="utf-8")
         trace = await self.request("GET", f"/api/workflow-runs/{run_id}/trace")
         if str(trace.get("workflowRunId")) != str(run_id):
             raise ValueError("trace belongs to another workflow execution")
@@ -198,16 +305,51 @@ class ControlPlaneCollector:
         result = measure_case(case, repetition, run, trace, artifacts, self.config.pricing_snapshot,
                               elapsed_ms)
         # Only bounded, authorized experiment artifacts/trace are written; never raw HTTP metadata.
-        journal.write_text(json.dumps({"project_id": project_id, "result": result.model_dump(mode="json"),
-                                       "trace": trace, "artifacts": artifacts}, ensure_ascii=False, indent=2), encoding="utf-8")
+        journal_data.update({"status": "COLLECTED", "project_id": project_id,
+                             "result": result.model_dump(mode="json"),
+                             "trace": trace, "artifacts": artifacts})
+        journal.write_text(json.dumps(journal_data, ensure_ascii=False, indent=2), encoding="utf-8")
         return result, trace
+
+    async def approve_fixture(self, project_id: int, journal_data: dict[str, Any]) -> dict[str, Any] | None:
+        """Apply only the explicitly pre-registered fixture approval rule.
+
+        Live collections and ordinary fixture runs remain manual.  The journal
+        records the approval IDs, policy and reason so an automatic decision is
+        distinguishable from human approval in the collected evidence.
+        """
+
+        approvals = await self.request("GET", f"/api/projects/{project_id}/workflow-approvals")
+        pending = [approval for approval in approvals if approval.get("status") == "PENDING"]
+        if not pending:
+            return None
+        approved_ids: list[int] = []
+        for approval in pending:
+            if "APPROVE" not in (approval.get("allowedActions") or []):
+                raise RuntimeError("fixture automatic approval is not allowed for a pending approval")
+            approval_id = approval.get("id")
+            lock_version = approval.get("lockVersion")
+            if approval_id is None or lock_version is None:
+                raise RuntimeError("fixture approval lacks a stable ID or lock version")
+            await self.request("POST", f"/api/workflow-approvals/{approval_id}/decide", json={
+                "decision": "APPROVE",
+                "reason": self.config.fixture_approval_reason,
+                "idempotencyKey": f"fixture-auto-approve:{self.config.experiment_id}:{approval_id}",
+                "expectedLockVersion": lock_version,
+            })
+            approved_ids.append(int(approval_id))
+        return {
+            "policy": self.config.fixture_approval_policy,
+            "reason": self.config.fixture_approval_reason,
+            "approval_ids": approved_ids,
+        }
 
 
 def validate_live_prices(spec: dict, pricing: dict) -> None:
     """Zero-cost fixture contracts cannot enforce a monetary live budget."""
     for node in spec["nodes"]:
         policy = node["model_policy"]
-        if policy.get("provider_key") == "local" and node["agent_name"] == "EvaluatorAgent_v2":
+        if policy.get("provider_key") == "local":
             continue
         rate = pricing["models"].get(f'{policy.get("provider_key")}:{policy.get("model_name")}')
         if not valid_rates(rate):

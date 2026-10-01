@@ -238,14 +238,24 @@ class DynamicWorkflowLifecycleTest {
         return project;
     }
 
-    private WorkflowVersion builtInV5Version() {
+    private WorkflowVersion builtInV5Version() throws Exception {
         WorkflowDefinition definition = definitionMapper.selectOne(
                 new LambdaQueryWrapper<WorkflowDefinition>()
                         .eq(WorkflowDefinition::getWorkflowKey, "autospec-v5")
         );
-        return versionMapper.selectOne(new LambdaQueryWrapper<WorkflowVersion>()
-                .eq(WorkflowVersion::getDefinitionId, definition.getId())
-                .eq(WorkflowVersion::getVersion, "v5"));
+        // A replay compatibility fixture, not a production database seed.
+        String snapshot = java.nio.file.Files.readString(java.nio.file.Path.of(
+                "..", "agent-engine", "contracts", "autospec-v5.workflow.json"));
+        WorkflowVersion version = new WorkflowVersion();
+        version.setDefinitionId(definition.getId());
+        version.setVersion("v5");
+        version.setSpecJson(snapshot);
+        version.setContentHash(com.autospec.util.CanonicalJson.sha256(snapshot));
+        version.setStatus("PUBLISHED");
+        version.setPublishedAt(java.time.LocalDateTime.now());
+        version.setImmutableAt(java.time.LocalDateTime.now());
+        versionMapper.insert(version);
+        return version;
     }
 
     private WorkflowNodeRun node(long runId, String nodeId) {

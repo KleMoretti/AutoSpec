@@ -159,6 +159,30 @@ const enUS = {
       cost: 'cost'
     }
   },
+  evaluation: {
+    title: 'A/B/C/D evaluation comparison',
+    description: 'Read-only evidence from published evaluation runs; missing authorization is shown as not evaluated.',
+    loading: 'Loading evaluation evidence…',
+    loadFailed: 'Evaluation evidence could not be loaded',
+    notEvaluated: 'Evaluation not executed',
+    unknown: 'Unknown',
+    splitUnknown: 'Split not declared',
+    measuredGroups: '{{count}} measured groups',
+    noGroups: 'No evaluation groups to display',
+    decision: 'Final decision: {{value}}',
+    sampleCount: 'Samples',
+    passRate: 'Pass rate',
+    passInterval: 'Pass interval',
+    p95Latency: 'P95 latency',
+    tokens: 'Average tokens',
+    cost: 'Average cost',
+    mustCoverage: 'MUST coverage',
+    blockingIssues: 'Median blocking issues',
+    caseDetails: 'Case details ({{count}})',
+    repetition: 'Repetition {{value}}',
+    passed: 'Passed',
+    failed: 'Failed'
+  },
   projectDetail: {
     invalidProjectId: 'Invalid project id',
     dataRefreshFailed: 'Could not refresh {{details}}',
@@ -175,7 +199,7 @@ const enUS = {
     pdfExportFailed: 'PDF export failed',
     refreshCoreFailed: 'Some core project data could not be refreshed',
     partialDataTitle: 'Some project data is temporarily unavailable',
-    canonicalWorkflow: 'V5 canonical workflow',
+    canonicalWorkflow: 'Canonical workflow',
     exportMarkdown: 'Export Markdown',
     exportPdf: 'Export PDF',
     stagesLabel: 'Project stages',
@@ -244,7 +268,17 @@ const enUS = {
     metricsResource: 'metrics',
     traceResource: 'trace',
     trace: {
-      title: 'Tool and trace evidence'
+      title: 'Tool and trace evidence',
+      stepCount: 'Agent steps',
+      step: 'Step',
+      reason: 'Reason',
+      validation: 'Validation issues',
+      duration: 'Duration',
+      planHash: 'Plan hash',
+      observationHash: 'Observation hash',
+      modelCall: 'Model call',
+      toolCall: 'Tool call',
+      noSteps: 'No agent steps recorded.'
     },
     metrics: {
       queueTime: 'Queue time',
@@ -386,7 +420,18 @@ const enUS = {
     nodeRun: 'Node run',
     parentArtifact: 'Parent artifact',
     upstreamVersions: 'Upstream versions',
-    citations: 'Citations ({{count}})'
+    citations: 'Citations ({{count}})',
+    traceabilityMatrix: 'Requirement traceability matrix',
+    covered: 'Covered',
+    missing: 'Missing',
+    traceEvidence: 'API {{api}} · data {{data}} · UI {{ui}} · acceptance {{acceptance}}',
+    verificationEvidence: 'Verification evidence',
+    verificationStatus: 'Status',
+    verificationLevel: 'Achieved level',
+    verifier: 'Verifier',
+    compiler: 'Compiler',
+    sourceDigest: 'Source digest',
+    expiresAt: 'Expires at'
   },
   skeleton: {
     invalidJson: 'Invalid frontend skeleton JSON',

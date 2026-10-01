@@ -490,19 +490,55 @@ function WorkflowReplayPanel({
                         <Space direction="vertical" size={8} className="full-width">
                           {timeline.trace.nodes.map((traceNode) => {
                             const toolCalls = traceNode.invocations.filter((call) => call.callType === 'TOOL');
+                            const steps = traceNode.steps ?? [];
                             return (
-                              <Descriptions key={traceNode.nodeRunId} size="small" column={{ xs: 1, sm: 2, md: 4 }}>
-                                <Descriptions.Item label={t('workflow.node.node')}>{traceNode.nodeId}</Descriptions.Item>
-                                <Descriptions.Item label={t('workflow.node.toolCalls')}>{toolCalls.length}</Descriptions.Item>
-                                <Descriptions.Item label={t('workflow.node.modelCalls')}>
-                                  {traceNode.invocations.length - toolCalls.length}
-                                </Descriptions.Item>
-                                <Descriptions.Item label={t('workflow.node.tools')}>
-                                  {toolCalls.length > 0
-                                    ? <Space wrap>{toolCalls.map((call, index) => <Tag key={`${call.id ?? index}-${call.toolName ?? 'tool'}`}>{call.toolName ?? call.callType}</Tag>)}</Space>
-                                    : t('common.none')}
-                                </Descriptions.Item>
-                              </Descriptions>
+                              <Card key={traceNode.nodeRunId} size="small" title={traceNode.nodeId}>
+                                <Descriptions size="small" column={{ xs: 1, sm: 2, md: 4 }}>
+                                  <Descriptions.Item label={t('workflow.node.toolCalls')}>{toolCalls.length}</Descriptions.Item>
+                                  <Descriptions.Item label={t('workflow.node.modelCalls')}>
+                                    {traceNode.invocations.length - toolCalls.length}
+                                  </Descriptions.Item>
+                                  <Descriptions.Item label={t('workflow.node.tools')}>
+                                    {toolCalls.length > 0
+                                      ? <Space wrap>{toolCalls.map((call, index) => <Tag key={`${call.id ?? index}-${call.toolName ?? 'tool'}`}>{call.toolName ?? call.callType}</Tag>)}</Space>
+                                      : t('common.none')}
+                                  </Descriptions.Item>
+                                  <Descriptions.Item label={t('workflow.trace.stepCount')}>{steps.length}</Descriptions.Item>
+                                </Descriptions>
+                                {steps.length > 0 ? (
+                                  <Timeline
+                                    className="trace-step-timeline"
+                                    items={steps.map((step, index) => ({
+                                      color: step.status === 'FAILED' ? 'red' : step.status === 'SUCCEEDED' ? 'green' : 'blue',
+                                      children: (
+                                        <Descriptions size="small" column={{ xs: 1, sm: 2, md: 4 }}>
+                                          <Descriptions.Item label={t('workflow.trace.step')}>
+                                            {step.step ?? index + 1} · {step.phase ?? t('common.unknown')}
+                                          </Descriptions.Item>
+                                          <Descriptions.Item label={t('workflow.node.status')}>
+                                            <Tag>{step.status ?? t('common.unknown')}</Tag>
+                                          </Descriptions.Item>
+                                          <Descriptions.Item label={t('workflow.trace.reason')}>
+                                            {step.reasonCode ?? t('common.none')}
+                                          </Descriptions.Item>
+                                          <Descriptions.Item label={t('workflow.trace.duration')}>
+                                            {step.durationMs !== undefined ? `${step.durationMs} ms` : '—'}
+                                          </Descriptions.Item>
+                                          {step.validationIssueCodes?.length ? (
+                                            <Descriptions.Item label={t('workflow.trace.validation')} span={2}>
+                                              <Space wrap>{step.validationIssueCodes.map((code) => <Tag color="red" key={code}>{code}</Tag>)}</Space>
+                                            </Descriptions.Item>
+                                          ) : null}
+                                          {step.planHash ? <Descriptions.Item label={t('workflow.trace.planHash')}><Typography.Text code>{shortHash(step.planHash)}</Typography.Text></Descriptions.Item> : null}
+                                          {step.observationHash ? <Descriptions.Item label={t('workflow.trace.observationHash')}><Typography.Text code>{shortHash(step.observationHash)}</Typography.Text></Descriptions.Item> : null}
+                                          {step.modelCallRef ? <Descriptions.Item label={t('workflow.trace.modelCall')}>{step.modelCallRef}</Descriptions.Item> : null}
+                                          {step.toolCallRef ? <Descriptions.Item label={t('workflow.trace.toolCall')}>{step.toolCallRef}</Descriptions.Item> : null}
+                                        </Descriptions>
+                                      )
+                                    }))}
+                                  />
+                                ) : <Typography.Text className="muted">{t('workflow.trace.noSteps')}</Typography.Text>}
+                              </Card>
                             );
                           })}
                         </Space>

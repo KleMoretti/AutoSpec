@@ -8,7 +8,7 @@ import pytest
 
 from evaluation.ablation import ablation_configs, evaluate_release_gate
 from evaluation.autospec_case_catalog import list_autospec_cases
-from evaluation.control_plane import CollectionConfig, ControlPlaneCollector, digest, measure_case
+from evaluation.control_plane import CollectionConfig, ControlPlaneCollector, digest, measure_case, validate_live_prices
 from evaluation.budget_ledger import BudgetLedger
 from evaluation.run_control_plane import select_cases
 
@@ -79,6 +79,72 @@ async def test_draft_preflight_does_not_create_projects(eval_output: Path) -> No
     assert requests == ["GET"]
 
 
+@pytest.mark.asyncio
+async def test_manifest_experiment_id_is_pinned_to_config(eval_output: Path) -> None:
+    manifest_path = eval_output / "manifest.json"
+    manifest_path.write_text(json.dumps({
+        "manifest_version": "autospec-experiment-manifest-v1",
+        "experiment_id": "other-experiment",
+        "workflow_key": "autospec-v5",
+        "dataset_version": "dataset-v1",
+        "dataset_split": "smoke",
+        "random_seed": 1,
+        "budget": {
+            "repetitions": 1,
+            "run_max_cost": 1,
+            "total_max_cost": 1,
+            "max_runs": 1,
+            "run_max_tokens": 1,
+            "run_max_model_calls": 1,
+        },
+        "groups": [{
+            "group": "A",
+            "name": "single-shot",
+            "workflow_version_id": 1,
+            "contract_path": "missing.json",
+            "contract_hash": "0" * 64,
+        }],
+        "pricing_snapshot": {},
+    }), encoding="utf-8")
+    cfg = config().model_copy(update={"manifest_path": str(manifest_path)})
+    collector = ControlPlaneCollector(None, cfg, eval_output)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="experiment_id does not match"):
+        await collector.preflight(offline=True)
+
+
+@pytest.mark.asyncio
+async def test_manifest_dataset_version_is_pinned_to_selected_cases(eval_output: Path) -> None:
+    manifest_path = eval_output / "manifest.json"
+    manifest_path.write_text(json.dumps({
+        "manifest_version": "autospec-experiment-manifest-v1",
+        "experiment_id": "test",
+        "workflow_key": "autospec-v5",
+        "dataset_version": "manifest-dataset",
+        "dataset_split": "smoke",
+        "random_seed": 1,
+        "budget": {
+            "repetitions": 1,
+            "run_max_cost": 1,
+            "total_max_cost": 1,
+            "max_runs": 1,
+            "run_max_tokens": 1,
+            "run_max_model_calls": 1,
+        },
+        "groups": [{
+            "group": "A",
+            "name": "single-shot",
+            "workflow_version_id": 1,
+            "contract_path": "missing.json",
+            "contract_hash": "0" * 64,
+        }],
+        "pricing_snapshot": {},
+    }), encoding="utf-8")
+    cfg = config().model_copy(update={"manifest_path": str(manifest_path)})
+    collector = ControlPlaneCollector(None, cfg, eval_output)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="dataset version does not match"):
+        await collector.preflight(offline=True, dataset_version="selected-dataset")
+
+
 def test_unknown_prices_are_not_zero_cost_and_failed_cases_keep_token_usage() -> None:
     trace = {"correlationId": "id", "executionBundleHash": "b" * 64, "nodes": [{"invocations": [
         {"callType": "MODEL", "providerKey": "provider", "modelName": "model", "inputTokens": 100,
@@ -91,6 +157,114 @@ def test_unknown_prices_are_not_zero_cost_and_failed_cases_keep_token_usage() ->
     assert result.must_trace_coverage is None
 
 
+def test_live_price_validation_skips_any_local_evaluator_version() -> None:
+    spec = {
+        "nodes": [
+            {
+                "agent_name": "ProductManagerAgent_v2",
+                "model_policy": {
+                    "provider_key": "deepseek",
+                    "model_name": "deepseek-flash",
+                    "input_cost_per_million": 2,
+                    "cached_input_cost_per_million": 0.04,
+                    "output_cost_per_million": 8,
+                },
+                "fallback": {"enabled": False},
+            },
+            {
+                "agent_name": "EvaluatorAgent_v4",
+                "model_policy": {"provider_key": "local", "model_name": "deterministic-rules"},
+                "fallback": {"enabled": False},
+            },
+        ]
+    }
+    pricing = {"models": {"deepseek:deepseek-flash": {
+        "input_per_million": 2,
+        "cached_input_per_million": 0.04,
+        "output_per_million": 8,
+    }}}
+
+    validate_live_prices(spec, pricing)
+
+
+def test_reviewer_verification_tool_is_not_counted_as_unauthorized() -> None:
+    case = list_autospec_cases()[0]
+    trace = {
+        "correlationId": "id",
+        "executionBundleHash": "b" * 64,
+        "nodes": [{
+            "invocations": [{"callType": "TOOL", "toolName": "spec.verify", "status": "SUCCEEDED"}],
+            "steps": [],
+        }],
+    }
+
+    result = measure_case(case, 1, {"id": 1, "status": "COMPLETED"}, trace, [], {}, 10)
+
+    assert "spec.verify" in case.allowed_tools
+    assert result.unauthorized_tool_requests == 0
+    assert result.unauthorized_tool_executions == 0
+
+
+@pytest.mark.asyncio
+async def test_fixture_auto_approval_is_explicit_and_journaled(eval_output: Path) -> None:
+    cfg = config().model_copy(update={
+        "environment": {"name": "fixture", "model_mode": "fixture"},
+        "fixture_approval_policy": "AUTO_APPROVE_FOR_TEST",
+        "fixture_approval_reason": "bounded test approval",
+        "run_timeout_seconds": 5,
+    })
+    states = iter([
+        {"id": 9, "status": "WAITING_APPROVAL"},
+        {"id": 9, "status": "SUCCEEDED"},
+    ])
+    requests = []
+
+    def handler(request):
+        requests.append((request.method, request.url.path))
+        path = request.url.path
+        if path == "/api/workflows/autospec-v5/versions":
+            spec = json.loads((Path(__file__).resolve().parents[1] / "contracts" /
+                               "autospec-v5-agent-execution-v3-a.workflow.json").read_text())
+            return httpx.Response(200, json=[{"id": 1, "status": "PUBLISHED",
+                                              "specJson": json.dumps(spec), "contentHash": digest(spec)}])
+        if path == "/api/projects":
+            return httpx.Response(200, json={"projectId": 7})
+        if path == "/api/workflow-runs":
+            return httpx.Response(200, json=next(states))
+        if path == "/api/projects/7/workflow-approvals":
+            return httpx.Response(200, json=[{"id": 17, "status": "PENDING",
+                                              "allowedActions": ["APPROVE"], "lockVersion": 0}])
+        if path == "/api/workflow-approvals/17/decide":
+            body = json.loads(request.content)
+            assert body["decision"] == "APPROVE"
+            assert body["reason"] == "bounded test approval"
+            assert body["idempotencyKey"].startswith("fixture-auto-approve:test:")
+            return httpx.Response(200, json={"id": 17, "status": "DECIDED"})
+        if path == "/api/workflow-runs/9":
+            return httpx.Response(200, json=next(states))
+        if path == "/api/workflow-runs/9/trace":
+            return httpx.Response(200, json={"workflowRunId": 9, "correlationId": "trace-9",
+                                              "executionBundleHash": "a" * 64, "nodes": []})
+        if path == "/api/workflow-runs/9/nodes":
+            return httpx.Response(200, json=[])
+        if path == "/api/projects/7/artifacts":
+            return httpx.Response(200, json=[])
+        raise AssertionError(path)
+
+    async with httpx.AsyncClient(base_url="http://test", transport=httpx.MockTransport(handler)) as client:
+        collector = ControlPlaneCollector(client, cfg, eval_output)
+        result = await collector("A", list_autospec_cases()[:1], ablation_configs()[0])
+    assert result.status == "SUCCEEDED"
+    journal = next(eval_output.glob("test-A-*.json"))
+    payload = json.loads(journal.read_text(encoding="utf-8"))
+    assert payload["fixture_approvals"] == [{
+        "policy": "AUTO_APPROVE_FOR_TEST",
+        "reason": "bounded test approval",
+        "approval_ids": [17],
+    }]
+    assert ("POST", "/api/workflow-approvals/17/decide") in requests
+
+
 @pytest.mark.parametrize("error_code", ["VALIDATION_ERROR", "OUTPUT_SCHEMA_ERROR"])
 def test_runtime_schema_failure_is_not_reported_as_valid_schema(error_code: str) -> None:
     result = measure_case(list_autospec_cases()[0], 1, {"id": 1, "status": "FAILED"},
@@ -100,7 +274,7 @@ def test_runtime_schema_failure_is_not_reported_as_valid_schema(error_code: str)
 
 
 def live_config() -> CollectionConfig:
-    source = Path(__file__).resolve().parents[2] / "docs/examples/agent-eval-live-cny10.json"
+    source = Path(__file__).resolve().parents[2] / "docs/archive/examples/agent-eval-live-cny10.json"
     value = CollectionConfig.model_validate_json(source.read_text(encoding="utf-8"))
     return value.model_copy(update={"version_ids": {"A": 1}})
 

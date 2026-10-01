@@ -10,6 +10,34 @@ from schemas.evaluation import AutoSpecEvalCase, AutoSpecRequirementExpectation
 
 DATASET_VERSION = "autospec-interview-eval-v2"
 
+
+_DOMAIN_BY_ID = {
+    "crud_inventory": "warehouse-operations",
+    "approval_expense": "corporate-finance",
+    "permission_clinic": "healthcare",
+    "multi_entity_enrollment": "education",
+    "external_payment": "commerce",
+    "ambiguous_marketplace": "local-services",
+    "conflict_scheduling": "scheduling",
+    "rework_traceability": "procurement",
+    "dev_asset_register": "warehouse-operations",
+    "dev_leave_approval": "human-resources",
+    "dev_support_scope": "customer-support",
+    "dev_room_booking": "facilities",
+    "dev_shipping_callback": "logistics",
+    "dev_smart_matching": "education",
+    "dev_privacy_audit": "healthcare",
+    "dev_export_correction": "analytics",
+    "holdout_lab_samples": "healthcare",
+    "holdout_purchase_orders": "corporate-finance",
+    "holdout_school_records": "education",
+    "holdout_equipment_loans": "university-operations",
+    "holdout_calendar_sync": "scheduling",
+    "holdout_document_rank": "knowledge-management",
+    "holdout_offline_capacity": "events",
+    "holdout_booking_correction": "hospitality",
+}
+
 # id, category, user requirement, two independently reviewable MUST facts
 _DEVELOPMENT = [
     ("dev_asset_register", "CRUD", "IT staff register, edit and archive laptops. Serial numbers must be unique; archived laptops remain auditable and are excluded from active searches.",
@@ -70,13 +98,14 @@ def _case(row: tuple) -> AutoSpecEvalCase:
     identifier, category, requirement, *facts = row
     return AutoSpecEvalCase(
         case_id=identifier, title=identifier.replace("_", " "), category=category,
+        business_domain=_DOMAIN_BY_ID.get(identifier, category.lower()),
         requirement=requirement, dataset_version=DATASET_VERSION,
         must_requirements=[AutoSpecRequirementExpectation(
             requirement_id=f"{identifier}-MUST-{i}", statement=statement,
             acceptance_evidence=[hint],
         ) for i, (statement, hint) in enumerate(facts, 1)],
         expected_artifact_types=ARTIFACT_TYPES,
-        allowed_tools=["knowledge.search", "artifact.get", "contract.lookup"],
+        allowed_tools=["knowledge.search", "artifact.get", "contract.lookup", "spec.verify"],
         prohibited_tools=["trace.query", "bundle.verify"],
         failure_conditions=[f"Missing or contradicted: {statement}" for statement, _ in facts],
     )
@@ -84,7 +113,8 @@ def _case(row: tuple) -> AutoSpecEvalCase:
 
 def experiment_cases(split: str) -> list[AutoSpecEvalCase]:
     if split == "smoke":
-        return list_autospec_cases()
+        return [case.model_copy(update={"business_domain": _DOMAIN_BY_ID.get(case.case_id, case.category.lower())})
+                for case in list_autospec_cases()]
     if split == "development":
         return [c.model_copy(update={"dataset_version": DATASET_VERSION}) for c in list_autospec_cases()] + [_case(r) for r in _DEVELOPMENT]
     if split == "holdout":

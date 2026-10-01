@@ -156,7 +156,7 @@ public class ReworkPlanExecutionService {
                             plan.staleNodeIds()
                     )
                     : null;
-            insertPendingRevision(previousRevision, now, directive);
+            insertPendingRevision(workflowRun, previousRevision, now, directive);
         }
 
         reconciliationTrigger.reconcile(workflowRunId);
@@ -329,6 +329,7 @@ public class ReworkPlanExecutionService {
     }
 
     private void insertPendingRevision(
+            WorkflowRun workflowRun,
             WorkflowNodeRun previous,
             LocalDateTime now,
             JsonNode reworkDirective
@@ -342,6 +343,13 @@ public class ReworkPlanExecutionService {
         revision.setStatus(WorkflowNodeStatus.PENDING.name());
         revision.setHandlerKey(previous.getHandlerKey());
         revision.setHandlerVersion(previous.getHandlerVersion());
+        revision.setContractHash(previous.getContractHash());
+        revision.setExecutionBundleHash(
+                workflowRun.getExecutionBundleHash() == null
+                        || workflowRun.getExecutionBundleHash().isBlank()
+                        ? previous.getExecutionBundleHash()
+                        : workflowRun.getExecutionBundleHash()
+        );
         revision.setTimeoutMs(previous.getTimeoutMs());
         revision.setInputJson(withReworkDirective(previous.getInputJson(), reworkDirective));
         revision.setLockVersion(0);

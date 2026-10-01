@@ -1,4 +1,5 @@
 from enum import StrEnum
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -47,3 +48,9 @@ class ReviewReport(BaseModel):
         if self.decision == ReviewDecision.PASS and self.routes:
             raise ValueError("PASS decision must not contain rework routes")
         return self
+
+
+class ReviewReportV2(ReviewReport):
+    """Candidate-only review report carrying the verifier's trusted fact."""
+
+    verification_fact: dict[str, Any] | None = None

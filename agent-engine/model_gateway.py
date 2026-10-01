@@ -13,6 +13,7 @@ from typing import Any, Iterator, Mapping
 from openai import OpenAI
 
 from runtime.context_policy import estimate_tokens
+from runtime.model_protocol import validate_output_protocol
 from runtime.model_telemetry import (
     ModelInvocationTelemetry,
     ModelRoutingDecision,
@@ -33,13 +34,19 @@ PROMPT_FILES = {
     "ProductManagerAgent_v2": "product_manager_schema_v1.md",
     "ArchitectAgent_v1": "architect_v1.md",
     "ArchitectAgent_v2": "architect_shared_v1.md",
+    "ArchitectAgent_v3": "architect_schema_v1.md",
     "BackendEngineerAgent_v1": "backend_engineer_v1.md",
     "BackendEngineerAgent_v2": "backend_engineer_loop_v1.md",
     "BackendEngineerAgent_v3": "backend_engineer_shared_v1.md",
+    "BackendEngineerAgent_v5": "backend_engineer_loop_v2_v1.md",
+    "BackendEngineerAgent_v6": "backend_engineer_loop_v3_v1.md",
     "FrontendEngineerAgent_v1": "frontend_engineer_v1.md",
     "FrontendEngineerAgent_v2": "frontend_engineer_shared_v1.md",
+    "FrontendEngineerAgent_v3": "frontend_schema_v1.md",
     "ReviewerAgent_v1": "reviewer_v1.md",
     "ReviewerAgent_v2": "reviewer_shared_v1.md",
+    "ReviewerAgent_v4": "reviewer_schema_v1.md",
+    "ReviewerAgent_v5": "reviewer_schema_v2_v1.md",
 }
 
 
@@ -49,6 +56,10 @@ class ModelConfigurationError(RuntimeError):
 
 class ModelOutputLimitError(RuntimeError):
     error_code = "MODEL_OUTPUT_LIMIT"
+
+
+class ModelStructuredOutputError(RuntimeError):
+    error_code = "STRUCTURED_OUTPUT_INVALID"
 
 
 @dataclass(frozen=True)
@@ -92,6 +103,7 @@ class OpenAICompatibleModelClient:
         max_output_tokens: int = 4096,
         context_window_tokens: int = 128_000,
         capabilities: set[str] | None = None,
+        output_protocol: str = "JSON_OBJECT",
         prompt_dir: Path | None = None,
         client: Any | None = None,
     ) -> None:
@@ -115,6 +127,10 @@ class OpenAICompatibleModelClient:
             "usage",
             "idempotency",
         }
+        try:
+            self._output_protocol = validate_output_protocol(output_protocol, self._capabilities)
+        except ValueError as error:
+            raise ModelConfigurationError(str(error)) from error
         self._prompt_dir = prompt_dir or Path(__file__).resolve().parent / "prompts"
         self._client = client or OpenAI(
             api_key=api_key,
@@ -176,6 +192,17 @@ class OpenAICompatibleModelClient:
             raise ModelConfigurationError(
                 "Provider lacks frozen capabilities: "
                 + ", ".join(missing_capabilities)
+            )
+        try:
+            output_protocol = validate_output_protocol(
+                str(policy.get("output_protocol", self._output_protocol)), self._capabilities
+            )
+        except ValueError as error:
+            raise ModelConfigurationError(str(error)) from error
+        if output_protocol != "JSON_OBJECT":
+            raise ModelConfigurationError(
+                "NATIVE_TOOL_CALL requires a provider adapter that returns a native call envelope; "
+                "JSON_OBJECT fallback is disabled"
             )
 
         max_output_tokens = int(
@@ -298,13 +325,13 @@ class OpenAICompatibleModelClient:
                 raise ModelOutputLimitError("Model exhausted the frozen output token allowance before completing its JSON response")
             content = completion.choices[0].message.content
             if content is None or not content.strip():
-                raise RuntimeError("Model returned an empty response")
+                raise ModelStructuredOutputError("Model returned an empty response")
             try:
                 parsed = json.loads(content)
             except json.JSONDecodeError as exc:
-                raise RuntimeError("Model response was not valid JSON") from exc
+                raise ModelStructuredOutputError("Model response was not valid JSON") from exc
             if not isinstance(parsed, dict):
-                raise RuntimeError("Model response must be a JSON object")
+                raise ModelStructuredOutputError("Model response must be a JSON object")
         except Exception as exception:
             estimated_cost = _invocation_cost(
                 input_tokens,

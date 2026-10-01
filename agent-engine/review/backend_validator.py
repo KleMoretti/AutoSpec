@@ -34,13 +34,13 @@ def validate_backend_candidate(
     """Run deterministic checks needed before a BackendDesignArtifact can finish."""
 
     issues: list[BackendValidationIssue] = []
-    if profile != "backend-design-v1":
+    if profile not in {"backend-design-v1", "backend-design-v2"}:
         issues.append(
             _issue(
                 "VALIDATOR_PROFILE_UNSUPPORTED",
                 "$",
                 f"Unsupported backend validator profile: {profile}.",
-                "Use the frozen backend-design-v1 validator profile.",
+                "Use the frozen backend-design-v1 or backend-design-v2 validator profile.",
             )
         )
 

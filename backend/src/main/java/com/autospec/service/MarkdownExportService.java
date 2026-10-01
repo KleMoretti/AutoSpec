@@ -137,7 +137,7 @@ public class MarkdownExportService {
                     .append(" | ")
                     .append(cell(story.path("benefit").asText()))
                     .append(" | ")
-                    .append(cell(joinArray(story.path("acceptance_criteria"))))
+                    .append(cell(joinAcceptanceCriteria(story.path("acceptance_criteria"))))
                     .append(" |\n");
         }
         markdown.append("\n");
@@ -312,6 +312,26 @@ public class MarkdownExportService {
         List<String> result = new java.util.ArrayList<>();
         for (JsonNode value : values) {
             result.add(value.asText());
+        }
+        return String.join("<br>", result);
+    }
+
+    private String joinAcceptanceCriteria(JsonNode values) {
+        if (!values.isArray() || values.isEmpty()) {
+            return "None";
+        }
+        List<String> result = new java.util.ArrayList<>();
+        for (JsonNode value : values) {
+            if (!value.isObject()) {
+                result.add(value.asText());
+                continue;
+            }
+            String acceptanceId = value.path("acceptance_id").asText("");
+            String criterion = value.path("criterion").asText("");
+            String requirementRefs = joinArray(value.path("requirement_refs"));
+            String prefix = acceptanceId.isBlank() ? "" : acceptanceId + ": ";
+            String suffix = requirementRefs.equals("None") ? "" : " (" + requirementRefs + ")";
+            result.add(prefix + criterion + suffix);
         }
         return String.join("<br>", result);
     }

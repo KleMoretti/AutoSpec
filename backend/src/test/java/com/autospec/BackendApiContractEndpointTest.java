@@ -27,6 +27,8 @@ class BackendApiContractEndpointTest {
                 .andExpect(content().contentTypeCompatibleWith(MediaType.valueOf("application/yaml")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("openapi: 3.0.3")))
                 .andExpect(content().string(org.hamcrest.Matchers.containsString("ApiErrorResponse")))
-                .andExpect(content().string(org.hamcrest.Matchers.containsString("PaginationLimit")));
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("PaginationLimit")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("/api/projects/{projectId}/knowledge/uploads")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("WorkflowTraceStepResponse")));
     }
 }

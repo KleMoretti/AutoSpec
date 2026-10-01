@@ -1,6 +1,8 @@
 from typing import Any, Mapping
 
 from agents.base import ModelClient
+from fixtures.software_domains import fixture_for_requirement
+from runtime.structured_output import generate_structured_output
 from schemas.prd import PrdArtifact
 
 
@@ -22,9 +24,14 @@ class ProductManagerAgent:
             "context_manifest": context_manifest or {},
         }
         if self.model_client is not None:
-            return PrdArtifact.model_validate(
-                self.model_client.generate_json(self.prompt_name, input_payload)
+            return generate_structured_output(
+                self.model_client, self.prompt_name, input_payload, PrdArtifact
             )
+
+        # Deterministic fixtures are an explicit no-model execution mode.  A
+        # live model client never reaches this branch, so fixture data cannot
+        # silently mask a provider or schema failure.
+        return fixture_for_requirement(requirement).prd
 
         return PrdArtifact.model_validate(
             {

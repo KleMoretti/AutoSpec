@@ -69,6 +69,11 @@ public class WorkflowRunServiceImpl extends ServiceImpl<WorkflowRunMapper, Workf
         if (run == null || !projectId.equals(run.getProjectId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Workflow run not found");
         }
+        if ("CANCELLED".equals(run.getStatus())) {
+            // Cancellation is idempotent so a retried user request cannot race
+            // a worker acknowledgement into a second terminal transition.
+            return run;
+        }
         if (!"RUNNING".equals(run.getStatus())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Only running workflow runs can be cancelled");
         }

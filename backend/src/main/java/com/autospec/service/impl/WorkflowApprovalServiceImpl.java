@@ -220,6 +220,9 @@ public class WorkflowApprovalServiceImpl implements WorkflowApprovalService {
 
         WorkflowRun run = requireRun(approval.getWorkflowRunId());
         WorkflowNodeRun nodeRun = requireNodeRun(approval.getNodeRunId());
+        if (!"RUNNING".equals(run.getStatus())) {
+            throw conflict("Workflow approval cannot race a cancelled or terminal workflow run");
+        }
         CompiledWorkflow graph = dagCompiler.compile(
                 snapshotParser.parse(run.getWorkflowSnapshotJson())
         );

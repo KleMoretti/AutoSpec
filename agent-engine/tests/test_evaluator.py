@@ -1,10 +1,99 @@
+import time
+
+import pytest
+
 from runtime.agent_node_runner import AgentExecutionRecord
-from review.evaluator import evaluate_artifacts
+from review.evaluator import VerificationEvidenceError, evaluate_artifacts
 from schemas.architecture_design import ArchitectureDesignArtifact
 from schemas.backend_design import BackendDesignArtifact
 from schemas.frontend_skeleton import FrontendSkeletonArtifact
+from schemas.evaluation import EvaluationInput
 from schemas.prd import PrdArtifact
 from schemas.review import ReviewReport
+
+
+VERIFICATION_POLICY = {
+    "enabled": True,
+    "required_level": "L1",
+    "source_digest": "a" * 64,
+    "policy_hash": "b" * 64,
+}
+
+
+def test_evaluation_input_accepts_control_plane_retrieval_envelope():
+    payload = EvaluationInput(
+        requirement="Build a project workspace.",
+        prd=valid_prd().model_dump(mode="json"),
+        architecture_design=valid_architecture().model_dump(mode="json"),
+        backend_design=valid_backend().model_dump(mode="json"),
+        frontend_skeleton=valid_frontend().model_dump(mode="json"),
+        review_report=ReviewReport(score=100, issues=[]).model_dump(mode="json"),
+        retrieval_policy="retrieval-v1",
+        retrieval_project_id=3,
+        retrieval_node_id="evaluator",
+        corpus_epoch=2,
+        actor_scope_hash="a" * 64,
+        retrieval_cache_key="autospec-cache:test",
+        retrieval_cache={"layer": "RAG_QUERY", "mode": "SHADOW"},
+        retrieval_trace={"retriever_version": "hybrid-v1"},
+    )
+
+    assert "retrieval_project_id" not in payload.model_dump()
+    assert "retrieval_trace" not in payload.model_dump()
+
+
+def verification_fact(**updates):
+    fact = {
+        "execution_id": "verify-execution",
+        "workflow_run_id": 1,
+        "node_run_id": 2,
+        "fencing_token": 3,
+        "policy_hash": "b" * 64,
+        "source_digest": "a" * 64,
+        "verifier_version": "spec-verifier-v1",
+        "compiler_version": "spec-compiler-v1",
+        "achieved_level": "L1",
+        "status": "PASSED",
+        "expires_at_epoch_ms": int(time.time() * 1000) + 60_000,
+        "report_hash": "c" * 64,
+    }
+    fact.update(updates)
+    return fact
+
+
+def test_evaluator_preserves_only_current_trusted_verification_fact():
+    report = evaluate_artifacts(
+        requirement="Build a project workspace.",
+        prd=valid_prd(),
+        architecture_design=valid_architecture(),
+        backend_design=valid_backend(),
+        frontend_skeleton=valid_frontend(),
+        review_report=ReviewReport(score=100, issues=[]),
+        records=successful_records(),
+        verification_policy=VERIFICATION_POLICY,
+        verification_fact=verification_fact(),
+    )
+
+    assert report.verification_fact["achieved_level"] == "L1"
+
+
+@pytest.mark.parametrize(
+    "fact",
+    [None, verification_fact(status="BLOCKED"), verification_fact(expires_at_epoch_ms=1)],
+)
+def test_evaluator_fails_closed_without_usable_verification_evidence(fact):
+    with pytest.raises(VerificationEvidenceError):
+        evaluate_artifacts(
+            requirement="Build a project workspace.",
+            prd=valid_prd(),
+            architecture_design=valid_architecture(),
+            backend_design=valid_backend(),
+            frontend_skeleton=valid_frontend(),
+            review_report=ReviewReport(score=100, issues=[]),
+            records=successful_records(),
+            verification_policy=VERIFICATION_POLICY,
+            verification_fact=fact,
+        )
 
 
 def test_evaluator_scores_complete_run_high():

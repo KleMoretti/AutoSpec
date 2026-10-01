@@ -68,7 +68,29 @@ public class WorkflowRecoveryService {
         }
 
         int replacements = 0;
+        int orphanedAttempts = 0;
         Set<Long> runsToReconcile = new LinkedHashSet<>();
+        LocalDateTime heartbeatCutoff = now.minus(leaseTimeout);
+        List<WorkflowNodeRun> staleRunningAttempts = nodeRunMapper.selectList(
+                new LambdaQueryWrapper<WorkflowNodeRun>()
+                        .eq(WorkflowNodeRun::getStatus, WorkflowNodeStatus.RUNNING.name())
+                        .isNotNull(WorkflowNodeRun::getHeartbeatAt)
+                        .lt(WorkflowNodeRun::getHeartbeatAt, heartbeatCutoff)
+                        .orderByAsc(WorkflowNodeRun::getHeartbeatAt)
+                        .orderByAsc(WorkflowNodeRun::getId)
+        );
+        for (WorkflowNodeRun stale : staleRunningAttempts) {
+            if (!WorkflowNodeStatus.RUNNING.name().equals(stale.getStatus())) {
+                continue;
+            }
+            if (!isRunActive(stale.getWorkflowRunId()) || !claimStaleRunning(stale, now)) {
+                continue;
+            }
+            nodeRunMapper.insert(replacement(stale, now));
+            orphanedAttempts++;
+            replacements++;
+            runsToReconcile.add(stale.getWorkflowRunId());
+        }
         List<WorkflowNodeRun> dueAttempts = nodeRunMapper.selectList(
                 new LambdaQueryWrapper<WorkflowNodeRun>()
                         .in(WorkflowNodeRun::getStatus,
@@ -90,7 +112,7 @@ public class WorkflowRecoveryService {
         }
 
         runsToReconcile.forEach(reconciliationTrigger::reconcile);
-        return new RecoveryResult(0, replacements, 0);
+        return new RecoveryResult(orphanedAttempts, replacements, 0);
     }
 
     private WorkflowNodeRun replacement(WorkflowNodeRun stale, LocalDateTime now) {
@@ -130,6 +152,23 @@ public class WorkflowRecoveryService {
                 .set("next_retry_at", null)
                 .set("updated_at", now)
                 .set("lock_version", due.getLockVersion() + 1));
+        return updated == 1;
+    }
+
+    private boolean claimStaleRunning(WorkflowNodeRun stale, LocalDateTime now) {
+        int updated = nodeRunMapper.update(null, new com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper<WorkflowNodeRun>()
+                .eq("id", stale.getId())
+                .inSql("workflow_run_id", activeRunSql(stale.getWorkflowRunId()))
+                .eq("execution_id", stale.getExecutionId())
+                .eq("status", WorkflowNodeStatus.RUNNING.name())
+                .eq("lock_version", stale.getLockVersion())
+                .eq("heartbeat_at", stale.getHeartbeatAt())
+                .set("status", WorkflowNodeStatus.ORPHANED.name())
+                .set("error_code", "WORKER_LEASE_EXPIRED")
+                .set("error_message", "Worker heartbeat lease expired")
+                .set("finished_at", now)
+                .set("updated_at", now)
+                .set("lock_version", (stale.getLockVersion() == null ? 0 : stale.getLockVersion()) + 1));
         return updated == 1;
     }
 

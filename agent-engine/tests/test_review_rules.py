@@ -4,6 +4,7 @@ from agents.frontend_engineer import FrontendEngineerAgent
 from agents.product_manager import ProductManagerAgent
 from agents.reviewer import ReviewerAgent
 from review.rules import run_current_rule_checks
+from fixtures.software_domains import get_fixture
 
 
 def current_artifacts():
@@ -55,3 +56,47 @@ def test_reviewer_routes_blocking_issue_to_the_affected_agent() -> None:
 
     assert report.decision == "REWORK"
     assert any(route.target_node == "backend_engineer" for route in report.routes)
+
+
+def test_generic_profile_treats_business_event_retry_and_approval_as_domain_features() -> None:
+    for key in ("inventory_management", "employee_leave_approval"):
+        fixture = get_fixture(key)
+        issues = run_current_rule_checks(
+            fixture.prd,
+            fixture.shared_architecture(),
+            fixture.backend,
+            fixture.frontend,
+            rule_profile="spec-full-v1",
+        )
+        assert not any(issue.issue_type == "API_COVERAGE" for issue in issues)
+        assert not any("workflow-runs" in issue.description for issue in issues)
+
+
+def test_generic_v2_does_not_treat_storage_as_historical_reuse() -> None:
+    fixture = get_fixture("inventory_management")
+    fixture.prd.risks.append("Storage location and retention are configurable.")
+
+    issues = run_current_rule_checks(
+        fixture.prd,
+        fixture.shared_architecture(),
+        fixture.backend,
+        fixture.frontend,
+        rule_profile="spec-full-v2",
+    )
+
+    assert not any(issue.issue_type == "RAG_SOURCE_CITATION" for issue in issues)
+
+
+def test_generic_v2_requires_sources_for_explicit_historical_reuse() -> None:
+    fixture = get_fixture("inventory_management")
+    fixture.prd.risks.append("Reuse prior historical artifacts when designing the workflow.")
+
+    issues = run_current_rule_checks(
+        fixture.prd,
+        fixture.shared_architecture(),
+        fixture.backend,
+        fixture.frontend,
+        rule_profile="spec-full-v2",
+    )
+
+    assert any(issue.issue_type == "RAG_SOURCE_CITATION" for issue in issues)

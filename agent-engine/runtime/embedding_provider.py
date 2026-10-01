@@ -5,6 +5,7 @@ import math
 import os
 import re
 import unicodedata
+from pathlib import Path
 from typing import Protocol
 
 from openai import OpenAI
@@ -67,13 +68,85 @@ class OpenAIEmbeddingProvider:
         return vectors
 
 
+class LocalSentenceTransformerEmbeddingProvider:
+    """Explicit local semantic model for offline retrieval evaluation.
+
+    This provider is opt-in and deliberately separate from the deterministic
+    hashing fixture and the OpenAI-compatible production path.  The model
+    fingerprint includes the local files so retrieval cache/version checks do
+    not silently reuse vectors after a model replacement.
+    """
+
+    def __init__(self, *, model_path: str, device: str = "cpu", batch_size: int = 32):
+        if not model_path:
+            raise ValueError("local embedding mode requires EMBEDDING_LOCAL_MODEL_PATH")
+        path = Path(model_path).expanduser()
+        if not path.is_dir():
+            raise ValueError("local embedding model path must be an existing directory")
+        try:
+            from sentence_transformers import SentenceTransformer
+        except ImportError as error:  # pragma: no cover - depends on optional evaluation extra
+            raise ValueError(
+                "local embedding mode requires the optional sentence-transformers dependency"
+            ) from error
+
+        self._model = SentenceTransformer(str(path), device=device)
+        dimension = self._model.get_sentence_embedding_dimension()
+        if not isinstance(dimension, int) or dimension <= 0:
+            raise ValueError("local embedding model returned an invalid dimension")
+        self.dimensions = dimension
+        self.model_version = (
+            f"sentence-transformers:local:{_local_model_fingerprint(path)}:{dimension}"
+        )
+        self._batch_size = max(1, batch_size)
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        if not texts:
+            return []
+        vectors = self._model.encode(
+            texts,
+            batch_size=self._batch_size,
+            convert_to_numpy=True,
+            normalize_embeddings=True,
+            show_progress_bar=False,
+        )
+        if getattr(vectors, "ndim", None) != 2 or len(vectors) != len(texts):
+            raise ValueError("local embedding model returned an invalid vector count")
+        if vectors.shape[1] != self.dimensions:
+            raise ValueError("local embedding model returned invalid vector dimensions")
+        result = [[float(value) for value in vector] for vector in vectors]
+        if any(not math.isfinite(value) for vector in result for value in vector):
+            raise ValueError("local embedding model returned non-finite values")
+        return result
+
+
+def _local_model_fingerprint(path: Path) -> str:
+    digest = hashlib.sha256()
+    files = [item for item in path.rglob("*") if item.is_file()]
+    for item in sorted(files, key=lambda value: value.relative_to(path).as_posix()):
+        digest.update(item.relative_to(path).as_posix().encode("utf-8"))
+        with item.open("rb") as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(chunk)
+    return digest.hexdigest()[:16]
+
+
 def configured_embedding_provider() -> EmbeddingProvider:
     mode = os.getenv("AUTOSPEC_EMBEDDING_MODE", "fixture").lower()
     environment = os.getenv("AUTOSPEC_ENV", "development").lower()
     if mode == "fixture" and environment not in {"production", "prod"}:
         return HashEmbeddingProvider()
+    if mode == "local":
+        if environment in {"production", "prod"}:
+            raise ValueError("local embedding mode is evaluation-only")
+        return LocalSentenceTransformerEmbeddingProvider(
+            model_path=os.getenv("EMBEDDING_LOCAL_MODEL_PATH", ""),
+            device=os.getenv("EMBEDDING_LOCAL_DEVICE", "cpu"),
+        )
     if mode != "live":
-        raise ValueError("Production retrieval requires AUTOSPEC_EMBEDDING_MODE=live")
+        if environment in {"production", "prod"}:
+            raise ValueError("production retrieval requires AUTOSPEC_EMBEDDING_MODE=live")
+        raise ValueError("embedding mode must be fixture, local, or live")
     return OpenAIEmbeddingProvider(
         base_url=os.getenv("EMBEDDING_BASE_URL", ""),
         api_key=os.getenv("EMBEDDING_API_KEY", ""),

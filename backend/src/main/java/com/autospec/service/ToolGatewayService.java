@@ -34,7 +34,7 @@ import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
- * Control-plane boundary for Worker tool calls. Only fixed read-only tools are
+ * Control-plane boundary for Worker tool calls. Only fixed controlled tools are
  * dispatched; the Worker never receives a database or shell capability.
  */
 @Service
@@ -46,7 +46,8 @@ public class ToolGatewayService {
             "artifact.get",
             "contract.lookup",
             "trace.query",
-            "bundle.verify"
+            "bundle.verify",
+            "spec.verify"
     );
     private static final Set<String> DETERMINISTIC_TOOLS = Set.of(
             "contract.lookup",
@@ -62,6 +63,7 @@ public class ToolGatewayService {
     private final AuditEventService auditEventService;
     private final ObjectMapper objectMapper;
     private final String serviceToken;
+    private final SpecVerificationClient specVerificationClient;
 
     @Autowired
     public ToolGatewayService(
@@ -73,7 +75,8 @@ public class ToolGatewayService {
             WorkflowTraceService workflowTraceService,
             AuditEventService auditEventService,
             ObjectMapper objectMapper,
-            @Value("${autospec.agent-engine.service-token:}") String serviceToken
+            @Value("${autospec.agent-engine.service-token:}") String serviceToken,
+            SpecVerificationClient specVerificationClient
     ) {
         this.runMapper = runMapper;
         this.nodeRunMapper = nodeRunMapper;
@@ -84,6 +87,7 @@ public class ToolGatewayService {
         this.auditEventService = auditEventService;
         this.objectMapper = objectMapper;
         this.serviceToken = serviceToken == null ? "" : serviceToken;
+        this.specVerificationClient = specVerificationClient;
     }
 
     public ToolGatewayService(
@@ -105,7 +109,8 @@ public class ToolGatewayService {
                 workflowTraceService,
                 auditEventService,
                 objectMapper,
-                ""
+                "",
+                null
         );
     }
 
@@ -154,12 +159,14 @@ public class ToolGatewayService {
         if (!allowedTool(policy, request.name(), request.version())) {
             return persistFailure(request, run, "TOOL_NOT_ALLOWED", "tool is not in the frozen allowlist");
         }
-        if (DETERMINISTIC_TOOLS.contains(request.name())
+        if ("spec.verify".equals(request.name())) {
+            if (!contains(policy.path("allowed_side_effects"), "SANDBOXED")) {
+                return persistFailure(request, run, "TOOL_SIDE_EFFECT_DENIED", "sandboxed verifier side effect is not allowed");
+            }
+        } else if (DETERMINISTIC_TOOLS.contains(request.name())
                 && !contains(policy.path("allowed_side_effects"), "DETERMINISTIC")) {
             return persistFailure(request, run, "TOOL_SIDE_EFFECT_DENIED", "deterministic tool side effect is not allowed");
-        }
-        if (!DETERMINISTIC_TOOLS.contains(request.name())
-                && !contains(policy.path("allowed_side_effects"), "READ_ONLY")) {
+        } else if (!contains(policy.path("allowed_side_effects"), "READ_ONLY")) {
             return persistFailure(request, run, "TOOL_SIDE_EFFECT_DENIED", "read-only tool side effect is not allowed");
         }
         if (request.maxResultBytes() > policy.path("max_result_bytes").asInt(32_000)) {
@@ -197,8 +204,21 @@ public class ToolGatewayService {
         } catch (GatewayFailure failure) {
             return persistFailure(request, run, failure.code, failure.getMessage());
         } catch (Exception exception) {
-            return persistFailure(request, run, "TOOL_EXECUTION_FAILED", "controlled tool execution failed");
+            return persistFailure(
+                    request,
+                    run,
+                    "TOOL_EXECUTION_FAILED",
+                    controlledToolFailureMessage(exception)
+            );
         }
+    }
+
+    private String controlledToolFailureMessage(Exception exception) {
+        String message = exception.getMessage();
+        if (message == null || !message.startsWith("spec verifier ")) {
+            return "controlled tool execution failed";
+        }
+        return message.length() <= 512 ? message : message.substring(0, 512);
     }
 
     private GatewayFailure validateExecutionScope(
@@ -238,8 +258,16 @@ public class ToolGatewayService {
             case "contract.lookup" -> contractLookup(request, run, arguments);
             case "trace.query" -> objectMapper.valueToTree(workflowTraceService.trace(run.getId()));
             case "bundle.verify" -> bundleVerify(request, run);
+            case "spec.verify" -> specVerify(request);
             default -> throw new GatewayFailure("TOOL_NOT_ALLOWED", "tool is not in the controlled catalog");
         };
+    }
+
+    private JsonNode specVerify(ToolGatewayRequest request) {
+        if (specVerificationClient == null) {
+            throw new GatewayFailure("TOOL_GATEWAY_UNAVAILABLE", "sandboxed spec verifier is not configured");
+        }
+        return specVerificationClient.verify(request.executionId(), request.arguments());
     }
 
     private JsonNode knowledgeSearch(

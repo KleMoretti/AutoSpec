@@ -1,0 +1,44 @@
+{
+  "experiment_id": "autospec-p2-p4-fixture-full-20261001-development-r11",
+  "version_ids": {
+    "A": 10,
+    "B": 11,
+    "C": 12,
+    "D": 13
+  },
+  "code_version": "7b859cd5",
+  "environment": {
+    "name": "autospec-p2-p4-fixture",
+    "model_mode": "fixture",
+    "embedding_mode": "fixture",
+    "execution_mode": "FIXTURE_BASELINE"
+  },
+  "fixture_approval_policy": "AUTO_APPROVE_FOR_TEST",
+  "fixture_approval_reason": "Pre-registered fixture-only approval for complete development coverage; not human approval.",
+  "dataset_split": "development",
+  "random_seed": 20261001,
+  "contract_family": "v6",
+  "manifest_path": "experiment-manifest-full-development-r11.json",
+  "manifest_hash": "bf83706dbe75c81567f047f91f2745378f8aa21c983297089abfdfeadba4d766",
+  "groups": [
+    "A",
+    "B",
+    "C",
+    "D"
+  ],
+  "collection_scope": "WORKFLOW",
+  "repetitions": 3,
+  "run_max_cost": 10.0,
+  "total_max_cost": 2880.0,
+  "max_runs": 288,
+  "run_max_tokens": 500000,
+  "run_max_model_calls": 16,
+  "run_timeout_seconds": 600,
+  "poll_seconds": 0.5,
+  "pricing_snapshot": {
+    "mode": "FIXTURE_BASELINE",
+    "cost_status": "NOT_APPLICABLE_EXTERNAL",
+    "source": "local-fixture",
+    "observed_at": "2026-10-01"
+  }
+}

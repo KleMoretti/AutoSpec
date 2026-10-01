@@ -35,6 +35,13 @@ def test_registry_contains_all_builtin_v5_handlers() -> None:
         "EvaluatorAgent",
     ]:
         assert registry.resolve(handler_key, "v1")
+    assert registry.resolve("BackendEngineerAgent", "v4")
+    assert registry.resolve("BackendEngineerAgent", "v5")
+    assert registry.resolve("BackendEngineerAgent", "v6")
+    assert registry.resolve("FrontendEngineerAgent", "v3")
+    assert registry.resolve("ReviewerAgent", "v4")
+    assert registry.resolve("ReviewerAgent", "v5")
+    assert registry.resolve("EvaluatorAgent", "v4")
 
 
 @pytest.mark.asyncio
@@ -92,10 +99,102 @@ async def test_frontend_handler_consumes_backend_contract_output() -> None:
         update={"handler_version": "v2"}))
     assert new.error_code == "QUALITY_GATE_BLOCKED", new.error_message
     assert "RUNTIME_EVIDENCE_MISSING" in new.error_message  # reaches the real evaluator, still fails closed
+    candidate = await executor.execute(command("EvaluatorAgent", runtime_input, node_id="evaluator").model_copy(
+        update={"handler_version": "v4"}))
+    assert candidate.error_code == "QUALITY_GATE_BLOCKED", candidate.error_message
+    assert "RUNTIME_EVIDENCE_MISSING" in candidate.error_message
     runtime_input["unknown_business_field"] = "must not be silently accepted"
     rejected = await executor.execute(command("EvaluatorAgent", runtime_input, node_id="evaluator").model_copy(
         update={"handler_version": "v2"}))
     assert rejected.error_code == "VALIDATION_ERROR"
+
+
+@pytest.mark.asyncio
+async def test_architect_schema_handler_selects_shared_contract_output() -> None:
+    executor = NodeExecutor(build_production_registry())
+    product = await executor.execute(
+        command(
+            "ProductManagerAgent",
+            {"requirement": "Build an inventory workspace"},
+            node_id="product_manager",
+        )
+    )
+    architect = await executor.execute(
+        command(
+            "ArchitectAgent",
+            {"requirement": "Build an inventory workspace", "prd": product.output_payload},
+            node_id="architect",
+        ).model_copy(update={"handler_version": "v3"})
+    )
+
+    assert architect.event_type == "NODE_SUCCEEDED"
+    assert "shared_contract" in architect.output_payload
+
+
+@pytest.mark.asyncio
+async def test_frontend_schema_handler_selects_shared_contract_output() -> None:
+    executor = NodeExecutor(build_production_registry())
+    product = await executor.execute(
+        command(
+            "ProductManagerAgent",
+            {"requirement": "Build an inventory workspace"},
+            node_id="product_manager",
+        )
+    )
+    architect = await executor.execute(
+        command(
+            "ArchitectAgent",
+            {"requirement": "Build an inventory workspace", "prd": product.output_payload},
+            node_id="architect",
+        ).model_copy(update={"handler_version": "v3"})
+    )
+    frontend = await executor.execute(
+        command(
+            "FrontendEngineerAgent",
+            {
+                "requirement": "Build an inventory workspace",
+                "prd": product.output_payload,
+                "architecture_design": architect.output_payload,
+            },
+            node_id="frontend_engineer",
+        ).model_copy(update={"handler_version": "v3"})
+    )
+
+    assert frontend.event_type == "NODE_SUCCEEDED"
+    assert "routes" in frontend.output_payload
+
+
+@pytest.mark.asyncio
+async def test_backend_loop_v6_single_shot_consumes_shared_architecture_contract() -> None:
+    executor = NodeExecutor(build_production_registry())
+    product = await executor.execute(
+        command(
+            "ProductManagerAgent",
+            {"requirement": "Build an inventory workspace"},
+            node_id="product_manager",
+        )
+    )
+    architect = await executor.execute(
+        command(
+            "ArchitectAgent",
+            {"requirement": "Build an inventory workspace", "prd": product.output_payload},
+            node_id="architect",
+        ).model_copy(update={"handler_version": "v3"})
+    )
+    backend = await executor.execute(
+        command(
+            "BackendEngineerAgent",
+            {
+                "requirement": "Build an inventory workspace",
+                "prd": product.output_payload,
+                "architecture_design": architect.output_payload,
+            },
+            node_id="backend_engineer",
+        ).model_copy(update={"handler_version": "v6"})
+    )
+
+    assert backend.event_type == "NODE_SUCCEEDED", backend.error_message
+    assert backend.output_payload is not None
 
 
 def _requirement_refs(value: object) -> set[str]:

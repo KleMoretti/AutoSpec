@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/assets/readme/autospec-hero.svg" alt="AutoSpec" width="100%" />
+<img src="docs/archive/assets/readme/autospec-hero.svg" alt="AutoSpec" width="100%" />
 
 # AutoSpec
 
@@ -35,10 +35,10 @@ Typical LLM coding demos stop at "generate some text." AutoSpec treats generatio
 
 ## Workflow
 
-The default published workflow is <code>autospec-v5:v5-parallel</code>. The historical <code>v5</code> workflow remains available for reproducible replay.
+Fresh databases start from a single Flyway V1 baseline and publish <code>autospec-v5:pm-schema-repair-v12</code>. Retained runs keep their original immutable workflow snapshots. Future database changes start at V2; see the [baseline consolidation record](docs/archive/evidence/baseline-consolidation-2026-09-30.md) before upgrading an older database.
 
 <p align="center">
-  <img src="docs/assets/readme/workflow.svg" alt="AutoSpec V5 workflow" width="100%" />
+  <img src="docs/archive/assets/readme/workflow.svg" alt="AutoSpec workflow" width="100%" />
 </p>
 
 The six-node workflow is:
@@ -55,7 +55,7 @@ Reviewer findings can route targeted rework back to Architect, Backend or Fronte
 ## Architecture
 
 <p align="center">
-  <img src="docs/assets/readme/architecture.svg" alt="AutoSpec system architecture" width="100%" />
+  <img src="docs/archive/assets/readme/architecture.svg" alt="AutoSpec system architecture" width="100%" />
 </p>
 
 | Layer | Responsibility |
@@ -109,7 +109,7 @@ The FastAPI process is used for health checks and evaluation/experiment endpoint
 - Stable review issue keys with owner, evidence and resolution
 - Requirement → story / acceptance → API → data → UI trace matrix
 - HIGH / CRITICAL findings and missing MUST coverage block delivery
-- Evaluation datasets and experiment comparison for prompt/model changes
+- Evaluation datasets and a platform-admin read-only A/B/C/D comparison dashboard; missing live evidence stays `NOT_EVALUATED`
 
 ## Quick Start
 
@@ -159,7 +159,35 @@ To follow the execution path:
 docker compose logs --tail=200 -f backend agent-worker-1 agent-worker-2
 ~~~
 
-### 3. Enable a live model
+### 3. Five-minute fixture demo
+
+This is a prepared-environment walkthrough of the real browser and Docker
+workflow. It uses `AGENT_MODEL_MODE=fixture` and
+`AUTOSPEC_EMBEDDING_MODE=fixture`; it does not call an external model and it
+does not prove production quality, capacity, cost or SLA.
+
+1. Open the frontend, sign in with the local development account configured by
+   `AUTH_DEMO_USER_ENABLED` and `AUTH_DEMO_USER_PASSWORD`, and create a project.
+2. Enter a requirement with at least one acceptance criterion and one
+   permission rule. A CRUD task list is sufficient for the walkthrough.
+3. Open **Generate**, choose the published
+   `pm-schema-repair-v12 · #1` workflow, and start a fixture run.
+4. In **Agent and approval**, approve the Product Manager artifact with a
+   short reason. The formal six-node path is Product Manager → Architect →
+   Backend Engineer / Frontend Engineer → Reviewer → Evaluator.
+5. Open **Review and fix** and inspect the run Trace: bundle and contract
+   hashes, queue/execution time, model/tool counts, step reasons and the
+   `SPEC_VERIFY_PASSED` fact. The Evaluator may intentionally stop the fixture
+   with `QUALITY_GATE_BLOCKED`; that is a valid negative-gate demonstration,
+   not a delivered application.
+
+The demo account is development-only and its password must remain in the
+untracked `.env`. Do not disable authentication or delivery gates to make the
+demo appear successful. The latest run-specific evidence and known screenshot
+capture limitation are recorded in
+[`docs/archive/evidence/p2-p4-2026-10-01.md`](docs/archive/evidence/p2-p4-2026-10-01.md).
+
+### 4. Enable a live model
 
 AutoSpec accepts an OpenAI-compatible model endpoint:
 
@@ -182,6 +210,14 @@ EMBEDDING_MODEL=...
 EMBEDDING_DIMENSIONS=...
 ~~~
 
+For the offline P3-K3 comparison, an explicitly downloaded local
+`sentence-transformers` model may be used without changing the Docker fixture
+default. Install `agent-engine/requirements-evaluation-local.txt`, set
+`AUTOSPEC_EMBEDDING_MODE=local` and `EMBEDDING_LOCAL_MODEL_PATH`, then run
+`python -m evaluation.cli_retrieval_compare` from `agent-engine/`. The model
+files stay outside Git; local timing is a benchmark observation, not a
+production SLA or provider-cost measurement.
+
 ## Repository layout
 
 ~~~text
@@ -197,7 +233,7 @@ AutoSpec/
 ├─ observability/               # Prometheus / Grafana / Tempo
 ├─ performance/                 # k6 scenarios and performance reports
 ├─ scripts/                     # Contract and release verification
-├─ docs/                        # Design docs, ADRs and examples
+├─ docs/                        # Current task and archived reference material
 └─ docker-compose.yml           # Full local topology
 ~~~
 
@@ -275,12 +311,9 @@ docker compose --profile monitoring up --build -d
 
 ## Documentation
 
-- [Runtime orchestration ADR](docs/adr/ADR-001-runtime-orchestration.md)
-- [V5 design plan](docs/autospec-v5-plan.md)
-- [Backend service contracts](docs/backend-service-contracts.md)
-- [Parallel workflow and embedding notes](docs/autospec-v5-p1-embedding-parallel.md)
-- [Failure drills](docs/backend-failure-drills.md)
-- [Dynamic workflow example](docs/examples/v5-dynamic-workflow-run.md)
+- [Current task: Spec Sandbox](docs/autospec-v5-spec-sandbox-plan.md)
+- [P0 / P1 execution guide](docs/p0-p1-execution-plan.md)
+- [Archived documentation and evidence](docs/archive/README.md)
 
 ## Contributing
 
@@ -299,5 +332,5 @@ test: cover evaluator delivery gate
 ---
 
 <div align="center">
-  <sub>AutoSpec V5 · auditable multi-Agent engineering from requirement to verified delivery.</sub>
+  <sub>AutoSpec · auditable multi-Agent engineering from requirement to verified delivery.</sub>
 </div>

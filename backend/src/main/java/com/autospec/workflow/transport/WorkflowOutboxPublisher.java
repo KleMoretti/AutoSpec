@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 
 @Service
 public class WorkflowOutboxPublisher {
@@ -25,6 +26,7 @@ public class WorkflowOutboxPublisher {
     private final WorkflowTransportMetrics metrics;
     private final ArtifactApprovalOutboxHandler artifactApprovalHandler;
     private final int maxAttempts;
+    private final String claimOwner = "control-plane-" + UUID.randomUUID();
 
     public WorkflowOutboxPublisher(
             WorkflowOutboxMapper outboxMapper,
@@ -102,6 +104,15 @@ public class WorkflowOutboxPublisher {
         );
         int published = 0;
         for (WorkflowOutbox outbox : pending) {
+            boolean claimed = outbox.getClaimVersion() != null
+                    && outboxMapper.claim(
+                    outbox.getId(), claimOwner, now.plusSeconds(30), now
+            ) == 1;
+            // Old unit fixtures have no V2 claim column. Real database rows
+            // always have claim_version=0 and must pass this CAS claim.
+            if (outbox.getClaimVersion() != null && !claimed) {
+                continue;
+            }
             long publishStartedAt = System.nanoTime();
             try {
                 dispatch(outbox);
@@ -118,7 +129,10 @@ public class WorkflowOutboxPublisher {
             int updated = outboxMapper.update(null, new UpdateWrapper<WorkflowOutbox>()
                     .eq("id", outbox.getId())
                     .eq("status", "PENDING")
+                    .apply(outbox.getClaimVersion() != null, "claim_owner = {0}", claimOwner)
                     .set("status", "PUBLISHED")
+                    .set("claim_owner", null)
+                    .set("claim_until", null)
                     .set("published_at", LocalDateTime.now())
                     .set("updated_at", LocalDateTime.now()));
             published += updated;
@@ -168,11 +182,14 @@ public class WorkflowOutboxPublisher {
         int updated = outboxMapper.update(null, new UpdateWrapper<WorkflowOutbox>()
                 .eq("id", outbox.getId())
                 .eq("status", "PENDING")
+                .apply(outbox.getClaimVersion() != null, "claim_owner = {0}", claimOwner)
                 .lt("retry_count", maxAttempts - 1)
                 .setSql("retry_count = retry_count + 1")
                 .set("next_retry_at", nextRetryAt)
                 .set("last_error_type", exception.getClass().getSimpleName())
                 .set("last_error_at", now)
+                .set("claim_owner", null)
+                .set("claim_until", null)
                 .set("updated_at", now));
         if (updated == 1) {
             metrics.recordOutboxRetry();
@@ -195,6 +212,7 @@ public class WorkflowOutboxPublisher {
         int updated = outboxMapper.update(null, new UpdateWrapper<WorkflowOutbox>()
                 .eq("id", outbox.getId())
                 .eq("status", "PENDING")
+                .apply(outbox.getClaimVersion() != null, "claim_owner = {0}", claimOwner)
                 .ge("retry_count", maxAttempts - 1)
                 .setSql("retry_count = retry_count + 1")
                 .set("status", "DEAD_LETTER")
@@ -202,6 +220,8 @@ public class WorkflowOutboxPublisher {
                 .set("last_error_type", exception.getClass().getSimpleName())
                 .set("last_error_at", now)
                 .set("dead_lettered_at", now)
+                .set("claim_owner", null)
+                .set("claim_until", null)
                 .set("updated_at", now));
         if (updated == 1) {
             metrics.recordOutboxDeadLetter();
