@@ -1,6 +1,8 @@
 import { renderToStaticMarkup } from 'react-dom/server';
+import { I18nextProvider } from 'react-i18next';
 import { describe, expect, it } from 'vitest';
 import type { EvaluationComparisonResponse, EvaluationRunResponse } from '../api/evaluation';
+import i18n from '../i18n';
 import { EvaluationComparisonView } from './EvaluationComparisonPanel';
 
 function run(group: 'A' | 'B' | 'C' | 'D', status: string, measured: boolean): EvaluationRunResponse {
@@ -91,5 +93,19 @@ describe('EvaluationComparisonView', () => {
     expect(html).toContain('Unknown');
     expect(html).not.toContain('PROMOTE');
     expect(html).not.toContain('0.0000');
+  });
+
+  it('counts collected live groups even when the release gate is not evaluated', () => {
+    const html = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <EvaluationComparisonView comparison={comparison(
+          (['A', 'B', 'C', 'D'] as const).map((group) => run(group, 'SUCCEEDED', false)),
+          'MEASURED'
+        )} />
+      </I18nextProvider>
+    );
+
+    expect(html).toContain('4 measured groups');
+    expect(html).toContain('Measured test evidence');
   });
 });

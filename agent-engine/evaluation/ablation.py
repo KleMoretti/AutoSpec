@@ -88,6 +88,7 @@ async def run_ablation_matrix(
     workflow_version: str = "v5-agent-execution",
     code_version: str = "workspace-v5",
     random_seed: int | None = None,
+    dataset_split: str | None = None,
     groups: Sequence[str] | None = None,
 ) -> AutoSpecAblationMatrix:
     """Run a supplied control-plane adapter or emit an explicit unexecuted matrix.
@@ -134,6 +135,7 @@ async def run_ablation_matrix(
     return AutoSpecAblationMatrix(
         matrix_id=matrix_id or f"ablation-{uuid4().hex}",
         dataset_version=resolved_dataset,
+        dataset_split=dataset_split,
         generated_at_epoch_ms=int(time.time() * 1000),
         runs=runs,
     )

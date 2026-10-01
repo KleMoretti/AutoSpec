@@ -68,9 +68,10 @@ async def test_ablation_matrix_accepts_validated_live_adapter() -> None:
             decision="NOT_EVALUATED",
         )
 
-    matrix = await run_ablation_matrix(cases, live_runner=adapter)
+    matrix = await run_ablation_matrix(cases, live_runner=adapter, dataset_split="development")
 
     assert [run.run_id for run in matrix.runs] == ["live-A", "live-B", "live-C", "live-D"]
+    assert matrix.dataset_split == "development"
     assert len(ablation_configs()) == 4
 
 

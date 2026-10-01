@@ -95,7 +95,9 @@ function EvaluationRunCard({ run, unknown }: { run: EvaluationRunResponse; unkno
 export function EvaluationComparisonView({ comparison }: { comparison: EvaluationComparisonResponse }) {
   const { t } = useTranslation();
   const measuredRuns = useMemo(
-    () => comparison.matrix.runs.filter((run) => run.status === 'SUCCEEDED' && run.gateStatus !== 'NOT_EVALUATED').length,
+    () => comparison.status === 'MEASURED'
+      ? comparison.matrix.runs.filter((run) => run.status !== 'NOT_EXECUTED').length
+      : 0,
     [comparison]
   );
 

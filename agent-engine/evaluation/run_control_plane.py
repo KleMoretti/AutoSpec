@@ -41,6 +41,7 @@ async def run(config_path: Path, output: Path, *, validate_only: bool = False, r
             live_runner=collector,
             groups=config.groups,
             random_seed=config.random_seed,
+            dataset_split=config.dataset_split,
         )
         destination = output / config.experiment_id
         (destination / "matrix.json").write_text(matrix.model_dump_json(indent=2), encoding="utf-8")

@@ -147,6 +147,7 @@ class AutoSpecAblationMatrix(BaseModel):
 
     matrix_id: str = Field(min_length=1)
     dataset_version: str = Field(min_length=1)
+    dataset_split: str | None = None
     generated_at_epoch_ms: int = Field(ge=0)
     runs: list[AutoSpecEvalRun] = Field(min_length=1)
 
