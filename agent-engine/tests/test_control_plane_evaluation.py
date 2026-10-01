@@ -79,6 +79,39 @@ async def test_draft_preflight_does_not_create_projects(eval_output: Path) -> No
     assert requests == ["GET"]
 
 
+@pytest.mark.asyncio
+async def test_manifest_experiment_id_is_pinned_to_config(eval_output: Path) -> None:
+    manifest_path = eval_output / "manifest.json"
+    manifest_path.write_text(json.dumps({
+        "manifest_version": "autospec-experiment-manifest-v1",
+        "experiment_id": "other-experiment",
+        "workflow_key": "autospec-v5",
+        "dataset_version": "dataset-v1",
+        "dataset_split": "smoke",
+        "random_seed": 1,
+        "budget": {
+            "repetitions": 1,
+            "run_max_cost": 1,
+            "total_max_cost": 1,
+            "max_runs": 1,
+            "run_max_tokens": 1,
+            "run_max_model_calls": 1,
+        },
+        "groups": [{
+            "group": "A",
+            "name": "single-shot",
+            "workflow_version_id": 1,
+            "contract_path": "missing.json",
+            "contract_hash": "0" * 64,
+        }],
+        "pricing_snapshot": {},
+    }), encoding="utf-8")
+    cfg = config().model_copy(update={"manifest_path": str(manifest_path)})
+    collector = ControlPlaneCollector(None, cfg, eval_output)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="experiment_id does not match"):
+        await collector.preflight(offline=True)
+
+
 def test_unknown_prices_are_not_zero_cost_and_failed_cases_keep_token_usage() -> None:
     trace = {"correlationId": "id", "executionBundleHash": "b" * 64, "nodes": [{"invocations": [
         {"callType": "MODEL", "providerKey": "provider", "modelName": "model", "inputTokens": 100,

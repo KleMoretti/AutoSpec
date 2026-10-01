@@ -111,6 +111,8 @@ class ControlPlaneCollector:
         if self.config.manifest_path:
             manifest_path = Path(self.config.manifest_path)
             manifest, manifest_digest = load_manifest(manifest_path)
+            if manifest.experiment_id != self.config.experiment_id:
+                raise ValueError("experiment manifest experiment_id does not match config")
             if self.config.manifest_hash and self.config.manifest_hash != manifest_digest:
                 raise ValueError("experiment manifest checksum mismatch")
             manifest_entries = validate_manifest_contracts(manifest_path, manifest)
