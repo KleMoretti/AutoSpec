@@ -72,6 +72,7 @@ management:
 autospec:
   environment: ${AUTOSPEC_ENV:development}
   agent-engine:
+    url: ${AGENT_ENGINE_URL:http://agent-engine:8000}
     service-token: ${AGENT_ENGINE_SERVICE_TOKEN:}
   spec-verifier:
     url: ${AUTOSPEC_SPEC_VERIFIER_URL:http://spec-verifier:8010}

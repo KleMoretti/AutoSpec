@@ -52,6 +52,23 @@ paths:
           description: Session revoked.
         '401':
           $ref: '#/components/responses/Unauthorized'
+  /api/evaluations/ablation:
+    get:
+      summary: Read the platform-admin evaluation comparison evidence.
+      description: Returns measured A/B/C/D evidence when published, or an explicit NOT_EVALUATED envelope when no authorized matrix exists. This endpoint never starts or retries an experiment.
+      responses:
+        '200':
+          description: Read-only evaluation comparison.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvaluationComparisonResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '502':
+          $ref: '#/components/responses/BadGateway'
   /internal/tool-gateway/requests:
     post:
       summary: Execute one bounded read-only Worker tool request through the control plane.
@@ -3078,6 +3095,273 @@ components:
           nullable: true
         hasMore:
           type: boolean
+    EvaluationComparisonResponse:
+      type: object
+      required:
+      - status
+      - source
+      - matrix
+      - decision
+      properties:
+        status:
+          type: string
+          enum: [MEASURED, NOT_EVALUATED]
+        source:
+          type: string
+          enum: [RESULT_DIRECTORY, NONE]
+        matrix:
+          $ref: '#/components/schemas/EvaluationMatrixResponse'
+        decision:
+          $ref: '#/components/schemas/EvaluationGateDecisionResponse'
+        notEvaluatedReason:
+          type: string
+          nullable: true
+    EvaluationMatrixResponse:
+      type: object
+      required:
+      - matrixId
+      - datasetVersion
+      - generatedAtEpochMs
+      - runs
+      properties:
+        matrixId:
+          type: string
+        datasetVersion:
+          type: string
+        datasetHash:
+          type: string
+          nullable: true
+        datasetSplit:
+          type: string
+          nullable: true
+        generatedAtEpochMs:
+          type: integer
+          format: int64
+        runs:
+          type: array
+          items:
+            $ref: '#/components/schemas/EvaluationRunResponse'
+    EvaluationRunResponse:
+      type: object
+      required:
+      - runId
+      - datasetVersion
+      - group
+      - groupName
+      - executionMode
+      - workflowVersion
+      - codeVersion
+      - budgetVersion
+      - status
+      - gateStatus
+      - decision
+      - caseResults
+      - metrics
+      properties:
+        runId:
+          type: string
+        datasetVersion:
+          type: string
+        datasetHash:
+          type: string
+          nullable: true
+        datasetSplit:
+          type: string
+          nullable: true
+        environmentHash:
+          type: string
+          nullable: true
+        pricingSnapshot:
+          type: object
+          additionalProperties: true
+        group:
+          type: string
+          enum: [A, B, C, D]
+        groupName:
+          type: string
+        executionMode:
+          type: string
+          enum: [LIVE_CONTROL_PLANE, FIXTURE_BASELINE]
+        workflowKey:
+          type: string
+        workflowVersion:
+          type: string
+        codeVersion:
+          type: string
+        bundleHash:
+          type: string
+          nullable: true
+        promptSchemaVersions:
+          type: object
+          additionalProperties:
+            type: string
+        modelVersion:
+          type: string
+          nullable: true
+        retrieverVersion:
+          type: string
+          nullable: true
+        toolPolicyVersion:
+          type: string
+          nullable: true
+        budgetVersion:
+          type: string
+        randomSeed:
+          type: integer
+          nullable: true
+        status:
+          type: string
+        gateStatus:
+          type: string
+        decision:
+          type: string
+        notExecutedReason:
+          type: string
+          nullable: true
+        caseResults:
+          type: array
+          items:
+            $ref: '#/components/schemas/EvaluationCaseResponse'
+        metrics:
+          type: array
+          items:
+            $ref: '#/components/schemas/EvaluationMetricResponse'
+    EvaluationCaseResponse:
+      type: object
+      required:
+      - caseId
+      - repetition
+      - status
+      - failureCodes
+      properties:
+        caseId:
+          type: string
+        repetition:
+          type: integer
+        workflowRunId:
+          type: string
+          nullable: true
+        traceId:
+          type: string
+          nullable: true
+        bundleHash:
+          type: string
+          nullable: true
+        rubricRef:
+          type: string
+          nullable: true
+        status:
+          type: string
+        gatePass:
+          type: boolean
+          nullable: true
+        mustTraceCoverage:
+          type: number
+          nullable: true
+        blockingIssueCount:
+          type: integer
+          nullable: true
+        unauthorizedToolRequests:
+          type: integer
+          nullable: true
+        invalidToolArguments:
+          type: integer
+          nullable: true
+        toolCallCount:
+          type: integer
+          nullable: true
+        unauthorizedToolExecutions:
+          type: integer
+          nullable: true
+        schemaInvalidCount:
+          type: integer
+          nullable: true
+        durationMs:
+          type: number
+          nullable: true
+        steps:
+          type: integer
+          nullable: true
+        replans:
+          type: integer
+          nullable: true
+        pathOscillations:
+          type: integer
+          nullable: true
+        p95LatencyMs:
+          type: number
+          nullable: true
+        tokens:
+          type: integer
+          nullable: true
+        cost:
+          type: number
+          nullable: true
+        failureCodes:
+          type: array
+          items:
+            type: string
+    EvaluationMetricResponse:
+      type: object
+      required:
+      - name
+      - status
+      - unit
+      - source
+      properties:
+        name:
+          type: string
+        status:
+          type: string
+        value:
+          type: number
+          nullable: true
+        unit:
+          type: string
+        source:
+          type: string
+        note:
+          type: string
+          nullable: true
+        intervalLow:
+          type: number
+          nullable: true
+        intervalHigh:
+          type: number
+          nullable: true
+        sampleCount:
+          type: integer
+          nullable: true
+        statisticVersion:
+          type: string
+          nullable: true
+    EvaluationGateDecisionResponse:
+      type: object
+      required:
+      - decision
+      - gateStatus
+      - reasons
+      - baselineRunId
+      - candidateRunId
+      properties:
+        decision:
+          type: string
+        gateStatus:
+          type: string
+        reasons:
+          type: array
+          items:
+            type: string
+        baselineRunId:
+          type: string
+        candidateRunId:
+          type: string
+        statisticsVersion:
+          type: string
+          nullable: true
+        pairedStatistics:
+          type: object
+          additionalProperties: true
     ReviewResponse:
       type: object
       required:
