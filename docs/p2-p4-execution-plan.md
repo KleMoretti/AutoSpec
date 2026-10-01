@@ -11,7 +11,7 @@ database_baseline: V1
 
 本文件分解 [总计划](autospec-v5-spec-sandbox-plan.md) 的 P2（证据）、P3（可靠性及独立扩展）、P4（展示），与 [P0/P1 手册](p0-p1-execution-plan.md) 属于同一条路线。按用户要求保留在 `docs/` 根目录。适用对象是上下文较短、推理能力较弱的执行模型：一次只完成一个任务，按明确输入、步骤、测试和验收推进，不自行扩展目标。
 
-**本文件已更新为实施交接记录。** 本轮完成了可在本地离线验证的 P2–P4 代码、契约、迁移、界面和测试，并完成带 `spec-verifier` 的隔离 fixture 六节点、10/20 并发、取消、worker 重启、Redis poison 和 Outbox 进程中断恢复运行；2026-10-01 又按 README 走通了 Docker fixture 浏览器演示和审批/Trace 门禁观察，补齐平台管理员只读 A/B/C/D 评测比较接口、结果目录加载和明确未执行看板，并使用本地真实模型完成 P3-K3 同集 embedding 对照。P2-F 已补齐冻结输入下的 10/20 成功容量批次；r10 身份一致的 fixture smoke 已通过，随后在用户授权的 13 元 DeepSeek 预算内完成了 A/B/C/D live smoke 及迁移后的 D-only 重试。live smoke 的失败、质量门禁和预算保留原样，不能晋级为完整 dev/holdout 或发布结论；P4-E 截图归档按用户明确要求豁免。剩余缺项、验证命令和下一步见 [阶段交接证据](archive/evidence/p2-p4-2026-09-30.md) 与 [浏览器演示补充证据](archive/evidence/p2-p4-2026-10-01.md)。
+**本文件已更新为实施交接记录。** 本轮完成了可在本地离线验证的 P2–P4 代码、契约、迁移、界面和测试，并完成带 `spec-verifier` 的隔离 fixture 六节点、10/20 并发、取消、worker 重启、Redis poison 和 Outbox 进程中断恢复运行；2026-10-01 又按 README 走通了 Docker fixture 浏览器演示和审批/Trace 门禁观察，补齐平台管理员只读 A/B/C/D 评测比较接口、结果目录加载和明确未执行看板，并使用本地真实模型完成 P3-K3 同集 embedding 对照。P2-F 已补齐冻结输入下的 10/20 成功容量批次；r10 身份一致的 fixture smoke 已通过，随后在用户授权的 13 元 DeepSeek 预算内完成了 A/B/C/D live smoke 及迁移后的 D-only 重试，并用 `--resume` 补齐了 r1 的结果矩阵与 `NOT_EVALUATED` gate。live smoke 的失败、质量门禁和预算保留原样，不能晋级为完整 dev/holdout 或发布结论；P4-E 截图归档按用户明确要求豁免。剩余缺项、验证命令和下一步见 [阶段交接证据](archive/evidence/p2-p4-2026-09-30.md) 与 [浏览器演示补充证据](archive/evidence/p2-p4-2026-10-01.md)。
 
 ## 1. 开工基线与必须纠正的旧假设
 
