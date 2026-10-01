@@ -1,5 +1,6 @@
 import hmac
 import os
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -8,6 +9,7 @@ from pydantic import BaseModel, Field
 from evaluation.ablation import evaluate_release_gate, run_ablation_matrix
 from evaluation.autospec_case_catalog import list_autospec_cases
 from evaluation.retrieval import fixture_retrieval_evaluation
+from evaluation.result_directory import EvaluationResultDirectoryError, load_result_directory
 from schemas.evaluation import (
     AutoSpecEvalRun,
     AutoSpecEvaluationComparison,
@@ -72,6 +74,20 @@ async def ablation_evaluation() -> dict:
     makes the dashboard useful without fabricating fixture or live metrics.
     """
 
+    configured_directory = os.getenv("AUTOSPEC_EVALUATION_RESULT_DIR", "").strip()
+    if configured_directory:
+        try:
+            return load_result_directory(Path(configured_directory)).model_dump(mode="json")
+        except EvaluationResultDirectoryError:
+            # Do not expose host paths or raw result contents through the API.
+            return (await _not_evaluated_comparison(
+                "The configured evaluation result directory is unavailable or invalid."
+            )).model_dump(mode="json")
+
+    return (await _not_evaluated_comparison()).model_dump(mode="json")
+
+
+async def _not_evaluated_comparison(reason: str | None = None) -> AutoSpecEvaluationComparison:
     matrix = await run_ablation_matrix(matrix_id="not-executed")
     matrix = matrix.model_copy(update={
         "runs": [
@@ -80,13 +96,14 @@ async def ablation_evaluation() -> dict:
         ]
     })
     baseline, candidate = matrix.runs[0], matrix.runs[-1]
+    decision_reason = reason or (
+        "No authorized control-plane comparison has been published; "
+        "fixture output is not used as a live metric."
+    )
     decision = AutoSpecGateDecision(
         decision="NOT_EVALUATED",
         gate_status="NOT_EVALUATED",
-        reasons=[
-            "No authorized control-plane comparison has been published; "
-            "fixture output is not used as a live metric."
-        ],
+        reasons=[decision_reason],
         baseline_run_id=baseline.run_id,
         candidate_run_id=candidate.run_id,
     )
@@ -95,9 +112,9 @@ async def ablation_evaluation() -> dict:
         source="NONE",
         matrix=matrix,
         decision=decision,
-        not_evaluated_reason=decision.reasons[0],
+        not_evaluated_reason=decision_reason,
     )
-    return comparison.model_dump(mode="json")
+    return comparison
 
 
 @app.post("/evaluation/release-gate")
