@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from evaluation.freeze_ablation_contracts import GROUPS, freeze_contracts
+from evaluation.freeze_ablation_contracts import GROUPS, READ_ONLY_TOOLS, SPEC_VERIFY_TOOL, freeze_contracts
 from schemas.workflow_spec import WorkflowSpec
 
 
@@ -46,6 +46,8 @@ def test_freeze_keeps_common_nodes_and_only_changes_backend_knobs() -> None:
         assert backend["tool_policy"]["enabled"] is tools
         assert backend["verification_policy"]["enabled"] is verify
         assert backend["verification_policy"]["required_level"] == level
+        expected_tools = (READ_ONLY_TOOLS + ([SPEC_VERIFY_TOOL] if verify else [])) if tools else []
+        assert backend["tool_policy"]["allowed_tools"] == expected_tools
 
 
 def test_freeze_does_not_modify_published_base() -> None:

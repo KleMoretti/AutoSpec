@@ -25,6 +25,13 @@ GROUPS: tuple[tuple[str, str, bool, bool, bool], ...] = (
     ("D", "loop-tools-verify", True, True, True),
 )
 
+READ_ONLY_TOOLS = [
+    {"name": "knowledge.search", "version": "v1"},
+    {"name": "artifact.get", "version": "v1"},
+    {"name": "contract.lookup", "version": "v1"},
+]
+SPEC_VERIFY_TOOL = {"name": "spec.verify", "version": "v1"}
+
 
 def canonical_json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
@@ -50,6 +57,11 @@ def freeze_contracts(base_path: Path, output_dir: Path, version_suffix: str) -> 
         backend = next(node for node in spec["nodes"] if node["node_id"] == "backend_engineer")
         backend["agent_loop_policy"]["enabled"] = loop_enabled
         backend["tool_policy"]["enabled"] = tools_enabled
+        backend["tool_policy"]["allowed_tools"] = (
+            copy.deepcopy(READ_ONLY_TOOLS)
+            + ([copy.deepcopy(SPEC_VERIFY_TOOL)] if verify_enabled else [])
+            if tools_enabled else []
+        )
         backend["verification_policy"]["enabled"] = verify_enabled
         backend["verification_policy"]["required_level"] = "L1" if verify_enabled else "NONE"
         backend["verification_policy"]["policy_hash"] = _verification_policy_hash(
