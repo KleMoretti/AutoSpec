@@ -337,6 +337,8 @@ function QualityView({ data }: { data: Record<string, unknown> }) {
   const { t } = useTranslation();
   const score = Number(data.overall_score ?? data.score ?? 0);
   const issues = objects(data.issues);
+  const traceability = objects(data.requirement_traceability);
+  const verificationFact = objectValue(data.verification_fact);
   return (
     <div className="quality-view">
       <Progress
@@ -352,6 +354,47 @@ function QualityView({ data }: { data: Record<string, unknown> }) {
           {t('artifacts.findingsGrade', { count: issues.length, grade: text(data.final_grade, '--') })}
         </Typography.Text>
       </div>
+      {traceability.length > 0 ? (
+        <Card size="small" title={t('artifacts.traceabilityMatrix')}>
+          <List
+            size="small"
+            dataSource={traceability}
+            renderItem={(trace) => {
+              const covered = trace.covered === true;
+              return (
+                <List.Item>
+                  <List.Item.Meta
+                    title={<Space><Tag color={covered ? 'green' : 'red'}>{covered ? t('artifacts.covered') : t('artifacts.missing')}</Tag><Typography.Text strong>{text(trace.requirement_id, t('common.unknown'))}</Typography.Text><Tag>{text(trace.priority, '--')}</Tag></Space>}
+                    description={(
+                      <Space direction="vertical" size={2}>
+                        <span>{text(trace.requirement)}</span>
+                        <Typography.Text type="secondary">{t('artifacts.traceEvidence', {
+                          api: strings(trace.api_evidence).length,
+                          data: strings(trace.data_evidence).length,
+                          ui: strings(trace.ui_evidence).length,
+                          acceptance: strings(trace.acceptance_evidence).length
+                        })}</Typography.Text>
+                      </Space>
+                    )}
+                  />
+                </List.Item>
+              );
+            }}
+          />
+        </Card>
+      ) : null}
+      {verificationFact ? (
+        <Card size="small" title={t('artifacts.verificationEvidence')}>
+          <Descriptions size="small" column={{ xs: 1, sm: 2, md: 4 }}>
+            <Descriptions.Item label={t('artifacts.verificationStatus')}><Tag color={statusColor(text(verificationFact.status))}>{text(verificationFact.status, t('common.unknown'))}</Tag></Descriptions.Item>
+            <Descriptions.Item label={t('artifacts.verificationLevel')}>{text(verificationFact.achieved_level, '--')}</Descriptions.Item>
+            <Descriptions.Item label={t('artifacts.verifier')}>{text(verificationFact.verifier_version, '--')}</Descriptions.Item>
+            <Descriptions.Item label={t('artifacts.compiler')}>{text(verificationFact.compiler_version, '--')}</Descriptions.Item>
+            <Descriptions.Item label={t('artifacts.sourceDigest')}><Typography.Text code>{shortHash(text(verificationFact.source_digest))}</Typography.Text></Descriptions.Item>
+            <Descriptions.Item label={t('artifacts.expiresAt')}>{formatEpoch(text(verificationFact.expires_at_epoch_ms))}</Descriptions.Item>
+          </Descriptions>
+        </Card>
+      ) : null}
       <List
         size="small"
         dataSource={issues}
@@ -366,6 +409,21 @@ function QualityView({ data }: { data: Record<string, unknown> }) {
       />
     </div>
   );
+}
+
+function objectValue(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function shortHash(value: string): string {
+  return value.length > 18 ? `${value.slice(0, 10)}…${value.slice(-6)}` : value || '--';
+}
+
+function formatEpoch(value: string): string {
+  const epoch = Number(value);
+  return Number.isFinite(epoch) && epoch > 0 ? new Date(epoch).toLocaleString() : '--';
 }
 
 function Provenance({ artifact }: { artifact: ArtifactResponse }) {

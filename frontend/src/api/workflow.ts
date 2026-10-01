@@ -209,6 +209,22 @@ export interface WorkflowTraceInvocationResponse {
   errorCode?: string;
 }
 
+export interface WorkflowTraceStepResponse {
+  id?: number;
+  step?: number;
+  phase?: string;
+  status?: string;
+  reasonCode?: string;
+  planHash?: string;
+  observationHash?: string;
+  validationIssueCodes?: string[];
+  modelCallRef?: string;
+  toolCallRef?: string;
+  startedAtEpochMs?: number;
+  finishedAtEpochMs?: number;
+  durationMs?: number;
+}
+
 export interface WorkflowTraceNodeResponse {
   nodeRunId: number;
   nodeId: string;
@@ -232,6 +248,7 @@ export interface WorkflowTraceNodeResponse {
   errorCode?: string;
   workerId?: string;
   invocations: WorkflowTraceInvocationResponse[];
+  steps?: WorkflowTraceStepResponse[];
 }
 
 export interface WorkflowFailureClusterResponse {

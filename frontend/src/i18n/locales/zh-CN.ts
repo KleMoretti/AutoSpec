@@ -244,7 +244,17 @@ const zhCN = {
     metricsResource: '运行指标',
     traceResource: 'Trace',
     trace: {
-      title: '工具与 Trace 证据'
+      title: '工具与 Trace 证据',
+      stepCount: 'Agent 步骤',
+      step: '步骤',
+      reason: '原因',
+      validation: '校验问题',
+      duration: '耗时',
+      planHash: '计划哈希',
+      observationHash: '观察哈希',
+      modelCall: '模型调用',
+      toolCall: '工具调用',
+      noSteps: '没有记录 Agent 步骤。'
     },
     metrics: {
       queueTime: '排队时间',
@@ -386,7 +396,18 @@ const zhCN = {
     nodeRun: '节点运行',
     parentArtifact: '父 Artifact',
     upstreamVersions: '上游版本',
-    citations: '引用（{{count}}）'
+    citations: '引用（{{count}}）',
+    traceabilityMatrix: '需求追踪矩阵',
+    covered: '已覆盖',
+    missing: '缺失',
+    traceEvidence: 'API {{api}} · 数据 {{data}} · UI {{ui}} · 验收 {{acceptance}}',
+    verificationEvidence: '验证证据',
+    verificationStatus: '状态',
+    verificationLevel: '达到级别',
+    verifier: 'Verifier',
+    compiler: 'Compiler',
+    sourceDigest: '源摘要',
+    expiresAt: '过期时间'
   },
   skeleton: {
     invalidJson: '前端骨架 JSON 无效',

@@ -244,7 +244,17 @@ const enUS = {
     metricsResource: 'metrics',
     traceResource: 'trace',
     trace: {
-      title: 'Tool and trace evidence'
+      title: 'Tool and trace evidence',
+      stepCount: 'Agent steps',
+      step: 'Step',
+      reason: 'Reason',
+      validation: 'Validation issues',
+      duration: 'Duration',
+      planHash: 'Plan hash',
+      observationHash: 'Observation hash',
+      modelCall: 'Model call',
+      toolCall: 'Tool call',
+      noSteps: 'No agent steps recorded.'
     },
     metrics: {
       queueTime: 'Queue time',
@@ -386,7 +396,18 @@ const enUS = {
     nodeRun: 'Node run',
     parentArtifact: 'Parent artifact',
     upstreamVersions: 'Upstream versions',
-    citations: 'Citations ({{count}})'
+    citations: 'Citations ({{count}})',
+    traceabilityMatrix: 'Requirement traceability matrix',
+    covered: 'Covered',
+    missing: 'Missing',
+    traceEvidence: 'API {{api}} · data {{data}} · UI {{ui}} · acceptance {{acceptance}}',
+    verificationEvidence: 'Verification evidence',
+    verificationStatus: 'Status',
+    verificationLevel: 'Achieved level',
+    verifier: 'Verifier',
+    compiler: 'Compiler',
+    sourceDigest: 'Source digest',
+    expiresAt: 'Expires at'
   },
   skeleton: {
     invalidJson: 'Invalid frontend skeleton JSON',
