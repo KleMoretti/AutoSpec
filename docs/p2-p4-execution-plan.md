@@ -11,7 +11,7 @@ database_baseline: V1
 
 本文件分解 [总计划](autospec-v5-spec-sandbox-plan.md) 的 P2（证据）、P3（可靠性及独立扩展）、P4（展示），与 [P0/P1 手册](p0-p1-execution-plan.md) 属于同一条路线。按用户要求保留在 `docs/` 根目录。适用对象是上下文较短、推理能力较弱的执行模型：一次只完成一个任务，按明确输入、步骤、测试和验收推进，不自行扩展目标。
 
-**本文件已更新为实施交接记录。** 本轮完成了可在本地离线验证的 P2–P4 代码、契约、迁移、界面和测试，并完成带 `spec-verifier` 的隔离 fixture 六节点、10/20 并发、取消、worker 重启、Redis poison 和 Outbox 进程中断恢复运行；2026-10-01 又按 README 走通了 Docker fixture 浏览器演示和审批/Trace 门禁观察，并补齐平台管理员只读 A/B/C/D 评测比较接口与明确未执行看板。不把未获授权的付费评测、真实 embedding、生产容量或仓库截图文件写成已完成。P2-F 的故障边界已修复并有证据，但容量结果仍是 fixture smoke，不能晋级为生产 SLA 或质量结论。剩余阻塞项、验证命令和下一步见 [阶段交接证据](archive/evidence/p2-p4-2026-09-30.md) 与 [浏览器演示补充证据](archive/evidence/p2-p4-2026-10-01.md)。
+**本文件已更新为实施交接记录。** 本轮完成了可在本地离线验证的 P2–P4 代码、契约、迁移、界面和测试，并完成带 `spec-verifier` 的隔离 fixture 六节点、10/20 并发、取消、worker 重启、Redis poison 和 Outbox 进程中断恢复运行；2026-10-01 又按 README 走通了 Docker fixture 浏览器演示和审批/Trace 门禁观察，补齐平台管理员只读 A/B/C/D 评测比较接口与明确未执行看板，并使用本地真实模型完成 P3-K3 同集 embedding 对照。不把未获授权的付费评测、生产容量或仓库截图文件写成已完成。P2-F 的故障边界已修复并有证据，但容量结果仍是 fixture smoke，不能晋级为生产 SLA 或质量结论。剩余阻塞项、验证命令和下一步见 [阶段交接证据](archive/evidence/p2-p4-2026-09-30.md) 与 [浏览器演示补充证据](archive/evidence/p2-p4-2026-10-01.md)。
 
 ## 1. 开工基线与必须纠正的旧假设
 
@@ -75,7 +75,7 @@ P3-MCP 在 P3-S/P3-F 后、且外部集成需求明确时插入；P3-I 在 BASE-
 | P3-F | SIG-P3-03 | P3-S、P2-D | done | function-calling |
 | P3-K1 | SIG-P3-04 文档语料 | BASE-01 | done | corpus-ingest |
 | P3-K2 | SIG-P3-04 记忆批准与召回 | P3-K1 | done | memory |
-| P3-K3 | SIG-P3-04 embedding 对照 | P3-K2、有效预算或本地模型 | blocked：外部语义 embedding provider 未配置/授权 | retrieval-eval |
+| P3-K3 | SIG-P3-04 embedding 对照 | P3-K2、有效预算或本地模型 | done：本地 `sentence-transformers` 真实模型与 hashing 在 100 条、5 领域、`top_k=5` 同集对照；外部 provider 仍未配置 | retrieval-eval |
 | P3-MCP | SIG-P3-01 | P3-S、P3-F、明确外部需求 | deferred | mcp |
 | P3-I | SIG-P3-06 | 主线完成、明确选择 | deferred | impact |
 | P4-A | SIG-P4-01 数据接口 | BASE-03、P2-D | done：已同步知识上传、Trace steps 和平台管理员评测比较契约 | ui-contract |
@@ -389,7 +389,7 @@ P3-MCP 在 P3-S/P3-F 后、且外部集成需求明确时插入；P3-I 在 BASE-
 
 ### P3-K3：真实 embedding 与 hashing 的同集对照
 
-**入口**：`runtime/embedding_provider.py`、`runtime/hybrid_rag.py`、Java `KnowledgeEmbeddingService.java`、`evaluation/retrieval.py`、`evaluation/cli_retrieval_gold.py`、`evaluation/datasets/`。
+**入口**：`runtime/embedding_provider.py`、`runtime/hybrid_rag.py`、Java `KnowledgeEmbeddingService.java`、`evaluation/retrieval.py`、`evaluation/cli_retrieval_gold.py`、`evaluation/cli_retrieval_compare.py`、`evaluation/datasets/`。
 
 **步骤**：
 
@@ -828,7 +828,7 @@ next_task: "前置满足的下一项"
 ### 12.3 本轮阶段交接状态
 
 - 离线实施范围已完成：显式规格适配、评测 manifest/数据集/统计、可靠性边界、原生协议拒绝降级、项目知识上传与可信记忆、Trace/验证展示、OpenAPI 同步和 15 张问答卡片。
-- 必须保持 `blocked` 的项目：P2-E 付费正式消融、P2-F 的容量/SLA 与质量晋级、P3-K3 外部语义 embedding 对照、P4-D 的实测 A/B/C/D 证据，以及 P4-E 的仓库截图归档。P4-D 的平台管理员只读接口与前端 NOT_EVALUATED 看板已完成，当前接口明确返回四组 `NOT_EXECUTED`、空指标和 `NOT_EVALUATED` 决策，不伪造演示百分比。P4-E 的 Docker fixture 浏览器演示已走通并捕获审批、Evaluator 门禁负例、Evaluator 通过和交付 bundle 画面，但截图尚未形成 `docs/archive/` 图片文件。P2-F 已有 campus 负例和 inventory 成功六节点样本；10/20 并发仍全部因当前批次的 fixture 质量门禁失败，虽已补录失败终态 P50/P95，仍未被晋级为成功容量、生产 SLA 或质量结论。提交 `00fe70d` 已补齐 Agent Engine 本地/Compose 地址边界，并通过重建后的健康检查与首页复验。
-- 必须保持 `blocked` 的项目：P2-E 付费正式消融、P2-F 的容量/SLA 与质量晋级、P3-K3 外部语义 embedding 对照、P4-D 的实测 A/B/C/D 证据，以及 P4-E 的仓库截图归档。P2-E 续作核验确认根目录模型凭据虽已配置，但隔离库只有 `pm-schema-repair-v12` 一个 `PUBLISHED` 版本，缺少当前 A/B/C/D manifest、价格快照、预算授权和 B 候选，不能误用归档 v4 配置。P4-D 的平台管理员只读接口与前端 NOT_EVALUATED 看板已完成，当前接口明确返回四组 `NOT_EXECUTED`、空指标和 `NOT_EVALUATED` 决策，不伪造演示百分比。P4-E 的 Docker fixture 浏览器演示已走通并捕获审批、Evaluator 门禁负例、Evaluator 通过和交付 bundle 画面，但截图尚未形成 `docs/archive/` 图片文件。P2-F 已有 campus 负例和 inventory 成功六节点样本；10/20 并发仍全部因当前批次的 fixture 质量门禁失败，虽已补录失败终态 P50/P95，仍未被晋级为成功容量、生产 SLA 或质量结论。提交 `00fe70d` 已补齐 Agent Engine 本地/Compose 地址边界，并通过重建后的健康检查与首页复验。
+- 必须保持 `blocked` 的项目：P2-E 付费正式消融、P2-F 的容量/SLA 与质量晋级、P4-D 的实测 A/B/C/D 证据，以及 P4-E 的仓库截图归档。P2-E 续作核验确认根目录模型凭据虽已配置，但隔离库只有 `pm-schema-repair-v12` 一个 `PUBLISHED` 版本，缺少当前 A/B/C/D manifest、价格快照、预算授权和 B 候选，不能误用归档 v4 配置。P4-D 的平台管理员只读接口与前端 NOT_EVALUATED 看板已完成，当前接口明确返回四组 `NOT_EXECUTED`、空指标和 `NOT_EVALUATED` 决策，不伪造演示百分比。P4-E 的 Docker fixture 浏览器演示已走通并捕获审批、Evaluator 门禁负例、Evaluator 通过和交付 bundle 画面，但截图尚未形成 `docs/archive/` 图片文件。P2-F 已有 campus 负例和 inventory 成功六节点样本；10/20 并发仍全部因当前批次的 fixture 质量门禁失败，虽已补录失败终态 P50/P95，仍未被晋级为成功容量、生产 SLA 或质量结论。提交 `00fe70d` 已补齐 Agent Engine 本地/Compose 地址边界，并通过重建后的健康检查与首页复验。
+- P3-K3 已完成本地真实模型对照：100 条、5 个领域、`top_k=5`，hashing 与 local semantic 的 Recall@5 都为 `1.0`，ACL/过期泄漏均为 `0`；MRR/nDCG、耗时和模型指纹见 [2026-10-01 证据](archive/evidence/p2-p4-2026-10-01.md)。该结果不宣称语义质量提升，也不替代外部 provider 生产配置。
 - P3-MCP、P3-I 继续 `deferred`，因为本轮没有明确外部集成或变更影响范围选择。
 - 可复核命令、实际结果、变更文件、阻塞条件和下一步写入 [p2-p4-2026-09-30.md](archive/evidence/p2-p4-2026-09-30.md)；浏览器演示补充写入 [p2-p4-2026-10-01.md](archive/evidence/p2-p4-2026-10-01.md)。后续续做先读最新记录和实际工作区，不依赖口头结论。
