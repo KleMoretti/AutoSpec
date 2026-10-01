@@ -62,6 +62,10 @@ def freeze_contracts(base_path: Path, output_dir: Path, version_suffix: str) -> 
             + ([copy.deepcopy(SPEC_VERIFY_TOOL)] if verify_enabled else [])
             if tools_enabled else []
         )
+        backend["tool_policy"]["allowed_side_effects"] = (
+            ["READ_ONLY", "DETERMINISTIC", "SANDBOXED"]
+            if tools_enabled else []
+        )
         backend["verification_policy"]["enabled"] = verify_enabled
         backend["verification_policy"]["required_level"] = "L1" if verify_enabled else "NONE"
         backend["verification_policy"]["policy_hash"] = _verification_policy_hash(

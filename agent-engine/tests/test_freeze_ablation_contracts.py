@@ -48,6 +48,9 @@ def test_freeze_keeps_common_nodes_and_only_changes_backend_knobs() -> None:
         assert backend["verification_policy"]["required_level"] == level
         expected_tools = (READ_ONLY_TOOLS + ([SPEC_VERIFY_TOOL] if verify else [])) if tools else []
         assert backend["tool_policy"]["allowed_tools"] == expected_tools
+        assert backend["tool_policy"]["allowed_side_effects"] == (
+            ["READ_ONLY", "DETERMINISTIC", "SANDBOXED"] if tools else []
+        )
 
 
 def test_freeze_does_not_modify_published_base() -> None:
