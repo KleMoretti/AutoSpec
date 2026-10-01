@@ -832,4 +832,4 @@ next_task: "前置满足的下一项"
 - P3-K3 已完成本地真实模型对照：100 条、5 个领域、`top_k=5`，hashing 与 local semantic 的 Recall@5 都为 `1.0`，ACL/过期泄漏均为 `0`；MRR/nDCG、耗时和模型指纹见 [2026-10-01 证据](archive/evidence/p2-p4-2026-10-01.md)。该结果不宣称语义质量提升，也不替代外部 provider 生产配置。
 - P3-MCP、P3-I 继续 `deferred`，因为本轮没有明确外部集成或变更影响范围选择。
 - 可复核命令、实际结果、变更文件、阻塞条件和下一步写入 [p2-p4-2026-09-30.md](archive/evidence/p2-p4-2026-09-30.md)；浏览器演示补充写入 [p2-p4-2026-10-01.md](archive/evidence/p2-p4-2026-10-01.md)。后续续做先读最新记录和实际工作区，不依赖口头结论。
-- 本轮收口回归已通过：Agent Engine `226 passed`、Backend `185 tests`、Frontend `28 tests` 与生产构建；WorkflowSpec 同步校验、三个 Compose 配置面和隔离项目 9 服务健康检查均通过。该结果不解除 P2-E 完整 dev/holdout 或 P4-D 完整晋级矩阵的阻塞；P4-E 截图归档已按用户要求豁免。
+- 本轮收口回归已通过：Agent Engine `226 passed`、Backend `185 tests`、Frontend `29 tests` 与生产构建；WorkflowSpec 同步校验、三个 Compose 配置面和隔离项目 9 服务健康检查均通过。该结果不解除 P2-E 完整 dev/holdout 或 P4-D 完整晋级矩阵的阻塞；P4-E 截图归档已按用户要求豁免。
