@@ -16,10 +16,10 @@ class SchemaInitSqlTest {
         source.setURL("jdbc:h2:mem:baseline;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH");
         try (var connection = source.getConnection()) {
             var flyway = Flyway.configure().dataSource(source).locations("classpath:db/migration").load();
-            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(3);
+            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(4);
             flyway.validate();
             assertThat(flyway.migrate().migrationsExecuted).isZero();
-            assertThat(flyway.info().current().getVersion().toString()).isEqualTo("3");
+            assertThat(flyway.info().current().getVersion().toString()).isEqualTo("4");
 
             Set<String> tables = new HashSet<>();
             try (var rows = connection.getMetaData().getTables(null, "public", "%", new String[]{"TABLE"})) {
@@ -37,6 +37,7 @@ class SchemaInitSqlTest {
                         + "reserved_input_tokens, reserved_output_tokens, reserved_cost, reserved_model_calls from workflow_node_run where 1 = 0");
                 statement.executeQuery("select input_json, output_json from workflow_node_run where 1 = 0");
                 statement.executeQuery("select workflow_snapshot_json from workflow_run where 1 = 0");
+                statement.executeQuery("select payload_json from workflow_outbox where 1 = 0");
                 statement.executeQuery("select claim_owner, claim_until, claim_version from workflow_outbox where 1 = 0");
                 statement.executeQuery("select upload_idempotency_key from artifact where 1 = 0");
                 statement.executeQuery("select source_ref, content_hash, version, expires_at "
