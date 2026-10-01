@@ -11,7 +11,7 @@ database_baseline: V1
 
 本文件分解 [总计划](autospec-v5-spec-sandbox-plan.md) 的 P2（证据）、P3（可靠性及独立扩展）、P4（展示），与 [P0/P1 手册](p0-p1-execution-plan.md) 属于同一条路线。按用户要求保留在 `docs/` 根目录。适用对象是上下文较短、推理能力较弱的执行模型：一次只完成一个任务，按明确输入、步骤、测试和验收推进，不自行扩展目标。
 
-**本文件已更新为实施交接记录。** 本轮完成了可在本地离线验证的 P2–P4 代码、契约、迁移、界面和测试，并完成带 `spec-verifier` 的隔离 fixture 六节点、10/20 并发、取消、worker 重启、Redis poison 和 Outbox 进程中断恢复运行；2026-10-01 又按 README 走通了 Docker fixture 浏览器演示和审批/Trace 门禁观察，补齐平台管理员只读 A/B/C/D 评测比较接口、结果目录加载和明确未执行看板，并使用本地真实模型完成 P3-K3 同集 embedding 对照。P2-F 已补齐冻结输入下的 10/20 成功容量批次；本轮完成 r9 历史审计并重新冻结了身份一致的 r10 四组 fixture smoke，但这些仍是 fixture 观测，不能晋级为生产 SLA、live 成本或跨配置质量结论；不把误配置的 live 运行或仓库截图文件写成已完成。剩余阻塞项、验证命令和下一步见 [阶段交接证据](archive/evidence/p2-p4-2026-09-30.md) 与 [浏览器演示补充证据](archive/evidence/p2-p4-2026-10-01.md)。
+**本文件已更新为实施交接记录。** 本轮完成了可在本地离线验证的 P2–P4 代码、契约、迁移、界面和测试，并完成带 `spec-verifier` 的隔离 fixture 六节点、10/20 并发、取消、worker 重启、Redis poison 和 Outbox 进程中断恢复运行；2026-10-01 又按 README 走通了 Docker fixture 浏览器演示和审批/Trace 门禁观察，补齐平台管理员只读 A/B/C/D 评测比较接口、结果目录加载和明确未执行看板，并使用本地真实模型完成 P3-K3 同集 embedding 对照。P2-F 已补齐冻结输入下的 10/20 成功容量批次；r10 身份一致的 fixture smoke 已通过，随后在用户授权的 13 元 DeepSeek 预算内完成了 A/B/C/D live smoke 及迁移后的 D-only 重试。live smoke 的失败、质量门禁和预算保留原样，不能晋级为完整 dev/holdout 或发布结论；P4-E 截图归档按用户明确要求豁免。剩余缺项、验证命令和下一步见 [阶段交接证据](archive/evidence/p2-p4-2026-09-30.md) 与 [浏览器演示补充证据](archive/evidence/p2-p4-2026-10-01.md)。
 
 ## 1. 开工基线与必须纠正的旧假设
 
@@ -65,7 +65,7 @@ P3-MCP 在 P3-S/P3-F 后、且外部集成需求明确时插入；P3-I 在 BASE-
 | P2-B | SIG-P2-02 采集器 | P2-A | done | collector |
 | P2-C | SIG-P2-02 数据集 | P2-A | done | dataset |
 | P2-D | SIG-P2-02 判分统计 | P2-B、P2-C | done | metrics-gate |
-| P2-E | SIG-P2-02 正式评测 | P2-D、有效预算 | blocked：当前批次已冻结并发布 A/B/C/D `#10/#11/#12/#13`，r10 已修正 manifest 身份并完成 fixture smoke；当前 live 价格快照已归档，但仍缺新的独立预算授权和 holdout/live 执行，fixture 结果不能替代正式消融 | ablation |
+| P2-E | SIG-P2-02 正式评测 | P2-D、有效预算 | blocked：A/B/C/D `#10/#11/#12/#13`、r10 fixture smoke 和用户授权的 live smoke 已完成；live 结果含取消、Handler 错误、超时和质量门禁阻断，完整 development `192` 节点样本与 holdout `96` 节点样本未执行，不能形成晋级结论 | ablation |
 | P2-F | SIG-P2-03 | P2-B；质量结论另依赖 P2-E | done：隔离空项目冻结 inventory 输入后完成 10/20 并发，30/30 run 六节点成功、Evaluator `100/A/PASSED`、预算已结算且无重试/恢复/重复副作用；另保留动态知识索引导致的失败 smoke，未将 fixture 观测晋级为生产 SLA 或跨配置质量结论 | traces-capacity |
 | P3-R1 | SIG-P3-05 watchdog | BASE-01 | done | watchdog |
 | P3-R2 | SIG-P3-05 poison / DLQ | P3-R1 | done | poison |
@@ -81,8 +81,8 @@ P3-MCP 在 P3-S/P3-F 后、且外部集成需求明确时插入；P3-I 在 BASE-
 | P4-A | SIG-P4-01 数据接口 | BASE-03、P2-D | done：已同步知识上传、Trace steps 和平台管理员评测比较契约 | ui-contract |
 | P4-B | SIG-P4-01 Trace / DAG | P4-A | done：步骤时间线已接入；未宣称动态 DAG 图验收 | trace-dag |
 | P4-C | SIG-P4-01 矩阵 / 验证 | P4-B | done | verification-ui |
-| P4-D | SIG-P4-01 评测看板 | P4-A、P2-D | blocked：已实现平台管理员只读比较 API/DTO、结果目录加载和 fixture/live 分离；r10 可作为显式 fixture 诊断输入，但仍无授权的 live/holdout 晋级矩阵 | eval-ui |
-| P4-E | SIG-P4-02 | P4-B/C/D | blocked：Docker + fixture 浏览器演示已走通；截图已在受控会话捕获但尚未形成 `docs/archive/` 图片文件 | demo-readme |
+| P4-D | SIG-P4-01 评测看板 | P4-A、P2-D | blocked：已实现平台管理员只读比较 API/DTO、结果目录加载和 fixture/live 分离，并接入 live smoke 结果；因缺少完整 dev/holdout 四组矩阵，页面必须继续显示 `NOT_EVALUATED`，不能展示晋级百分比 | eval-ui |
+| P4-E | SIG-P4-02 | P4-B/C/D | done（截图归档按用户明确要求豁免）：Docker + fixture 浏览器演示、审批/Trace/验证/交付链路已走通，截图仍只保留受控会话证据，不生成仓库图片文件 | demo-readme |
 | P4-F | SIG-P4-03 | P4-E | done：15 张问答卡片已归档 | interview-cards |
 | END-01 | 总计划 DoD | 必选任务完成或明确列缺项 | blocked：见交接证据中的外部条件 | final-handoff |
 
@@ -515,7 +515,7 @@ P3-MCP 在 P3-S/P3-F 后、且外部集成需求明确时插入；P3-I 在 BASE-
 5. 演示账号仅由本地 development 配置提供，README 说明如何安全设置，不提交实际密码；不能为了演示关闭后端权限或门禁。
 6. 证据表注明执行时间、模式、commit/工作区指纹、环境、失败/未执行项。Spec Sandbox 不等于生成的完整业务应用已通过验收。
 
-**必要验证**：一次按文档从预备环境走通完整 Demo、链接检查、截图脱敏与视觉核对。不新增 README 单元测试，不为录屏再跑付费矩阵。2026-10-01 已按 Docker fixture 走通登录→输入需求→审批→Trace/验证；浏览器接口只返回会话图片字节，未提供将截图写入仓库的能力，因此图片归档仍是明确缺口。
+**必要验证**：一次按文档从预备环境走通完整 Demo、链接检查、截图脱敏与视觉核对。不新增 README 单元测试，不为录屏再跑付费矩阵。2026-10-01 已按 Docker fixture 走通登录→输入需求→审批→Trace/验证；截图接口只返回受控会话图片字节，未生成仓库图片文件。用户已明确豁免截图归档，因此该项不再作为 P4-E 阻断条件。
 
 **验收**：他人按步骤能复现已声明的演示；缺外部服务时有准确停止提示，而不是偷偷切模式后仍宣称 live。
 
@@ -828,8 +828,8 @@ next_task: "前置满足的下一项"
 ### 12.3 本轮阶段交接状态
 
 - 离线实施范围已完成：显式规格适配、评测 manifest/数据集/统计、可靠性边界、原生协议拒绝降级、项目知识上传与可信记忆、Trace/验证展示、OpenAPI 同步和 15 张问答卡片。
-- 必须保持 `blocked` 的项目：P2-E 的 live/holdout 正式消融、P4-D 的 live/holdout 晋级证据，以及 P4-E 的仓库截图归档。当前批次已通过正式 API 发布 A/B/C/D `#10/#11/#12/#13`；r10 已修正 manifest 身份，fixture smoke 的 run `119–122` 四组成功，manifest hash 为 `689a6e56618ffbf521da79d43ddacbc65093ccb61103aef421d85f3c8907cb9a`。其 `AUTO_APPROVE_FOR_TEST` 是预注册 fixture 规则，不是人工批准，结果仍为 `FIXTURE_BASELINE/NOT_EVALUATED`，不能替代 live 结论；历史 r9 因 manifest 内部 experiment ID 与配置不一致，现已被 `--validate-only` 拒绝，不作为当前批次。当前 live 价格快照已归档为 `deepseek-flash-pricing-2026-10-01.json`，但旧 `interview-live-20260916-cny10` 授权已被旧批次预占用尽，仍缺新的独立预算授权。中间 r7 因根目录 `.env` 的 live 模式误注入而启动了两个 live 运行，已停止采集并正式取消 run `110`，不纳入证据；隔离 Agent API/Worker 随后强制固定为 fixture。P4-D 已增加 `AUTOSPEC_EVALUATION_RESULT_DIR` 只读结果目录加载、混合模式和 fixture 伪晋级拒绝；未配置目录仍明确返回 `NOT_EXECUTED/NOT_EVALUATED`。P4-E 的 Docker fixture 浏览器演示已走通并捕获审批、Evaluator 门禁负例、Evaluator 通过和交付 bundle 画面，但截图尚未形成 `docs/archive/` 图片文件。P2-F 已完成冻结输入下的 10/20 成功容量证据：项目 41 的 run 56–65、项目 42 的 run 66–85 均为 `COMPLETED`，各批次六节点成功、Evaluator `100/A/PASSED`，队列 P50/P95 为 10/13 秒与 18/20 秒，执行 P50/P95 为 101/108 毫秒与 101/107 毫秒；此前动态知识索引造成的失败 smoke 仍保留为负面边界，不将本地 fixture 观测写成生产 SLA 或跨配置质量结论。提交 `00fe70d` 已补齐 Agent Engine 本地/Compose 地址边界，并通过重建后的健康检查与首页复验。
+- 必须保持 `blocked` 的项目：P2-E 的完整 dev/holdout 正式消融与 P4-D 的完整 live/holdout 晋级证据；P4-E 截图归档已按用户要求豁免。当前批次已通过正式 API 发布 A/B/C/D `#10/#11/#12/#13`；r10 已修正 manifest 身份，fixture smoke 的 run `119–122` 四组成功，manifest hash 为 `689a6e56618ffbf521da79d43ddacbc65093ccb61103aef421d85f3c8907cb9a`。其 `AUTO_APPROVE_FOR_TEST` 是预注册 fixture 规则，不是人工批准，结果仍为 `FIXTURE_BASELINE/NOT_EVALUATED`，不能替代 live 结论；历史 r9 因 manifest 内部 experiment ID 与配置不一致，现已被 `--validate-only` 拒绝，不作为当前批次。用户随后授权 13 元 DeepSeek 预算，live smoke 的配置、run、迁移修复和 D-only 重试见 2026-10-01 证据；五次尝试共保守预占 10 元，完整 dev/holdout 所需样本超出本批次的可审计单次预算，不继续追加付费调用。中间 r7 因根目录 `.env` 的 live 模式误注入而启动的两个 live 运行已停止采集并正式取消，不纳入证据；隔离 Agent API/Worker 随后强制固定为 fixture。P4-D 已增加 `AUTOSPEC_EVALUATION_RESULT_DIR` 只读结果目录加载、混合模式和 fixture 伪晋级拒绝；结果目录在缺组或缺重复时仍明确返回 `NOT_EVALUATED`。P4-E 的 Docker fixture 浏览器演示已走通并捕获审批、Evaluator 门禁负例、Evaluator 通过和交付 bundle 画面，截图归档按用户要求不提交。P2-F 已完成冻结输入下的 10/20 成功容量证据：项目 41 的 run 56–65、项目 42 的 run 66–85 均为 `COMPLETED`，各批次六节点成功、Evaluator `100/A/PASSED`，队列 P50/P95 为 10/13 秒与 18/20 秒，执行 P50/P95 为 101/108 毫秒与 101/107 毫秒；此前动态知识索引造成的失败 smoke 仍保留为负面边界，不将本地 fixture 观测写成生产 SLA 或跨配置质量结论。提交 `00fe70d` 已补齐 Agent Engine 本地/Compose 地址边界，并通过重建后的健康检查与首页复验。
 - P3-K3 已完成本地真实模型对照：100 条、5 个领域、`top_k=5`，hashing 与 local semantic 的 Recall@5 都为 `1.0`，ACL/过期泄漏均为 `0`；MRR/nDCG、耗时和模型指纹见 [2026-10-01 证据](archive/evidence/p2-p4-2026-10-01.md)。该结果不宣称语义质量提升，也不替代外部 provider 生产配置。
 - P3-MCP、P3-I 继续 `deferred`，因为本轮没有明确外部集成或变更影响范围选择。
 - 可复核命令、实际结果、变更文件、阻塞条件和下一步写入 [p2-p4-2026-09-30.md](archive/evidence/p2-p4-2026-09-30.md)；浏览器演示补充写入 [p2-p4-2026-10-01.md](archive/evidence/p2-p4-2026-10-01.md)。后续续做先读最新记录和实际工作区，不依赖口头结论。
-- 本轮收口回归已通过：Agent Engine `225 passed`、Backend `185 tests`、Frontend `28 tests` 与生产构建；WorkflowSpec 同步校验、三个 Compose 配置面和隔离项目 9 服务健康检查均通过。该结果不解除 P2-E live/holdout、P4-D live/holdout 或 P4-E 截图归档的阻塞。
+- 本轮收口回归已通过：Agent Engine `226 passed`、Backend `185 tests`、Frontend `28 tests` 与生产构建；WorkflowSpec 同步校验、三个 Compose 配置面和隔离项目 9 服务健康检查均通过。该结果不解除 P2-E 完整 dev/holdout 或 P4-D 完整晋级矩阵的阻塞；P4-E 截图归档已按用户要求豁免。
