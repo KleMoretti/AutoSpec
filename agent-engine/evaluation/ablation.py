@@ -23,7 +23,7 @@ GROUPS: tuple[tuple[str, str], ...] = (
     ("A", "single-shot"),
     ("B", "loop-no-tools"),
     ("C", "loop-with-tools"),
-    ("D", "loop-tools-replan"),
+    ("D", "loop-tools-verify"),
 )
 
 LiveAblationRunner = Callable[
@@ -68,7 +68,7 @@ def ablation_configs() -> list[dict[str, Any]]:
         },
         {
             "group": "D",
-            "name": "loop-tools-replan",
+            "name": "loop-tools-verify",
             "agent_loop_enabled": True,
             "tool_enabled": True,
             "replan_enabled": True,

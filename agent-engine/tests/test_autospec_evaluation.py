@@ -38,7 +38,7 @@ async def test_ablation_matrix_is_explicitly_unexecuted_without_live_adapter() -
         ("A", "single-shot"),
         ("B", "loop-no-tools"),
         ("C", "loop-with-tools"),
-        ("D", "loop-tools-replan"),
+        ("D", "loop-tools-verify"),
     ]
     assert all(run.status == "NOT_EXECUTED" for run in matrix.runs)
     assert all(run.gate_status == "NOT_EVALUATED" for run in matrix.runs)
@@ -85,7 +85,7 @@ def measured_run(group: str, *, improved: bool = False, cost: float = 1.0) -> Au
         schema_invalid_count=0, duration_ms=100, tokens=100, cost=cost,
     ) for i in range(8) for r in range(1, 4)]
     return AutoSpecEvalRun(
-        run_id=group, group=group, group_name="single-shot" if group == "A" else "loop-tools-replan",
+        run_id=group, group=group, group_name="single-shot" if group == "A" else "loop-tools-verify",
         execution_mode="LIVE_CONTROL_PLANE", dataset_version="v2", dataset_hash="b" * 64,
         dataset_split="holdout", environment_hash="c" * 64, code_version="test",
         model_version="test-model", retriever_version="test-rag", budget_version="test",

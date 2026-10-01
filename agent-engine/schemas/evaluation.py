@@ -118,6 +118,9 @@ class AutoSpecEvalRun(BaseModel):
         "single-shot",
         "loop-no-tools",
         "loop-with-tools",
+        "loop-tools-verify",
+        # Compatibility for historical result files. New manifests use
+        # loop-tools-verify so the D/C distinction names spec.verify feedback.
         "loop-tools-replan",
     ]
     execution_mode: Literal["LIVE_CONTROL_PLANE", "FIXTURE_BASELINE"]
