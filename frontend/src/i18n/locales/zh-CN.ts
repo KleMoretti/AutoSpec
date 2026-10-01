@@ -159,6 +159,30 @@ const zhCN = {
       cost: '成本'
     }
   },
+  evaluation: {
+    title: 'A/B/C/D 评测对照',
+    description: '只读展示已发布的评测证据；缺少授权批次时明确显示未执行。',
+    loading: '正在加载评测证据…',
+    loadFailed: '无法加载评测证据',
+    notEvaluated: '尚未执行评测',
+    unknown: '未知',
+    splitUnknown: '未声明 split',
+    measuredGroups: '已测量 {{count}} 组',
+    noGroups: '没有可展示的评测组',
+    decision: '最终决策：{{value}}',
+    sampleCount: '样本数',
+    passRate: '通过率',
+    passInterval: '通过率区间',
+    p95Latency: 'P95 时延',
+    tokens: '平均 Token',
+    cost: '平均成本',
+    mustCoverage: 'MUST 覆盖',
+    blockingIssues: '阻断问题中位数',
+    caseDetails: '逐 Case 详情（{{count}}）',
+    repetition: '重复 {{value}}',
+    passed: '通过',
+    failed: '失败'
+  },
   projectDetail: {
     invalidProjectId: '项目 ID 无效',
     dataRefreshFailed: '无法刷新{{details}}',

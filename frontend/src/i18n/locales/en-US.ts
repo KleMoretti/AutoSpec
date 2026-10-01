@@ -159,6 +159,30 @@ const enUS = {
       cost: 'cost'
     }
   },
+  evaluation: {
+    title: 'A/B/C/D evaluation comparison',
+    description: 'Read-only evidence from published evaluation runs; missing authorization is shown as not evaluated.',
+    loading: 'Loading evaluation evidence…',
+    loadFailed: 'Evaluation evidence could not be loaded',
+    notEvaluated: 'Evaluation not executed',
+    unknown: 'Unknown',
+    splitUnknown: 'Split not declared',
+    measuredGroups: '{{count}} measured groups',
+    noGroups: 'No evaluation groups to display',
+    decision: 'Final decision: {{value}}',
+    sampleCount: 'Samples',
+    passRate: 'Pass rate',
+    passInterval: 'Pass interval',
+    p95Latency: 'P95 latency',
+    tokens: 'Average tokens',
+    cost: 'Average cost',
+    mustCoverage: 'MUST coverage',
+    blockingIssues: 'Median blocking issues',
+    caseDetails: 'Case details ({{count}})',
+    repetition: 'Repetition {{value}}',
+    passed: 'Passed',
+    failed: 'Failed'
+  },
   projectDetail: {
     invalidProjectId: 'Invalid project id',
     dataRefreshFailed: 'Could not refresh {{details}}',

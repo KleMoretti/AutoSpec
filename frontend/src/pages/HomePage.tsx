@@ -32,6 +32,7 @@ import {
   getProjectDashboard,
   type ProjectDashboardItemResponse
 } from '../api/projects';
+import EvaluationComparisonPanel from '../components/EvaluationComparisonPanel';
 import { formatUsd, translateEnum } from '../i18n/formatters';
 
 const { TextArea, Search } = Input;
@@ -256,6 +257,7 @@ function HomePage() {
           />
         ) : null}
       </section>
+      <EvaluationComparisonPanel />
     </main>
   );
 }
