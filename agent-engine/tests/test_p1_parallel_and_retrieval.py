@@ -7,7 +7,12 @@ from agents.product_manager import ProductManagerAgent
 from evaluation.retrieval import load_gold_dataset, run_retrieval_evaluation
 from fixtures.software_domains import get_fixture
 from review.shared_contract import validate_backend_contract, validate_frontend_contract
-from runtime.embedding_provider import HashEmbeddingProvider, OpenAIEmbeddingProvider, configured_embedding_provider
+from runtime.embedding_provider import (
+    HashEmbeddingProvider,
+    LocalSentenceTransformerEmbeddingProvider,
+    OpenAIEmbeddingProvider,
+    configured_embedding_provider,
+)
 from runtime.context_policy import apply_context_policy
 from runtime.hybrid_rag import HybridRetriever
 from runtime.production_handlers import build_production_registry
@@ -79,6 +84,16 @@ def test_gold_retrieval_scores_and_access_boundaries() -> None:
     assert report.expired_document_hit_rate == 0.0
 
 
+def test_p3_k3_dataset_freezes_100_cases_at_top_k_five() -> None:
+    documents, cases = load_gold_dataset(include_quick_regression=False)
+    assert len(documents) == 100
+    assert len(cases) == 100
+    assert {case.top_k for case in cases} == {5}
+    assert {document.metadata["business_domain"] for document in documents} == {
+        "finance", "healthcare", "education", "logistics", "commerce"
+    }
+
+
 def test_filtered_documents_never_reach_embedding_provider() -> None:
     class RecordingProvider(HashEmbeddingProvider):
         def __init__(self):
@@ -108,6 +123,46 @@ def test_live_embedding_provider_validates_response_and_production_rejects_fixtu
     monkeypatch.setenv("AUTOSPEC_ENV", "production")
     monkeypatch.setenv("AUTOSPEC_EMBEDDING_MODE", "fixture")
     with pytest.raises(ValueError, match="requires"):
+        configured_embedding_provider()
+
+
+def test_local_embedding_provider_is_explicit_and_fingerprinted(monkeypatch) -> None:
+    import shutil
+    from uuid import uuid4
+    import numpy as np
+
+    model_dir = Path("target") / f"local-model-test-{uuid4().hex}"
+    model_dir.mkdir(parents=True)
+    (model_dir / "weights.bin").write_bytes(b"model-v1")
+
+    class FakeModel:
+        def get_sentence_embedding_dimension(self):
+            return 2
+
+        def encode(self, texts, **_kwargs):
+            return np.asarray([[1.0, 0.0] for _ in texts])
+
+    import sys
+    import types
+
+    try:
+        monkeypatch.setitem(sys.modules, "sentence_transformers", types.SimpleNamespace(SentenceTransformer=lambda *_args, **_kwargs: FakeModel()))
+        provider = LocalSentenceTransformerEmbeddingProvider(model_path=str(model_dir))
+        assert provider.model_version.startswith("sentence-transformers:local:")
+        assert provider.dimensions == 2
+        assert provider.embed(["one", "two"]) == [[1.0, 0.0], [1.0, 0.0]]
+
+        (model_dir / "weights.bin").write_bytes(b"model-v2")
+        replacement = LocalSentenceTransformerEmbeddingProvider(model_path=str(model_dir))
+        assert replacement.model_version != provider.model_version
+    finally:
+        shutil.rmtree(model_dir, ignore_errors=True)
+
+
+def test_local_embedding_provider_is_not_allowed_in_production(monkeypatch) -> None:
+    monkeypatch.setenv("AUTOSPEC_ENV", "production")
+    monkeypatch.setenv("AUTOSPEC_EMBEDDING_MODE", "local")
+    with pytest.raises(ValueError, match="evaluation-only"):
         configured_embedding_provider()
 
 

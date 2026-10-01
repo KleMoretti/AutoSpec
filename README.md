@@ -210,6 +210,14 @@ EMBEDDING_MODEL=...
 EMBEDDING_DIMENSIONS=...
 ~~~
 
+For the offline P3-K3 comparison, an explicitly downloaded local
+`sentence-transformers` model may be used without changing the Docker fixture
+default. Install `agent-engine/requirements-evaluation-local.txt`, set
+`AUTOSPEC_EMBEDDING_MODE=local` and `EMBEDDING_LOCAL_MODEL_PATH`, then run
+`python -m evaluation.cli_retrieval_compare` from `agent-engine/`. The model
+files stay outside Git; local timing is a benchmark observation, not a
+production SLA or provider-cost measurement.
+
 ## Repository layout
 
 ~~~text

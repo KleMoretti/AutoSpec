@@ -118,12 +118,14 @@ def run_retrieval_evaluation(
 )
 
 
-def load_gold_dataset() -> tuple[list[RagDocument], list[RetrievalEvalCase]]:
+def load_gold_dataset(*, include_quick_regression: bool = True) -> tuple[list[RagDocument], list[RetrievalEvalCase]]:
     path = Path(__file__).parent / "datasets" / "autospec_retrieval_gold_v2.json"
     payload = json.loads(path.read_text(encoding="utf-8"))
     documents = [RagDocument.model_validate(item) for item in payload["documents"]]
     cases = [RetrievalEvalCase.model_validate(item) for item in payload["cases"]]
     expanded_documents, expanded_cases = _expanded_retrieval_gold()
+    if not include_quick_regression:
+        return expanded_documents, expanded_cases
     return (
         documents + expanded_documents,
         cases + expanded_cases,
@@ -160,7 +162,7 @@ def _expanded_retrieval_gold() -> tuple[list[RagDocument], list[RetrievalEvalCas
             user_id="benchmark-reviewer",
             corpus=CorpusType.PROJECT_ARTIFACT,
             gold_document_ids=[document_id],
-            top_k=1,
+            top_k=5,
         ))
     return documents, cases
 
