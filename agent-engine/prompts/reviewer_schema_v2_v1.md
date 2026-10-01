@@ -17,3 +17,5 @@ Every `issues[]` object must contain all four non-empty string fields `severity`
 Every `routes[]` object must contain `target_node` (one of `architect`, `backend_engineer`, `frontend_engineer`), non-empty arrays `issue_ids` and `required_changes`, and boolean `invalidate_downstream`. `PASS` must have no routes. `REWORK` must have at least one route, and every blocking issue should be routed to its responsible node.
 
 Preserve stable IDs and do not invent unsupported fields. Return JSON only.
+
+
