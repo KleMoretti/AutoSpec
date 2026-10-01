@@ -7,6 +7,8 @@ parent: docs/autospec-v5-spec-sandbox-plan.md
 
 # AutoSpec P0 / P1 修复执行手册
 
+> 后续维护说明（2026-09-30）：用户已授权基线收敛。旧 V1–V117 迁移合并为新的数据库 V1，中间 PM 候选 v1–v11 与重复测试已清理；下文迁移号和候选列表是原执行过程记录，不能据此恢复旧文件。现状及数据保留范围见 [基线收敛记录](archive/evidence/baseline-consolidation-2026-09-30.md)。数据库版本重置不改写保留运行的工作流、Prompt、Schema 或 Handler 版本。
+
 本文件是 [Spec Sandbox 总计划](autospec-v5-spec-sandbox-plan.md)的执行分解，不是另一条产品路线。按用户本次要求保留在 `docs/` 根目录，供能力较弱、上下文较短的模型逐任务实施。本文只制定步骤；所有任务初始状态均为 `planned`，不能把写完计划记为实现完成。
 
 截至 2026-09-30，本轮已完成 P0/P1 的离线实现、P0-F 的真实 MySQL 故障演练、P1-E 的真实隔离 L2、正式 API 的 fixture 六节点与 Markdown/PDF/ZIP 交付验收，以及候选 v12 的 DeepSeek Flash live 六节点 smoke。run 8/9 的失败原因已区分，run 38 已在新鲜可信证据窗口内完成 Markdown/PDF/ZIP；远端 CI 未重跑，因此仅保留为外部验证限制。

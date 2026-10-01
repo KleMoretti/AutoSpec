@@ -4,13 +4,15 @@ version: 1.0
 status: planned
 created_at: 2026-09-29
 updated_at: 2026-09-29
-product_baseline: autospec-v5:v5-parallel
+product_baseline: autospec-v5:pm-schema-repair-v12
 predecessor: docs/archive/agent-execution-plan.md
 ---
 
 # AutoSpec 面试就绪与特色功能计划（Spec Sandbox）
 
-> 本文件是当前任务总计划。按用户要求，P0/P1 的具体实施顺序、文件入口、必要边界测试和验收见 [执行手册](p0-p1-execution-plan.md)，同样保留在 `docs/` 根目录。其他文档和运行证据均在 [archive/](archive/README.md)，仅供参考；本文件名按用户指定保留，产品名称统一为 AutoSpec。
+> 2026-09-30 维护更新：用户授权将数据库迁移收敛为新的 V1，保留最近五次运行；后续数据库变更从 V2 开始。当前基线与回滚边界见 [基线收敛记录](archive/evidence/baseline-consolidation-2026-09-30.md)。下文关于旧迁移、候选和旧默认版本的说明记录原计划背景，不构成恢复旧版本的指令。
+
+> 本文件是当前任务总计划。按用户要求，具体实施顺序、文件入口、必要边界测试和验收分别见 [P0/P1 执行手册](p0-p1-execution-plan.md) 与 [P2–P4 执行手册](p2-p4-execution-plan.md)，两者保留在 `docs/` 根目录；后者包含当前基线复核、最小测试、命令、停止条件与断点交接，创建计划不代表已实施。其他文档和运行证据均在 [archive/](archive/README.md)，仅供参考；本文件名按用户指定保留，产品名称统一为 AutoSpec。
 
 ## 1. 结论
 

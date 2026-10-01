@@ -13,11 +13,11 @@
 
 ## Current Product Baseline
 
-产品名称统一为 **AutoSpec**。新增文档文件名、标题、README、图示与用户界面不使用 V5 等代际后缀。已有 WorkflowSpec ID、发布版本、Prompt/Schema/Handler 版本、历史迁移及运行证据是兼容与追溯标识，不能因产品改名而重写。`docs/autospec-v5-spec-sandbox-plan.md` 是当前任务总计划；按用户指定保留该文件名，正文产品名称仍为 AutoSpec。按用户后续要求，`docs/p0-p1-execution-plan.md` 同样保留在根目录，作为该任务的详细执行手册，不是独立路线。其他文档、样例与图片全部放入 `docs/archive/`，仅供参考，不作为实施待办。
+产品名称统一为 **AutoSpec**。新增文档文件名、标题、README、图示与用户界面不使用 V5 等代际后缀。已有 WorkflowSpec ID、发布版本、Prompt/Schema/Handler 版本、历史迁移及运行证据是兼容与追溯标识，不能因产品改名而重写。`docs/autospec-v5-spec-sandbox-plan.md` 是当前任务总计划；按用户指定保留该文件名，正文产品名称仍为 AutoSpec。按用户后续要求，`docs/p0-p1-execution-plan.md` 和 `docs/p2-p4-execution-plan.md` 同样保留在根目录，作为该任务的分阶段详细执行手册，不是独立路线。其他文档、样例与图片全部放入 `docs/archive/`，仅供参考，不作为实施待办。
 
 本仓库实现 **AutoSpec：基于多 Agent 协作的软件需求分析、原型生成与交付验证平台**。用户输入一句需求后，系统生成并管理 PRD、用户故事、架构、数据库/API、前端骨架、审查、评估和代码骨架等结构化 Artifact。
 
-当前产品工作流为 `autospec-v5`：默认发布版本是 `v5-parallel`；原 `v5` 保留用于历史运行与回放。两个版本都必须保留完整的六节点能力：
+当前产品工作流为 `autospec-v5`：新数据库仅初始化经过本地验收的 `pm-schema-repair-v12`。工作流/Handler 的版本号与数据库 Flyway 版本相互独立；已有运行继续使用自己的冻结快照。旧 `v5`、`v5-parallel` 等 JSON 仅作为兼容测试输入，不再自动写入新数据库。工作流必须保留完整的六节点能力：
 
 1. Product Manager
 2. Architect
@@ -36,10 +36,10 @@
 - `agent-engine/`：Python Agent 与 Worker 运行时。`agents/` 保存角色实现，`runtime/` 保存节点执行、Redis Worker、台账、指标和追踪，`schemas/` 保存 Pydantic 契约，`review/` 保存规则审查与 Evaluator，`model_gateway.py` 保存 OpenAI 兼容模型网关。
 - `frontend/`：React、TypeScript、Ant Design 产品工作台，覆盖 Intake -> Generate -> Review & fix -> Deliver 完整旅程。
 - `backend/src/main/resources/contracts/autospec.openapi.yaml`：当前后端 OpenAPI 契约。
-- `agent-engine/contracts/autospec-v5-parallel.workflow.json`：当前默认可执行 WorkflowSpec；`autospec-v5.workflow.json` 是不可改写的历史 v5。两者都必须与各自数据库种子保持同步。
+- `agent-engine/contracts/autospec-pm-schema-repair-v12.workflow.json`：当前可执行 WorkflowSpec，必须与 V1 数据库种子同步；其他保留的 Workflow JSON 用于历史兼容测试。
 - `backend/src/main/resources/db/migration/`：Flyway 数据库升级历史。
 - `observability/`：Prometheus、Grafana 与 Tempo 配置。
-- `docs/`：当前任务总计划为 `autospec-v5-spec-sandbox-plan.md`，P0/P1 步骤见 `p0-p1-execution-plan.md`；其余设计、契约说明、样例、图示与证据全部归档至 `docs/archive/`。
+- `docs/`：当前任务总计划为 `autospec-v5-spec-sandbox-plan.md`，分阶段步骤见 `p0-p1-execution-plan.md`、`p2-p4-execution-plan.md`；其余设计、契约说明、样例、图示与证据全部归档至 `docs/archive/`。
 - `docker-compose.yml`：MySQL、Redis、Agent API、两个 Agent Worker、后端、前端及可选监控栈。
 
 ## Legacy Code Boundary
@@ -52,7 +52,7 @@ V1–V4 固定流水线和兼容层已被删除，不得重新引入以下内容
 - 前端 `api/v3`、`AgentTimeline`、`ExecutionEventList`、`PrdEditor` 和固定 `WorkflowGraph`。
 - `scheme/init.sql` 及 `DB_SCHEMA_DIR`、`SQL_INIT_MODE`、`AGENT_ENGINE_BASE_URL` 等旧配置。
 
-历史 Flyway V1–V82 是已发布的不可变升级记录，即使包含旧名称也不得删除或改写。若需要物理删除旧表，必须新增迁移，并先完成数据保留、备份与回滚评审。
+2026-09-30 经用户明确授权，旧 V1–V117 已合并为 `V1__autospec_baseline.sql`，本地保留最近五次运行及关联数据，完整旧库另有本地备份。该操作是一次基线重置，不是常规升级；不要恢复旧 SQL 到迁移目录。后续修改从 V2 开始，只新增迁移，已应用的基线不可改写。其他旧数据库升级前必须先备份、核对结构和保留范围，不能直接删除 Flyway 历史。
 
 ## Environment and Model Configuration
 
@@ -61,7 +61,7 @@ V1–V4 固定流水线和兼容层已被删除，不得重新引入以下内容
 - 本地 Compose 至少需要 `MYSQL_PASSWORD`、`MYSQL_ROOT_PASSWORD`、`REDIS_PASSWORD`、`AGENT_ENGINE_SERVICE_TOKEN`；启用演示登录还需要 `AUTH_DEMO_USER_PASSWORD`。
 - 本地开发使用 `AUTOSPEC_ENV=development`、`AUTH_DEMO_USER_ENABLED=true` 和非 root 数据库用户 `MYSQL_USER=autospec`。
 - `AGENT_MODEL_MODE=fixture` 不调用外部模型，适合测试和无 Key 启动。
-- 当前 DeepSeek live 配置使用 `MODEL_BASE_URL=https://api.deepseek.com`、`MODEL_NAME=deepseek-v4-flash`、`MODEL_FAST_NAME=deepseek-v4-flash`、`MODEL_DEEP_NAME=deepseek-v4-pro`、`MODEL_PROVIDER_KEY=deepseek`。
+- 当前 DeepSeek live 配置使用 `MODEL_BASE_URL=https://api.deepseek.com`，主模型、fast、deep 均为 `deepseek-flash`，`MODEL_PROVIDER_KEY=deepseek`。
 - 只有 `MODEL_API_KEY` 已在本地安全配置后，才能切换为 `AGENT_MODEL_MODE=live`。不得生成、猜测、提交或在日志中打印真实模型 Key。
 - 生产环境不得使用 fixture、演示用户、非 Secure Cookie、root 数据库用户、明文数据库/Redis 连接或空密钥。
 

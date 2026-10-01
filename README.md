@@ -35,7 +35,7 @@ Typical LLM coding demos stop at "generate some text." AutoSpec treats generatio
 
 ## Workflow
 
-The default published workflow is <code>autospec-v5:v5-parallel</code>. The historical <code>v5</code> workflow remains available for reproducible replay.
+Fresh databases start from a single Flyway V1 baseline and publish <code>autospec-v5:pm-schema-repair-v12</code>. Retained runs keep their original immutable workflow snapshots. Future database changes start at V2; see the [baseline consolidation record](docs/archive/evidence/baseline-consolidation-2026-09-30.md) before upgrading an older database.
 
 <p align="center">
   <img src="docs/archive/assets/readme/workflow.svg" alt="AutoSpec workflow" width="100%" />
