@@ -1,0 +1,47 @@
+{
+  "experiment_id": "autospec-p2-p4-fixture-ablation-20261001-r9",
+  "version_ids": {
+    "A": 10,
+    "B": 11,
+    "C": 12,
+    "D": 13
+  },
+  "code_version": "f09fea64",
+  "environment": {
+    "name": "autospec-p2-p4-fixture",
+    "model_mode": "fixture",
+    "embedding_mode": "fixture",
+    "execution_mode": "FIXTURE_BASELINE"
+  },
+  "fixture_approval_policy": "AUTO_APPROVE_FOR_TEST",
+  "fixture_approval_reason": "Pre-registered fixture-only approval for the bounded P2-E smoke; not human approval.",
+  "dataset_split": "smoke",
+  "random_seed": 20261001,
+  "case_ids": [
+    "crud_inventory"
+  ],
+  "contract_family": "v6",
+  "manifest_path": "experiment-manifest.json",
+  "manifest_hash": "e518d74951effe26f74565757bb1c6247b993b3d3bca845c946e47ce59e42085",
+  "groups": [
+    "A",
+    "B",
+    "C",
+    "D"
+  ],
+  "collection_scope": "WORKFLOW",
+  "repetitions": 1,
+  "run_max_cost": 10.0,
+  "total_max_cost": 40.0,
+  "max_runs": 4,
+  "run_max_tokens": 500000,
+  "run_max_model_calls": 16,
+  "run_timeout_seconds": 600,
+  "poll_seconds": 2.0,
+  "pricing_snapshot": {
+    "mode": "FIXTURE_BASELINE",
+    "cost_status": "NOT_APPLICABLE_EXTERNAL",
+    "source": "local-fixture",
+    "observed_at": "2026-10-01"
+  }
+}
