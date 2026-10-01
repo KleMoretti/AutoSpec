@@ -50,6 +50,8 @@ services:
     command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
     ports:
       - "${AGENT_ENGINE_BIND_ADDRESS:-127.0.0.1}:${AGENT_ENGINE_PORT:-8000}:8000"
+    volumes:
+      - ./agent-engine/target/p2-p4-evaluation:/app/evaluation-results:ro
     environment:
       AUTOSPEC_ENV: ${AUTOSPEC_ENV:-development}
       AGENT_MODEL_MODE: ${AGENT_MODEL_MODE:-fixture}
