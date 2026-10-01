@@ -5,9 +5,10 @@ import math
 from statistics import mean, median
 from typing import Sequence
 
+from evaluation.statistics import STATISTICS_VERSION, wilson_interval
 from schemas.evaluation import AutoSpecCaseResult, AutoSpecMetric
 
-METRICS_VERSION = "autospec-case-metrics-v2"
+METRICS_VERSION = "autospec-case-metrics-v3"
 
 
 def percentile(values: Sequence[float], quantile: float) -> float:
@@ -44,10 +45,17 @@ def aggregate_case_metrics(cases: Sequence[AutoSpecCaseResult]) -> list[AutoSpec
             name=name, status="MEASURED" if observed is not None else "UNAVAILABLE",
             value=float(reducer(observed)) if observed is not None else None,
             unit=unit, source=METRICS_VERSION,
+            sample_count=len(observed) if observed is not None else None,
         ))
+        if name == "gate_pass_rate" and observed is not None:
+            lower, upper = wilson_interval(sum(bool(value) for value in observed), len(observed))
+            metrics[-1].interval_low = lower
+            metrics[-1].interval_high = upper
+            metrics[-1].statistic_version = STATISTICS_VERSION
     calls, invalid = values("tool_call_count"), values("invalid_tool_arguments")
     valid = calls is not None and invalid is not None and all(i <= c for i, c in zip(invalid, calls))
     rate = (1 - sum(invalid) / sum(calls) if sum(calls) else 1.0) if valid else None
     metrics.append(AutoSpecMetric(name="tool_argument_valid_rate", status="MEASURED" if valid else "UNAVAILABLE",
-                                  value=rate, unit="ratio", source=METRICS_VERSION))
+                                  value=rate, unit="ratio", source=METRICS_VERSION,
+                                  sample_count=len(cases) if valid else None))
     return metrics

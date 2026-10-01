@@ -51,6 +51,7 @@ class AutoSpecEvalCase(BaseModel):
         "CONFLICTING_CONSTRAINTS",
         "REWORK",
     ]
+    business_domain: str = Field(default="general", min_length=1)
     requirement: str = Field(min_length=1)
     dataset_version: str = Field(default="autospec-v5-agent-execution-eval-v1", min_length=1)
     must_requirements: list[AutoSpecRequirementExpectation] = Field(min_length=1)
@@ -97,6 +98,10 @@ class AutoSpecMetric(BaseModel):
     unit: str = Field(min_length=1)
     source: str = Field(min_length=1)
     note: str | None = None
+    interval_low: float | None = None
+    interval_high: float | None = None
+    sample_count: int | None = Field(default=None, ge=0)
+    statistic_version: str | None = None
 
 
 class AutoSpecEvalRun(BaseModel):
@@ -140,7 +145,7 @@ class AutoSpecAblationMatrix(BaseModel):
     matrix_id: str = Field(min_length=1)
     dataset_version: str = Field(min_length=1)
     generated_at_epoch_ms: int = Field(ge=0)
-    runs: list[AutoSpecEvalRun] = Field(min_length=4)
+    runs: list[AutoSpecEvalRun] = Field(min_length=1)
 
 
 class AutoSpecGateDecision(BaseModel):
@@ -151,6 +156,8 @@ class AutoSpecGateDecision(BaseModel):
     reasons: list[str] = Field(min_length=1)
     baseline_run_id: str = Field(min_length=1)
     candidate_run_id: str = Field(min_length=1)
+    statistics_version: str | None = None
+    paired_statistics: dict[str, Any] = Field(default_factory=dict)
 
 
 class EvaluationIssue(BaseModel):

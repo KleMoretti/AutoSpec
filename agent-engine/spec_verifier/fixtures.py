@@ -128,6 +128,30 @@ def spec_contract_from_artifacts(
     )
 
 
+def _artifacts_are_explicit(
+    backend: BackendDesignArtifact,
+    frontend: FrontendSkeletonArtifact | None,
+) -> bool:
+    return (
+        all(
+            "primary_key" in field.model_fields_set and "foreign_key" in field.model_fields_set
+            for table in backend.tables for field in table.fields
+        )
+        and all(
+            "location" in parameter.model_fields_set
+            for api in backend.apis for parameter in api.request_params
+        )
+        and all(
+            "nullable" in response.model_fields_set
+            for api in backend.apis for response in api.response_fields
+        )
+        and (
+            frontend is None
+            or all(binding.backend_api_id is not None for binding in frontend.api_bindings)
+        )
+    )
+
+
 def normal_spec_fixtures() -> dict[str, SpecContract]:
     return {key: spec_fixture(key) for key in SUPPORTED_DOMAIN_KEYS}
 

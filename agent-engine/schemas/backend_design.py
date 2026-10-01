@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -18,11 +20,24 @@ class FieldDesign(BaseModel):
     nullable: bool
     description: str = Field(min_length=1)
     requirement_refs: list[RequirementId] = Field(default_factory=list)
+    # These fields are optional only for compatibility with legacy artifacts.
+    # The explicit spec adapter requires them to be present in model_fields_set.
+    primary_key: bool | None = None
+    unique: bool | None = None
+    default: str | int | float | bool | None = None
+    foreign_key: ExplicitForeignKey | None = None
 
     @model_validator(mode="after")
     def normalize_references(self) -> "FieldDesign":
         self.requirement_refs = unique_refs(self.requirement_refs)
         return self
+
+
+class ExplicitForeignKey(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    table: str = Field(min_length=1)
+    field: str = Field(min_length=1)
 
 
 class TableDesign(BaseModel):
@@ -54,6 +69,8 @@ class RequestParam(BaseModel):
     type: str = Field(min_length=1)
     required: bool
     description: str = Field(min_length=1)
+    location: Literal["path", "query", "body"] | None = None
+    requirement_refs: list[RequirementId] = Field(default_factory=list)
 
 
 class ResponseField(BaseModel):
@@ -62,6 +79,8 @@ class ResponseField(BaseModel):
     name: str = Field(min_length=1)
     type: str = Field(min_length=1)
     description: str = Field(min_length=1)
+    nullable: bool | None = None
+    requirement_refs: list[RequirementId] = Field(default_factory=list)
 
 
 class ApiDesign(BaseModel):

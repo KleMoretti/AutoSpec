@@ -1,0 +1,71 @@
+"""Explicit, hash-pinned experiment manifest for P2 collection."""
+from __future__ import annotations
+
+import hashlib
+import json
+from pathlib import Path
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class ManifestGroup(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    group: Literal["A", "B", "C", "D"]
+    name: str = Field(min_length=1)
+    workflow_version_id: int = Field(ge=1)
+    contract_path: str = Field(min_length=1)
+    contract_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    prompt_schema_versions: dict[str, str] = Field(default_factory=dict)
+
+
+class ExperimentManifest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    manifest_version: Literal["autospec-experiment-manifest-v1"]
+    experiment_id: str = Field(min_length=1)
+    workflow_key: str = Field(default="autospec-v5", min_length=1)
+    dataset_version: str = Field(min_length=1)
+    dataset_split: str = Field(min_length=1)
+    random_seed: int
+    groups: list[ManifestGroup] = Field(min_length=1)
+    pricing_snapshot: dict = Field(default_factory=dict)
+
+    def group_map(self) -> dict[str, ManifestGroup]:
+        result = {entry.group: entry for entry in self.groups}
+        if len(result) != len(self.groups):
+            raise ValueError("experiment manifest contains duplicate groups")
+        return result
+
+
+def load_manifest(path: Path) -> tuple[ExperimentManifest, str]:
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    manifest = ExperimentManifest.model_validate(raw)
+    return manifest, hashlib.sha256(
+        json.dumps(raw, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+
+def resolve_contract_path(manifest_path: Path, contract_path: str) -> Path:
+    candidate = Path(contract_path)
+    if candidate.is_absolute() or ".." in candidate.parts:
+        raise ValueError("manifest contract_path must be a relative non-parent path")
+    resolved = (manifest_path.parent / candidate).resolve()
+    if not resolved.is_file():
+        raise ValueError(f"manifest contract does not exist: {contract_path}")
+    return resolved
+
+
+def validate_manifest_contracts(path: Path, manifest: ExperimentManifest) -> dict[str, dict]:
+    checked: dict[str, dict] = {}
+    for entry in manifest.groups:
+        contract_path = resolve_contract_path(path, entry.contract_path)
+        raw = json.loads(contract_path.read_text(encoding="utf-8"))
+        contract_hash = hashlib.sha256(
+            json.dumps(raw, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+        if contract_hash != entry.contract_hash:
+            raise ValueError(f"manifest contract checksum mismatch for group {entry.group}")
+        checked[entry.group] = {"path": str(contract_path), "spec": raw, "entry": entry.model_dump(mode="json")}
+    return checked

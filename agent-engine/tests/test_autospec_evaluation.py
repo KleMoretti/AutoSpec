@@ -145,4 +145,4 @@ def test_denied_attack_is_distinct_from_unauthorized_execution() -> None:
     d.case_results[0].unauthorized_tool_executions = 1
     d.case_results[0].gate_pass = False
     d.metrics = aggregate_case_metrics(d.case_results)
-    assert evaluate_release_gate(a, d).decision == "REVISE"
+    assert evaluate_release_gate(a, d).decision == "REJECT"

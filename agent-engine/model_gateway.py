@@ -13,6 +13,7 @@ from typing import Any, Iterator, Mapping
 from openai import OpenAI
 
 from runtime.context_policy import estimate_tokens
+from runtime.model_protocol import validate_output_protocol
 from runtime.model_telemetry import (
     ModelInvocationTelemetry,
     ModelRoutingDecision,
@@ -102,6 +103,7 @@ class OpenAICompatibleModelClient:
         max_output_tokens: int = 4096,
         context_window_tokens: int = 128_000,
         capabilities: set[str] | None = None,
+        output_protocol: str = "JSON_OBJECT",
         prompt_dir: Path | None = None,
         client: Any | None = None,
     ) -> None:
@@ -125,6 +127,10 @@ class OpenAICompatibleModelClient:
             "usage",
             "idempotency",
         }
+        try:
+            self._output_protocol = validate_output_protocol(output_protocol, self._capabilities)
+        except ValueError as error:
+            raise ModelConfigurationError(str(error)) from error
         self._prompt_dir = prompt_dir or Path(__file__).resolve().parent / "prompts"
         self._client = client or OpenAI(
             api_key=api_key,
@@ -186,6 +192,17 @@ class OpenAICompatibleModelClient:
             raise ModelConfigurationError(
                 "Provider lacks frozen capabilities: "
                 + ", ".join(missing_capabilities)
+            )
+        try:
+            output_protocol = validate_output_protocol(
+                str(policy.get("output_protocol", self._output_protocol)), self._capabilities
+            )
+        except ValueError as error:
+            raise ModelConfigurationError(str(error)) from error
+        if output_protocol != "JSON_OBJECT":
+            raise ModelConfigurationError(
+                "NATIVE_TOOL_CALL requires a provider adapter that returns a native call envelope; "
+                "JSON_OBJECT fallback is disabled"
             )
 
         max_output_tokens = int(

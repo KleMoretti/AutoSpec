@@ -359,7 +359,7 @@ def _with_verification_fact(result: Any, context) -> dict[str, Any]:
         status=report.status,
         expires_at_epoch_ms=int(time.time() * 1000) + max(
             1_000,
-            int(verification_policy.get("timeout_ms", 30_000)),
+            int(verification_policy.get("evidence_ttl_ms", 3_600_000)),
         ),
         report_hash=_hash_json(report_json),
     )

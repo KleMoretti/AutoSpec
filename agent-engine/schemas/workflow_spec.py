@@ -34,6 +34,7 @@ class VerificationPolicy(BaseModel):
     verifier_version: str = Field(default="spec-verifier-v1", min_length=1)
     compiler_version: str = Field(default="spec-compiler-v1", min_length=1)
     timeout_ms: int = Field(default=30_000, ge=1_000, le=900_000)
+    evidence_ttl_ms: int = Field(default=3_600_000, ge=1_000, le=86_400_000)
     policy_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 
     @model_validator(mode="after")
@@ -60,6 +61,7 @@ class ModelPolicy(BaseModel):
     cached_input_cost_per_million: float = Field(default=0.0, ge=0.0)
     output_cost_per_million: float = Field(default=0.0, ge=0.0)
     required_capabilities: list[str] = Field(default_factory=list)
+    output_protocol: Literal["JSON_OBJECT", "NATIVE_TOOL_CALL"] = "JSON_OBJECT"
     structured_output_repair: StructuredOutputRepairPolicy = Field(
         default_factory=StructuredOutputRepairPolicy
     )

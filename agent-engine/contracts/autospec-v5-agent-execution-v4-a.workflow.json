@@ -181,7 +181,7 @@
       "input_schema": "BackendDesignInput",
       "input_schema_hash": "90ed365ac8e9c15c75c6141fcca8cc006556b40bc0b88f8023f1de6bc1f77d41",
       "output_schema": "BackendDesignArtifact",
-      "output_schema_hash": "c613a1869f67b1147851f3b6a19263e778636503409bc45bb73234fb61b16456",
+      "output_schema_hash": "2678cf7396c34995cf38731ca5da9626bcde8d438378efabdf1c21a736e290b0",
       "artifact_type": "BACKEND_DESIGN",
       "prompt_key": "backend_engineer_loop",
       "prompt_version": "v1",
