@@ -250,6 +250,9 @@ def _register_agent_node(
         if prompt_key.endswith("_shared") or (
             handler_key in {"ArchitectAgent", "FrontendEngineerAgent"}
             and handler_version == "v3"
+        ) or (
+            handler_key == "BackendEngineerAgent"
+            and handler_version in {"v3", "v4", "v5", "v6"}
         ):
             compacted_input["shared_contract_required"] = True
         if rule_profile is not None:

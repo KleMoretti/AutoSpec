@@ -164,6 +164,39 @@ async def test_frontend_schema_handler_selects_shared_contract_output() -> None:
     assert "routes" in frontend.output_payload
 
 
+@pytest.mark.asyncio
+async def test_backend_loop_v6_single_shot_consumes_shared_architecture_contract() -> None:
+    executor = NodeExecutor(build_production_registry())
+    product = await executor.execute(
+        command(
+            "ProductManagerAgent",
+            {"requirement": "Build an inventory workspace"},
+            node_id="product_manager",
+        )
+    )
+    architect = await executor.execute(
+        command(
+            "ArchitectAgent",
+            {"requirement": "Build an inventory workspace", "prd": product.output_payload},
+            node_id="architect",
+        ).model_copy(update={"handler_version": "v3"})
+    )
+    backend = await executor.execute(
+        command(
+            "BackendEngineerAgent",
+            {
+                "requirement": "Build an inventory workspace",
+                "prd": product.output_payload,
+                "architecture_design": architect.output_payload,
+            },
+            node_id="backend_engineer",
+        ).model_copy(update={"handler_version": "v6"})
+    )
+
+    assert backend.event_type == "NODE_SUCCEEDED", backend.error_message
+    assert backend.output_payload is not None
+
+
 def _requirement_refs(value: object) -> set[str]:
     if isinstance(value, dict):
         direct = set(value.get("requirement_refs", []))
