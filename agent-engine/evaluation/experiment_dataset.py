@@ -105,7 +105,7 @@ def _case(row: tuple) -> AutoSpecEvalCase:
             acceptance_evidence=[hint],
         ) for i, (statement, hint) in enumerate(facts, 1)],
         expected_artifact_types=ARTIFACT_TYPES,
-        allowed_tools=["knowledge.search", "artifact.get", "contract.lookup"],
+        allowed_tools=["knowledge.search", "artifact.get", "contract.lookup", "spec.verify"],
         prohibited_tools=["trace.query", "bundle.verify"],
         failure_conditions=[f"Missing or contradicted: {statement}" for statement, _ in facts],
     )

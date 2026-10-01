@@ -91,6 +91,24 @@ def test_unknown_prices_are_not_zero_cost_and_failed_cases_keep_token_usage() ->
     assert result.must_trace_coverage is None
 
 
+def test_reviewer_verification_tool_is_not_counted_as_unauthorized() -> None:
+    case = list_autospec_cases()[0]
+    trace = {
+        "correlationId": "id",
+        "executionBundleHash": "b" * 64,
+        "nodes": [{
+            "invocations": [{"callType": "TOOL", "toolName": "spec.verify", "status": "SUCCEEDED"}],
+            "steps": [],
+        }],
+    }
+
+    result = measure_case(case, 1, {"id": 1, "status": "COMPLETED"}, trace, [], {}, 10)
+
+    assert "spec.verify" in case.allowed_tools
+    assert result.unauthorized_tool_requests == 0
+    assert result.unauthorized_tool_executions == 0
+
+
 @pytest.mark.asyncio
 async def test_fixture_auto_approval_is_explicit_and_journaled(eval_output: Path) -> None:
     cfg = config().model_copy(update={
