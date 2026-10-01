@@ -73,6 +73,8 @@ autospec:
   environment: ${AUTOSPEC_ENV:development}
   agent-engine:
     service-token: ${AGENT_ENGINE_SERVICE_TOKEN:}
+  spec-verifier:
+    url: ${AUTOSPEC_SPEC_VERIFIER_URL:http://spec-verifier:8010}
   knowledge:
     embedding:
       mode: ${AUTOSPEC_EMBEDDING_MODE:fixture}
