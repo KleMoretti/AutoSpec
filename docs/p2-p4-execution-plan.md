@@ -11,7 +11,7 @@ database_baseline: V1
 
 本文件分解 [总计划](autospec-v5-spec-sandbox-plan.md) 的 P2（证据）、P3（可靠性及独立扩展）、P4（展示），与 [P0/P1 手册](p0-p1-execution-plan.md) 属于同一条路线。按用户要求保留在 `docs/` 根目录。适用对象是上下文较短、推理能力较弱的执行模型：一次只完成一个任务，按明确输入、步骤、测试和验收推进，不自行扩展目标。
 
-**本文件已更新为实施交接记录。** 本轮完成了可在本地离线验证的 P2–P4 代码、契约、迁移、界面和测试，并完成带 `spec-verifier` 的隔离 fixture 六节点及 10/20 并发运行；不把未获授权的付费评测、真实 embedding、worker/poison/outbox 故障实验或真实演示截图写成已完成。剩余阻塞项、验证命令和下一步见 [阶段交接证据](archive/evidence/p2-p4-2026-09-30.md)。
+**本文件已更新为实施交接记录。** 本轮完成了可在本地离线验证的 P2–P4 代码、契约、迁移、界面和测试，并完成带 `spec-verifier` 的隔离 fixture 六节点、10/20 并发、取消和 worker 重启运行；不把未获授权的付费评测、真实 embedding、Redis poison/outbox 故障实验或真实演示截图写成已完成。剩余阻塞项、验证命令和下一步见 [阶段交接证据](archive/evidence/p2-p4-2026-09-30.md)。
 
 ## 1. 开工基线与必须纠正的旧假设
 
@@ -66,7 +66,7 @@ P3-MCP 在 P3-S/P3-F 后、且外部集成需求明确时插入；P3-I 在 BASE-
 | P2-C | SIG-P2-02 数据集 | P2-A | done | dataset |
 | P2-D | SIG-P2-02 判分统计 | P2-B、P2-C | done | metrics-gate |
 | P2-E | SIG-P2-02 正式评测 | P2-D、有效预算 | blocked：无本批次有效付费预算和 B 候选清单 | ablation |
-| P2-F | SIG-P2-03 | P2-B；质量结论另依赖 P2-E | blocked：已完成单次 fixture、10/20 并发和 verifier 接入；未完成 worker/poison/outbox/cancel 故障实验 | traces-capacity |
+| P2-F | SIG-P2-03 | P2-B；质量结论另依赖 P2-E | blocked：已完成单次 fixture、10/20 并发、取消、worker 重启和 verifier 接入；未完成 Redis poison/outbox 进程中断故障实验 | traces-capacity |
 | P3-R1 | SIG-P3-05 watchdog | BASE-01 | done | watchdog |
 | P3-R2 | SIG-P3-05 poison / DLQ | P3-R1 | done | poison |
 | P3-R3 | SIG-P3-05 outbox 占用 | P3-R2 | done | outbox-claim |
@@ -828,6 +828,6 @@ next_task: "前置满足的下一项"
 ### 12.3 本轮阶段交接状态
 
 - 离线实施范围已完成：显式规格适配、评测 manifest/数据集/统计、可靠性边界、原生协议拒绝降级、项目知识上传与可信记忆、Trace/验证展示、OpenAPI 同步和 15 张问答卡片。
-- 必须保持 `blocked` 的项目：P2-E 付费正式消融、P2-F 隔离 Compose worker/poison/outbox/cancel 故障实验、P3-K3 外部语义 embedding 对照、P4-D 批量评测只读看板、P4-E 真实五分钟演示与截图。P2-F 已有单次 fixture 和 10/20 并发证据，但这些结果未被晋级为容量、SLA 或质量结论。
+- 必须保持 `blocked` 的项目：P2-E 付费正式消融、P2-F 隔离 Compose Redis poison/outbox 进程中断故障实验、P3-K3 外部语义 embedding 对照、P4-D 批量评测只读看板、P4-E 真实五分钟演示与截图。P2-F 已有单次 fixture、10/20 并发、取消和 worker 重启证据，但这些结果未被晋级为容量、SLA 或质量结论。
 - P3-MCP、P3-I 继续 `deferred`，因为本轮没有明确外部集成或变更影响范围选择。
 - 可复核命令、实际结果、变更文件、阻塞条件和下一步写入 [p2-p4-2026-09-30.md](archive/evidence/p2-p4-2026-09-30.md)。后续续做先读该记录和实际工作区，不依赖口头结论。
