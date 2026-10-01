@@ -11,7 +11,7 @@ database_baseline: V1
 
 本文件分解 [总计划](autospec-v5-spec-sandbox-plan.md) 的 P2（证据）、P3（可靠性及独立扩展）、P4（展示），与 [P0/P1 手册](p0-p1-execution-plan.md) 属于同一条路线。按用户要求保留在 `docs/` 根目录。适用对象是上下文较短、推理能力较弱的执行模型：一次只完成一个任务，按明确输入、步骤、测试和验收推进，不自行扩展目标。
 
-**本文件已更新为实施交接记录。** 本轮完成了可在本地离线验证的 P2–P4 代码、契约、迁移、界面和测试，并完成带 `spec-verifier` 的隔离 fixture 六节点、10/20 并发、取消、worker 重启、Redis poison 和 Outbox 进程中断恢复运行；不把未获授权的付费评测、真实 embedding 或真实演示截图写成已完成。P2-F 的故障边界已修复并有证据，但容量结果仍是 fixture smoke，不能晋级为生产 SLA 或质量结论。剩余阻塞项、验证命令和下一步见 [阶段交接证据](archive/evidence/p2-p4-2026-09-30.md)。
+**本文件已更新为实施交接记录。** 本轮完成了可在本地离线验证的 P2–P4 代码、契约、迁移、界面和测试，并完成带 `spec-verifier` 的隔离 fixture 六节点、10/20 并发、取消、worker 重启、Redis poison 和 Outbox 进程中断恢复运行；2026-10-01 又按 README 走通了 Docker fixture 浏览器演示和审批/Trace 门禁观察。不把未获授权的付费评测、真实 embedding、生产容量或仓库截图文件写成已完成。P2-F 的故障边界已修复并有证据，但容量结果仍是 fixture smoke，不能晋级为生产 SLA 或质量结论。剩余阻塞项、验证命令和下一步见 [阶段交接证据](archive/evidence/p2-p4-2026-09-30.md) 与 [浏览器演示补充证据](archive/evidence/p2-p4-2026-10-01.md)。
 
 ## 1. 开工基线与必须纠正的旧假设
 
@@ -82,7 +82,7 @@ P3-MCP 在 P3-S/P3-F 后、且外部集成需求明确时插入；P3-I 在 BASE-
 | P4-B | SIG-P4-01 Trace / DAG | P4-A | done：步骤时间线已接入；未宣称动态 DAG 图验收 | trace-dag |
 | P4-C | SIG-P4-01 矩阵 / 验证 | P4-B | done | verification-ui |
 | P4-D | SIG-P4-01 评测看板 | P4-A、P2-D | blocked：当前无只读批量评测结果 API/DTO | eval-ui |
-| P4-E | SIG-P4-02 | P4-B/C/D | blocked：未运行真实五分钟演示和截图 | demo-readme |
+| P4-E | SIG-P4-02 | P4-B/C/D | blocked：Docker + fixture 浏览器演示已走通；截图已在受控会话捕获但尚未形成 `docs/archive/` 图片文件 | demo-readme |
 | P4-F | SIG-P4-03 | P4-E | done：15 张问答卡片已归档 | interview-cards |
 | END-01 | 总计划 DoD | 必选任务完成或明确列缺项 | blocked：见交接证据中的外部条件 | final-handoff |
 
@@ -515,7 +515,7 @@ P3-MCP 在 P3-S/P3-F 后、且外部集成需求明确时插入；P3-I 在 BASE-
 5. 演示账号仅由本地 development 配置提供，README 说明如何安全设置，不提交实际密码；不能为了演示关闭后端权限或门禁。
 6. 证据表注明执行时间、模式、commit/工作区指纹、环境、失败/未执行项。Spec Sandbox 不等于生成的完整业务应用已通过验收。
 
-**必要验证**：一次按文档从预备环境走通完整 Demo、链接检查、截图脱敏与视觉核对。不新增 README 单元测试，不为录屏再跑付费矩阵。
+**必要验证**：一次按文档从预备环境走通完整 Demo、链接检查、截图脱敏与视觉核对。不新增 README 单元测试，不为录屏再跑付费矩阵。2026-10-01 已按 Docker fixture 走通登录→输入需求→审批→Trace/验证；浏览器接口只返回会话图片字节，未提供将截图写入仓库的能力，因此图片归档仍是明确缺口。
 
 **验收**：他人按步骤能复现已声明的演示；缺外部服务时有准确停止提示，而不是偷偷切模式后仍宣称 live。
 
@@ -828,6 +828,6 @@ next_task: "前置满足的下一项"
 ### 12.3 本轮阶段交接状态
 
 - 离线实施范围已完成：显式规格适配、评测 manifest/数据集/统计、可靠性边界、原生协议拒绝降级、项目知识上传与可信记忆、Trace/验证展示、OpenAPI 同步和 15 张问答卡片。
-- 必须保持 `blocked` 的项目：P2-E 付费正式消融、P2-F 的容量/SLA 与质量晋级、P3-K3 外部语义 embedding 对照、P4-D 批量评测只读看板、P4-E 真实五分钟演示与截图。P2-F 的单次 fixture、10/20 并发、取消、worker 重启、Redis poison 和 Outbox 进程中断恢复均有证据；10/20 仍全部因 fixture 质量门禁失败，虽已补录失败终态 P50/P95，仍未被晋级为成功容量、生产 SLA 或质量结论。
+- 必须保持 `blocked` 的项目：P2-E 付费正式消融、P2-F 的容量/SLA 与质量晋级、P3-K3 外部语义 embedding 对照、P4-D 批量评测只读看板，以及 P4-E 的仓库截图归档。P4-E 的 Docker fixture 浏览器演示已走通并捕获审批与 Evaluator 门禁画面，但截图尚未形成 `docs/archive/` 图片文件。P2-F 的单次 fixture、10/20 并发、取消、worker 重启、Redis poison 和 Outbox 进程中断恢复均有证据；10/20 仍全部因 fixture 质量门禁失败，虽已补录失败终态 P50/P95，仍未被晋级为成功容量、生产 SLA 或质量结论。
 - P3-MCP、P3-I 继续 `deferred`，因为本轮没有明确外部集成或变更影响范围选择。
-- 可复核命令、实际结果、变更文件、阻塞条件和下一步写入 [p2-p4-2026-09-30.md](archive/evidence/p2-p4-2026-09-30.md)。后续续做先读该记录和实际工作区，不依赖口头结论。
+- 可复核命令、实际结果、变更文件、阻塞条件和下一步写入 [p2-p4-2026-09-30.md](archive/evidence/p2-p4-2026-09-30.md)；浏览器演示补充写入 [p2-p4-2026-10-01.md](archive/evidence/p2-p4-2026-10-01.md)。后续续做先读最新记录和实际工作区，不依赖口头结论。

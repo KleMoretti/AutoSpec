@@ -159,7 +159,35 @@ To follow the execution path:
 docker compose logs --tail=200 -f backend agent-worker-1 agent-worker-2
 ~~~
 
-### 3. Enable a live model
+### 3. Five-minute fixture demo
+
+This is a prepared-environment walkthrough of the real browser and Docker
+workflow. It uses `AGENT_MODEL_MODE=fixture` and
+`AUTOSPEC_EMBEDDING_MODE=fixture`; it does not call an external model and it
+does not prove production quality, capacity, cost or SLA.
+
+1. Open the frontend, sign in with the local development account configured by
+   `AUTH_DEMO_USER_ENABLED` and `AUTH_DEMO_USER_PASSWORD`, and create a project.
+2. Enter a requirement with at least one acceptance criterion and one
+   permission rule. A CRUD task list is sufficient for the walkthrough.
+3. Open **Generate**, choose the published
+   `pm-schema-repair-v12 · #1` workflow, and start a fixture run.
+4. In **Agent and approval**, approve the Product Manager artifact with a
+   short reason. The formal six-node path is Product Manager → Architect →
+   Backend Engineer / Frontend Engineer → Reviewer → Evaluator.
+5. Open **Review and fix** and inspect the run Trace: bundle and contract
+   hashes, queue/execution time, model/tool counts, step reasons and the
+   `SPEC_VERIFY_PASSED` fact. The Evaluator may intentionally stop the fixture
+   with `QUALITY_GATE_BLOCKED`; that is a valid negative-gate demonstration,
+   not a delivered application.
+
+The demo account is development-only and its password must remain in the
+untracked `.env`. Do not disable authentication or delivery gates to make the
+demo appear successful. The latest run-specific evidence and known screenshot
+capture limitation are recorded in
+[`docs/archive/evidence/p2-p4-2026-10-01.md`](docs/archive/evidence/p2-p4-2026-10-01.md).
+
+### 4. Enable a live model
 
 AutoSpec accepts an OpenAI-compatible model endpoint:
 
