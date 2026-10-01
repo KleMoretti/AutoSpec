@@ -20,6 +20,17 @@ class ManifestGroup(BaseModel):
     prompt_schema_versions: dict[str, str] = Field(default_factory=dict)
 
 
+class ManifestBudget(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    repetitions: int = Field(ge=1, le=10)
+    run_max_cost: float = Field(gt=0)
+    total_max_cost: float = Field(gt=0)
+    max_runs: int = Field(ge=1, le=500)
+    run_max_tokens: int = Field(ge=1)
+    run_max_model_calls: int = Field(ge=1)
+
+
 class ExperimentManifest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -30,6 +41,7 @@ class ExperimentManifest(BaseModel):
     dataset_split: str = Field(min_length=1)
     random_seed: int
     groups: list[ManifestGroup] = Field(min_length=1)
+    budget: ManifestBudget
     pricing_snapshot: dict = Field(default_factory=dict)
 
     def group_map(self) -> dict[str, ManifestGroup]:

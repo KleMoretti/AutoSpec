@@ -30,6 +30,7 @@ class CollectionConfig(BaseModel):
     code_version: str = Field(min_length=1)
     environment: dict[str, str]
     dataset_split: str = "smoke"
+    random_seed: int = 20261001
     case_ids: list[str] | None = Field(default=None, min_length=1)
     contract_family: str = Field(default="v3", pattern=r"^v[3456]$")
     manifest_path: str | None = None
@@ -111,6 +112,22 @@ class ControlPlaneCollector:
                 raise ValueError("manifest does not contain every configured experiment group")
             if manifest.workflow_key != "autospec-v5":
                 raise ValueError("experiment manifest must target workflow key autospec-v5")
+            if manifest.dataset_split != self.config.dataset_split:
+                raise ValueError("experiment manifest dataset split does not match config")
+            if manifest.random_seed != self.config.random_seed:
+                raise ValueError("experiment manifest random seed does not match config")
+            expected_budget = {
+                "repetitions": self.config.repetitions,
+                "run_max_cost": self.config.run_max_cost,
+                "total_max_cost": self.config.total_max_cost,
+                "max_runs": self.config.max_runs,
+                "run_max_tokens": self.config.run_max_tokens,
+                "run_max_model_calls": self.config.run_max_model_calls,
+            }
+            if manifest.budget.model_dump() != expected_budget:
+                raise ValueError("experiment manifest budget does not match config")
+            if manifest.pricing_snapshot != self.config.pricing_snapshot:
+                raise ValueError("experiment manifest pricing snapshot does not match config")
             if offline:
                 for group, identifier in self.config.version_ids.items():
                     entry = manifest_entries[group]["entry"]

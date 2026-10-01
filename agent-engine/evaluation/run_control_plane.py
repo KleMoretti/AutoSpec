@@ -36,7 +36,12 @@ async def run(config_path: Path, output: Path, *, validate_only: bool = False, r
     async with httpx.AsyncClient(base_url=base_url, timeout=30,
                                 headers={"X-AutoSpec-Session-Token": token}, follow_redirects=False) as client:
         collector = ControlPlaneCollector(client, config, output / config.experiment_id, resume=resume)
-        matrix = await run_ablation_matrix(cases, live_runner=collector, groups=config.groups)
+        matrix = await run_ablation_matrix(
+            cases,
+            live_runner=collector,
+            groups=config.groups,
+            random_seed=config.random_seed,
+        )
         destination = output / config.experiment_id
         (destination / "matrix.json").write_text(matrix.model_dump_json(indent=2), encoding="utf-8")
         by_group = {run.group: run for run in matrix.runs}
