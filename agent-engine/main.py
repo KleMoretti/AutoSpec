@@ -73,6 +73,12 @@ async def ablation_evaluation() -> dict:
     """
 
     matrix = await run_ablation_matrix(matrix_id="not-executed")
+    matrix = matrix.model_copy(update={
+        "runs": [
+            run.model_copy(update={"run_id": f"not-executed-{run.group.lower()}"})
+            for run in matrix.runs
+        ]
+    })
     baseline, candidate = matrix.runs[0], matrix.runs[-1]
     decision = AutoSpecGateDecision(
         decision="NOT_EVALUATED",

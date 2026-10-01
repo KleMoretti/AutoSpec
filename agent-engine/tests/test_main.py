@@ -59,6 +59,12 @@ def test_ablation_comparison_keeps_missing_live_evidence_explicit() -> None:
     assert body["source"] == "NONE"
     assert len(body["matrix"]["runs"]) == 4
     assert all(run["status"] == "NOT_EXECUTED" for run in body["matrix"]["runs"])
+    assert [run["run_id"] for run in body["matrix"]["runs"]] == [
+        "not-executed-a",
+        "not-executed-b",
+        "not-executed-c",
+        "not-executed-d",
+    ]
     assert all(
         metric["value"] is None
         for run in body["matrix"]["runs"]
