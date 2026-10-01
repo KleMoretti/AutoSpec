@@ -8,7 +8,7 @@
   "budget": {
     "repetitions": 1,
     "run_max_cost": 2.0,
-    "total_max_cost": 2.0,
+    "total_max_cost": 13.0,
     "max_runs": 1,
     "run_max_tokens": 250000,
     "run_max_model_calls": 16

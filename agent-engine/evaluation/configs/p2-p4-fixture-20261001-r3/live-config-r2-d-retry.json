@@ -19,7 +19,7 @@
   ],
   "contract_family": "v6",
   "manifest_path": "experiment-manifest-live-r2-d-retry.json",
-  "manifest_hash": "505cb771f885a90e5771855f3abde8eb7530baa4db8639a2efa2edf753d5d504",
+  "manifest_hash": "a09731897dea9541c70e998dd2bcaa2a361d61f00d8b976f77fdd0e2197392d4",
   "groups": [
     "D"
   ],
@@ -27,7 +27,7 @@
   "budget_authorization_id": "autospec-p2-p4-live-20261001-cny13",
   "repetitions": 1,
   "run_max_cost": 2.0,
-  "total_max_cost": 2.0,
+  "total_max_cost": 13.0,
   "max_runs": 1,
   "run_max_tokens": 250000,
   "run_max_model_calls": 16,
