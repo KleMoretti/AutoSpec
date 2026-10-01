@@ -1,5 +1,5 @@
 {
-  "experiment_id": "autospec-p2-p4-fixture-ablation-20261001-r3",
+  "experiment_id": "autospec-p2-p4-fixture-ablation-20261001-r4",
   "version_ids": {
     "A": 2,
     "B": 3,
@@ -22,7 +22,7 @@
   ],
   "contract_family": "v6",
   "manifest_path": "experiment-manifest.json",
-  "manifest_hash": "a2278a5aa60b45dc33589072f9f786d87bd530e09e604a9956260a2ed0cb7008",
+  "manifest_hash": "f0e9c3055fb2ff8b1ea26767a461dd44936ffe8597d1ccf7c4bfa65956554c43",
   "groups": [
     "A",
     "B",
@@ -34,7 +34,7 @@
   "run_max_cost": 10.0,
   "total_max_cost": 40.0,
   "max_runs": 4,
-  "run_max_tokens": 50000,
+  "run_max_tokens": 500000,
   "run_max_model_calls": 16,
   "run_timeout_seconds": 600,
   "poll_seconds": 2.0,

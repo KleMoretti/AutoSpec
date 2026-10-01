@@ -10,7 +10,7 @@
     "run_max_cost": 10.0,
     "total_max_cost": 40.0,
     "max_runs": 4,
-    "run_max_tokens": 50000,
+    "run_max_tokens": 500000,
     "run_max_model_calls": 16
   },
   "groups": [
