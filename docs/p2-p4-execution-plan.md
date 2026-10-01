@@ -11,7 +11,7 @@ database_baseline: V1
 
 本文件分解 [总计划](autospec-v5-spec-sandbox-plan.md) 的 P2（证据）、P3（可靠性及独立扩展）、P4（展示），与 [P0/P1 手册](p0-p1-execution-plan.md) 属于同一条路线。按用户要求保留在 `docs/` 根目录。适用对象是上下文较短、推理能力较弱的执行模型：一次只完成一个任务，按明确输入、步骤、测试和验收推进，不自行扩展目标。
 
-**本文件已更新为实施交接记录。** 本轮完成了可在本地离线验证的 P2–P4 代码、契约、迁移、界面和测试，并完成带 `spec-verifier` 的隔离 fixture 六节点、10/20 并发、取消、worker 重启、Redis poison 和 Outbox 进程中断恢复运行；2026-10-01 又按 README 走通了 Docker fixture 浏览器演示和审批/Trace 门禁观察。不把未获授权的付费评测、真实 embedding、生产容量或仓库截图文件写成已完成。P2-F 的故障边界已修复并有证据，但容量结果仍是 fixture smoke，不能晋级为生产 SLA 或质量结论。剩余阻塞项、验证命令和下一步见 [阶段交接证据](archive/evidence/p2-p4-2026-09-30.md) 与 [浏览器演示补充证据](archive/evidence/p2-p4-2026-10-01.md)。
+**本文件已更新为实施交接记录。** 本轮完成了可在本地离线验证的 P2–P4 代码、契约、迁移、界面和测试，并完成带 `spec-verifier` 的隔离 fixture 六节点、10/20 并发、取消、worker 重启、Redis poison 和 Outbox 进程中断恢复运行；2026-10-01 又按 README 走通了 Docker fixture 浏览器演示和审批/Trace 门禁观察，并补齐平台管理员只读 A/B/C/D 评测比较接口与明确未执行看板。不把未获授权的付费评测、真实 embedding、生产容量或仓库截图文件写成已完成。P2-F 的故障边界已修复并有证据，但容量结果仍是 fixture smoke，不能晋级为生产 SLA 或质量结论。剩余阻塞项、验证命令和下一步见 [阶段交接证据](archive/evidence/p2-p4-2026-09-30.md) 与 [浏览器演示补充证据](archive/evidence/p2-p4-2026-10-01.md)。
 
 ## 1. 开工基线与必须纠正的旧假设
 
@@ -78,10 +78,10 @@ P3-MCP 在 P3-S/P3-F 后、且外部集成需求明确时插入；P3-I 在 BASE-
 | P3-K3 | SIG-P3-04 embedding 对照 | P3-K2、有效预算或本地模型 | blocked：外部语义 embedding provider 未配置/授权 | retrieval-eval |
 | P3-MCP | SIG-P3-01 | P3-S、P3-F、明确外部需求 | deferred | mcp |
 | P3-I | SIG-P3-06 | 主线完成、明确选择 | deferred | impact |
-| P4-A | SIG-P4-01 数据接口 | BASE-03、P2-D | done：已同步知识上传与 Trace steps 契约 | ui-contract |
+| P4-A | SIG-P4-01 数据接口 | BASE-03、P2-D | done：已同步知识上传、Trace steps 和平台管理员评测比较契约 | ui-contract |
 | P4-B | SIG-P4-01 Trace / DAG | P4-A | done：步骤时间线已接入；未宣称动态 DAG 图验收 | trace-dag |
 | P4-C | SIG-P4-01 矩阵 / 验证 | P4-B | done | verification-ui |
-| P4-D | SIG-P4-01 评测看板 | P4-A、P2-D | blocked：当前无只读批量评测结果 API/DTO | eval-ui |
+| P4-D | SIG-P4-01 评测看板 | P4-A、P2-D | blocked：已实现平台管理员只读比较 API/DTO 和 NOT_EVALUATED 看板；当前仍无授权的实测 A/B/C/D 矩阵，不能展示 live/fixture 混算结果 | eval-ui |
 | P4-E | SIG-P4-02 | P4-B/C/D | blocked：Docker + fixture 浏览器演示已走通；截图已在受控会话捕获但尚未形成 `docs/archive/` 图片文件 | demo-readme |
 | P4-F | SIG-P4-03 | P4-E | done：15 张问答卡片已归档 | interview-cards |
 | END-01 | 总计划 DoD | 必选任务完成或明确列缺项 | blocked：见交接证据中的外部条件 | final-handoff |
@@ -828,6 +828,6 @@ next_task: "前置满足的下一项"
 ### 12.3 本轮阶段交接状态
 
 - 离线实施范围已完成：显式规格适配、评测 manifest/数据集/统计、可靠性边界、原生协议拒绝降级、项目知识上传与可信记忆、Trace/验证展示、OpenAPI 同步和 15 张问答卡片。
-- 必须保持 `blocked` 的项目：P2-E 付费正式消融、P2-F 的容量/SLA 与质量晋级、P3-K3 外部语义 embedding 对照、P4-D 批量评测只读看板，以及 P4-E 的仓库截图归档。P4-E 的 Docker fixture 浏览器演示已走通并捕获审批、Evaluator 门禁负例、Evaluator 通过和交付 bundle 画面，但截图尚未形成 `docs/archive/` 图片文件。P2-F 已有 campus 负例和 inventory 成功六节点样本；10/20 并发仍全部因当前批次的 fixture 质量门禁失败，虽已补录失败终态 P50/P95，仍未被晋级为成功容量、生产 SLA 或质量结论。
+- 必须保持 `blocked` 的项目：P2-E 付费正式消融、P2-F 的容量/SLA 与质量晋级、P3-K3 外部语义 embedding 对照、P4-D 的实测 A/B/C/D 证据，以及 P4-E 的仓库截图归档。P4-D 的平台管理员只读接口与前端 NOT_EVALUATED 看板已完成，当前接口明确返回四组 `NOT_EXECUTED`、空指标和 `NOT_EVALUATED` 决策，不伪造演示百分比。P4-E 的 Docker fixture 浏览器演示已走通并捕获审批、Evaluator 门禁负例、Evaluator 通过和交付 bundle 画面，但截图尚未形成 `docs/archive/` 图片文件。P2-F 已有 campus 负例和 inventory 成功六节点样本；10/20 并发仍全部因当前批次的 fixture 质量门禁失败，虽已补录失败终态 P50/P95，仍未被晋级为成功容量、生产 SLA 或质量结论。
 - P3-MCP、P3-I 继续 `deferred`，因为本轮没有明确外部集成或变更影响范围选择。
 - 可复核命令、实际结果、变更文件、阻塞条件和下一步写入 [p2-p4-2026-09-30.md](archive/evidence/p2-p4-2026-09-30.md)；浏览器演示补充写入 [p2-p4-2026-10-01.md](archive/evidence/p2-p4-2026-10-01.md)。后续续做先读最新记录和实际工作区，不依赖口头结论。

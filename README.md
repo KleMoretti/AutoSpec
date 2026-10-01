@@ -109,7 +109,7 @@ The FastAPI process is used for health checks and evaluation/experiment endpoint
 - Stable review issue keys with owner, evidence and resolution
 - Requirement → story / acceptance → API → data → UI trace matrix
 - HIGH / CRITICAL findings and missing MUST coverage block delivery
-- Evaluation datasets and experiment comparison for prompt/model changes
+- Evaluation datasets and a platform-admin read-only A/B/C/D comparison dashboard; missing live evidence stays `NOT_EVALUATED`
 
 ## Quick Start
 
