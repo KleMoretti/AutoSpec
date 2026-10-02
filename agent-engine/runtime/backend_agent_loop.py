@@ -350,6 +350,8 @@ async def run_backend_agent_loop(
                             state,
                             _verification_stop_reason(error_code)
                             if isinstance(error, BackendVerificationError)
+                            else StopReason.VERIFICATION_ERROR
+                            if isinstance(error, ValidationError)
                             else StopReason.VERIFICATION_FAILED,
                         )
 
@@ -383,6 +385,21 @@ async def run_backend_agent_loop(
                         if state.replans >= policy.max_replans:
                             return _result(state, StopReason.REPLAN_LIMIT)
                         continue
+                    if report.status in {"ERROR", "BLOCKED", "NOT_RUN"}:
+                        _append_step(
+                            state,
+                            StepPhase.OBSERVATION,
+                            StepStatus.FAILED,
+                            reason_code="SPEC_VERIFY_ERROR",
+                            plan_hash=_plan_hash(state),
+                            observation_hash=stable_hash(state.observation),
+                            candidate_hash=candidate_hash,
+                            verification_fact_ref=verification_fact_ref,
+                            validation_issue_codes=verification_codes,
+                            model_call_ref=model_call_ref,
+                            duration_ms=_elapsed(started),
+                        )
+                        return _result(state, StopReason.VERIFICATION_ERROR)
                     if report.status != "PASSED" or report.gate_status != "PASSED":
                         _append_step(
                             state,
@@ -780,6 +797,32 @@ def _verification_stop_reason(error_code: str) -> StopReason:
         return StopReason.TOOL_BUDGET_EXHAUSTED
     if error_code in {"TOOL_TIMEOUT", "TOOL_DEADLINE_EXCEEDED", "SPEC_VERIFY_DEADLINE_EXCEEDED"}:
         return StopReason.DEADLINE_EXCEEDED
+    if error_code in {
+        "TOOL_UNAVAILABLE",
+        "TOOL_PERMISSION_DENIED",
+        "TOOL_EXECUTION_FAILED",
+        "TOOL_INPUT_INVALID",
+        "SPEC_VERIFY_POLICY_MISSING",
+        "SPEC_VERIFY_SCOPE_INVALID",
+        "SPEC_VERIFY_PROTOCOL_ERROR",
+        "SPEC_VERIFY_FACT_MISSING",
+        "SPEC_VERIFY_EXECUTION_MISMATCH",
+        "SPEC_VERIFY_SCOPE_MISMATCH",
+        "SPEC_VERIFY_SOURCE_MISMATCH",
+        "SPEC_VERIFY_FACT_MISMATCH",
+        "SPEC_VERIFY_REPORT_HASH_MISMATCH",
+        "SPEC_VERIFY_FACT_EXPIRED",
+        "L2_DATABASE_UNAVAILABLE",
+        "L2_DATABASE_DRIVER_UNAVAILABLE",
+        "L2_DATABASE_DSN_INVALID",
+        "L2_DATABASE_SCHEMA_NAME_INVALID",
+        "L2_DATABASE_CLEANUP_FAILED",
+        "L2_TYPESCRIPT_UNAVAILABLE",
+        "L2_TYPESCRIPT_TIMEOUT",
+        "L2_TYPESCRIPT_FAILED",
+        "L2_RESULT_LIMIT_EXCEEDED",
+    }:
+        return StopReason.VERIFICATION_ERROR
     return StopReason.VERIFICATION_FAILED
 
 

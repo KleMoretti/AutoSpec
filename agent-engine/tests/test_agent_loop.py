@@ -9,7 +9,8 @@ from agents.architect import ArchitectAgent
 from agents.backend_engineer import BackendEngineerAgent
 from agents.product_manager import ProductManagerAgent
 from runtime.agent_loop_trace import capture_agent_loop_trace, current_agent_loop_trace
-from runtime.backend_agent_loop import run_backend_agent_loop
+import runtime.backend_agent_loop as backend_agent_loop
+from runtime.backend_agent_loop import BackendVerificationError, run_backend_agent_loop
 from runtime.execution_context import ModelExecutionContract, bind_model_execution_contract
 from runtime.tool_harness import (
     ToolHarness,
@@ -278,6 +279,67 @@ async def test_candidate_backend_loop_replans_after_verifier_feedback() -> None:
     assert failed[0].verification_fact_ref
     assert any(step.phase == "REPLAN" for step in result.steps)
     assert result.steps[-1].verification_fact_ref
+
+
+@pytest.mark.asyncio
+async def test_backend_loop_stops_on_verifier_error_without_replan(monkeypatch) -> None:
+    requirement, prd, architecture = _inputs()
+    candidate = BackendEngineerAgent().run(requirement, prd, architecture).model_dump(mode="json")
+    responses = iter([
+        {"type": "PLAN", "goal": "design", "steps": ["draft", "verify"]},
+        {"type": "FINAL_CANDIDATE", "candidate": candidate},
+    ])
+
+    class Model:
+        def generate_json(self, _prompt_name, _payload):
+            return next(responses)
+
+    async def unavailable(_candidate, _prd):
+        raise BackendVerificationError("verification sidecar is unavailable", "TOOL_UNAVAILABLE")
+
+    monkeypatch.setattr(backend_agent_loop, "_verify_backend_candidate", unavailable)
+    loop_policy = LoopPolicy(version="agent-loop-v1", enabled=True, max_steps=4, max_replans=1)
+    contract = ModelExecutionContract(
+        execution_id="backend-verifier-error",
+        prompt_key="backend_engineer_shared",
+        prompt_version="v1",
+        prompt_checksum="a" * 64,
+        model_policy={"max_calls": 2},
+        deadline_epoch_ms=int(time.time() * 1000) + 30_000,
+        protocol_version=2,
+        contract_hash="b" * 64,
+        schema_version="BackendDesignArtifact",
+        tool_policy={"enabled": True, "allowed_tools": [{"name": "spec.verify", "version": "v1"}]},
+        agent_loop_policy=loop_policy.model_dump(mode="json"),
+        verification_policy={
+            "enabled": True,
+            "scope": "BACKEND",
+            "required_level": "L1",
+            "rule_profile": "spec-backend-v1",
+            "verifier_version": "spec-verifier-v1",
+            "compiler_version": "spec-compiler-v1",
+            "timeout_ms": 30_000,
+        },
+    )
+
+    with bind_model_execution_contract(contract):
+        result = await run_backend_agent_loop(
+            requirement=requirement,
+            prd=prd,
+            architecture_design=architecture.model_dump(mode="json"),
+            retrieved_sources=[],
+            context_manifest={},
+            rework_directive=None,
+            model_client=Model(),
+            policy=loop_policy,
+        )
+
+    assert result.completed is False
+    assert result.stop_reason == StopReason.VERIFICATION_ERROR
+    assert [step for step in result.steps if step.phase == "REPLAN"] == []
+    failed = [step for step in result.steps if step.reason_code == "TOOL_UNAVAILABLE"]
+    assert len(failed) == 1
+    assert failed[0].candidate_hash == stable_hash(candidate)
 
 
 @pytest.mark.asyncio
