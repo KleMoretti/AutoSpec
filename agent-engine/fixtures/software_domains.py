@@ -424,6 +424,7 @@ def _marketplace() -> SoftwareDomainFixture:
         features,
         [
             _story("STORY-PUBLISH", "student", "publish an idle item", "find a buyer on campus", ["REQ-PUBLISH"], [("AC-PUBLISH-DETAILS", "The listing stores title, price, category, description, and images."), ("AC-PUBLISH-PENDING", "The listing enters a pending audit state after submission.")]),
+            _story("STORY-SEARCH", "student", "search approved listings", "find relevant products on campus", ["REQ-SEARCH"], [("AC-SEARCH-KEYWORD", "Students can filter listings by a keyword."), ("AC-SEARCH-APPROVED", "Search results exclude listings that are not approved.")]),
             _story("STORY-AUDIT", "admin", "audit product listings", "keep prohibited goods out of the marketplace", ["REQ-AUDIT"], [("AC-AUDIT-ROLE", "Only admins can approve or reject pending listings."), ("AC-AUDIT-REASON", "Rejected listings include a visible reason.")]),
         ],
         ["Payment escrow and off-campus logistics are outside this fixture."],

@@ -2,6 +2,7 @@ import time
 
 import pytest
 
+from fixtures.software_domains import get_fixture
 from runtime.agent_node_runner import AgentExecutionRecord
 from review.evaluator import VerificationEvidenceError, evaluate_artifacts
 from schemas.architecture_design import ArchitectureDesignArtifact
@@ -130,6 +131,24 @@ def test_evaluator_scores_complete_run_high():
         "EXPORT_READINESS",
     }
     assert report.issues == []
+
+
+def test_campus_fixture_has_complete_must_trace_and_does_not_misread_approved_as_approve():
+    fixture = get_fixture("campus_marketplace")
+
+    report = evaluate_artifacts(
+        requirement="Build a campus second-hand marketplace.",
+        prd=fixture.prd,
+        architecture_design=fixture.shared_architecture(),
+        backend_design=fixture.backend,
+        frontend_skeleton=fixture.frontend,
+        review_report=ReviewReport(score=100, issues=[]),
+        records=successful_records(),
+    )
+
+    issue_types = {issue.issue_type for issue in report.issues}
+    assert "MUST_REQUIREMENT_TRACE_GAP" not in issue_types
+    assert "PERMISSION_COVERAGE" not in issue_types
 
 
 def test_evaluator_flags_missing_frontend_api_binding():
