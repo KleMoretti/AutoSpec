@@ -51,6 +51,8 @@ def freeze_contracts(base_path: Path, output_dir: Path, version_suffix: str) -> 
     WorkflowSpec.model_validate(base)
     output_dir.mkdir(parents=True, exist_ok=True)
     frozen: dict[str, dict[str, Any]] = {}
+    base_backend = next(node for node in base["nodes"] if node["node_id"] == "backend_engineer")
+    base_backend_level = base_backend["verification_policy"].get("required_level", "NONE")
     for group, name, loop_enabled, tools_enabled, verify_enabled in GROUPS:
         spec = copy.deepcopy(base)
         spec["version"] = f"{base['version']}-ablation-{group.lower()}-{version_suffix}"
@@ -67,12 +69,12 @@ def freeze_contracts(base_path: Path, output_dir: Path, version_suffix: str) -> 
             if tools_enabled else []
         )
         backend["verification_policy"]["enabled"] = verify_enabled
-        backend["verification_policy"]["required_level"] = "L1" if verify_enabled else "NONE"
+        backend["verification_policy"]["required_level"] = base_backend_level if verify_enabled else "NONE"
         backend["verification_policy"]["policy_hash"] = _verification_policy_hash(
             backend["verification_policy"]
         )
         WorkflowSpec.model_validate(spec)
-        path = output_dir / f"autospec-pm-schema-repair-v12-ablation-{group.lower()}-{version_suffix}.workflow.json"
+        path = output_dir / f"autospec-{base['version']}-ablation-{group.lower()}-{version_suffix}.workflow.json"
         path.write_text(json.dumps(spec, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         frozen[group] = {
             "group": group,
