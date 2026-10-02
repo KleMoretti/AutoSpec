@@ -70,7 +70,6 @@ jobs:
       SPEC_VERIFIER_SERVICE_TOKEN: ci-autospec-verifier-token
       VERIFY_MYSQL_PASSWORD: ci-autospec-verifier-mysql-password
       VERIFY_MYSQL_ROOT_PASSWORD: ci-autospec-verifier-mysql-root-password
-      VERIFIER_COMPOSE_PROJECT: autospec-verifier-ci-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v4
       - name: Validate default Compose graph
@@ -98,6 +97,7 @@ jobs:
       SPEC_VERIFIER_SERVICE_TOKEN: ci-autospec-verifier-token
       VERIFY_MYSQL_PASSWORD: ci-autospec-verifier-mysql-password
       VERIFY_MYSQL_ROOT_PASSWORD: ci-autospec-verifier-mysql-root-password
+      VERIFIER_COMPOSE_PROJECT: autospec-verifier-ci-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
