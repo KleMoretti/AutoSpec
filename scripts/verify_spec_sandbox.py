@@ -204,7 +204,7 @@ def _run_in_container(container: str) -> dict[str, Any]:
         check=False,
     )
     if result.returncode != 0:
-        detail = (result.stderr or result.stdout).strip()[:1000]
+        detail = (result.stderr or result.stdout).strip()[-1500:]
         raise RuntimeError(f"verifier runtime probes failed: {detail}")
     try:
         return json.loads(result.stdout)
