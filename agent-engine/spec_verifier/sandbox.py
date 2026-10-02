@@ -9,7 +9,8 @@ from urllib.parse import unquote, urlparse
 from pathlib import Path
 
 from schemas.verification import VerificationCheck, VerificationIssue, VerificationReport
-from spec_verifier.compiler import CompiledSpec
+from spec_verifier.compiler import COMPILER_VERSION_V2, CompiledSpec
+from spec_verifier.validators import VERIFIER_VERSION, VERIFIER_VERSION_V2
 
 
 _VERIFY_SCHEMA_PREFIX = "autospec_verify_"
@@ -197,7 +198,11 @@ def compiled_report(
         execution_id=execution_id,
         contract_id=compiled.manifest["contract_id"],
         scope=scope,
-        verifier_version="spec-verifier-v1",
+        verifier_version=(
+            VERIFIER_VERSION_V2
+            if compiled.manifest["compiler_version"] == COMPILER_VERSION_V2
+            else VERIFIER_VERSION
+        ),
         compiler_version=compiled.manifest["compiler_version"],
         level="L2",
         status="ERROR" if blocked else "PASSED",

@@ -13,9 +13,10 @@ from schemas.backend_design import (
     ExplicitForeignKey,
 )
 from schemas.frontend_skeleton import ExplicitFrontendSkeletonArtifact
-from schemas.spec_contract import SpecContractV2, normalise_spec_contract
+from schemas.spec_contract import ExplicitType, SpecContractV2, normalise_spec_contract
 from spec_verifier.artifact_adapter import explicit_spec_contract_from_artifacts
 from spec_verifier.compiler import compile_spec
+from spec_verifier.sandbox import compiled_report
 from spec_verifier.validators import validate_l1
 
 
@@ -157,4 +158,66 @@ def test_explicit_fixture_contracts_pass_l1_without_inference(fixture_key: str) 
     frontend = explicit_frontend_for_fixture(fixture, backend)
     contract = explicit_spec_contract_from_artifacts(fixture.prd, backend, frontend)
 
-    assert validate_l1(contract).status == "PASSED"
+    report = validate_l1(contract)
+    assert report.status == "PASSED"
+    assert report.verifier_version == "spec-verifier-v2"
+    assert report.compiler_version == "spec-compiler-v2"
+
+
+def test_explicit_compiler_generates_typed_request_and_independent_consumer() -> None:
+    prd, backend, frontend = _explicit_fixture()
+    contract = explicit_spec_contract_from_artifacts(prd, backend, frontend)
+
+    first = compile_spec(contract)
+    second = compile_spec(contract)
+
+    assert first.files == second.files
+    assert first.manifest["compiler_version"] == "spec-compiler-v2"
+    l2_report = compiled_report(first, "explicit-l2", [], [])
+    assert l2_report.verifier_version == "spec-verifier-v2"
+    assert l2_report.compiler_version == "spec-compiler-v2"
+    client = first.files["client.ts"]
+    bindings = first.files["bindings.ts"]
+    assert "encodeURIComponent(String(args.productId))" in client
+    assert "URLSearchParams" in client
+    assert "JSON.stringify(body)" in client
+    assert "from './client'" in bindings
+    assert "consumeBIND_AUDIT" in bindings
+    assert "source.route.productId" in bindings
+    assert "response.auditStatus" in bindings
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected_code"),
+    [
+        ("parameter_location", "BINDING_PARAMETER_LOCATION_MISMATCH"),
+        ("parameter_type", "BINDING_PARAMETER_TYPE_MISMATCH"),
+        ("parameter_required", "BINDING_PARAMETER_REQUIRED_MISMATCH"),
+        ("response_type", "BINDING_RESPONSE_TYPE_MISMATCH"),
+        ("response_nullable", "BINDING_RESPONSE_NULLABILITY_MISMATCH"),
+        ("response_path", "BINDING_RESPONSE_FIELD_MISSING"),
+    ],
+)
+def test_explicit_binding_single_edge_mutations_have_stable_failures(
+    mutation: str,
+    expected_code: str,
+) -> None:
+    prd, backend, frontend = _explicit_fixture()
+    contract = explicit_spec_contract_from_artifacts(prd, backend, frontend)
+    binding = contract.frontend_bindings[0]
+    if mutation == "parameter_location":
+        binding.parameters[0].location = "query"
+    elif mutation == "parameter_type":
+        binding.parameters[0].type = ExplicitType.model_validate(_explicit_type("VARCHAR(64)"))
+    elif mutation == "parameter_required":
+        binding.parameters[0].required = not binding.parameters[0].required
+    elif mutation == "response_type":
+        binding.response_fields[0].type = ExplicitType.model_validate(_explicit_type("VARCHAR(64)"))
+    elif mutation == "response_nullable":
+        binding.response_fields[0].nullable = not binding.response_fields[0].nullable
+    else:
+        binding.response_fields[0].path = "missingField"
+
+    report = validate_l1(contract)
+    assert report.status == "FAILED"
+    assert expected_code in {issue.code for issue in report.issues}
