@@ -70,6 +70,7 @@ jobs:
       SPEC_VERIFIER_SERVICE_TOKEN: ci-autospec-verifier-token
       VERIFY_MYSQL_PASSWORD: ci-autospec-verifier-mysql-password
       VERIFY_MYSQL_ROOT_PASSWORD: ci-autospec-verifier-mysql-root-password
+      VERIFIER_COMPOSE_PROJECT: autospec-verifier-ci-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
       - uses: actions/checkout@v4
       - name: Validate default Compose graph
@@ -103,9 +104,9 @@ jobs:
         with:
           python-version: "3.12"
       - name: Start isolated verifier
-        run: docker compose -p autospec-verifier-ci up --build -d spec-verifier
+        run: docker compose -p "$VERIFIER_COMPOSE_PROJECT" up --build -d spec-verifier
       - name: Run verifier sandbox probes
-        run: python scripts/verify_spec_sandbox.py --project autospec-verifier-ci
+        run: python scripts/verify_spec_sandbox.py --project "$VERIFIER_COMPOSE_PROJECT"
       - name: Stop isolated verifier
         if: always()
-        run: docker compose -p autospec-verifier-ci down --remove-orphans
+        run: docker compose -p "$VERIFIER_COMPOSE_PROJECT" down --remove-orphans
