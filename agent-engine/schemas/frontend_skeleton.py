@@ -4,6 +4,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from schemas.citation import SourceCitation
 from schemas.backend_design import HttpMethod
+from schemas.spec_contract import ExplicitType
 from schemas.traceability import ComponentId, RequirementId, stable_id, unique_refs
 
 
@@ -116,3 +117,45 @@ class FrontendSkeletonArtifact(BaseModel):
         if len(ids) != len(set(ids)):
             raise ValueError("frontend component ids must be unique")
         return self
+
+
+class ExplicitBindingParameter(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str = Field(pattern=r"^[A-Za-z][A-Za-z0-9_]{0,63}$")
+    location: Literal["path", "query", "body"]
+    source: str = Field(pattern=r"^(props|state|event|route|context)(\.[A-Za-z][A-Za-z0-9_]*)*$")
+    type: ExplicitType
+    required: bool
+
+
+class ExplicitResponseBinding(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    path: str = Field(pattern=r"^[A-Za-z][A-Za-z0-9_.]*$")
+    type: ExplicitType
+    nullable: bool
+
+
+class ExplicitApiBinding(ApiBinding):
+    """Frontend mapping that independently declares request and response use."""
+
+    backend_api_id: ComponentId
+    parameters: list[ExplicitBindingParameter]
+    response_fields: list[ExplicitResponseBinding]
+
+    @model_validator(mode="after")
+    def validate_mapping_ids(self) -> "ExplicitApiBinding":
+        parameter_ids = [(item.location, item.name) for item in self.parameters]
+        if len(parameter_ids) != len(set(parameter_ids)):
+            raise ValueError(f"duplicate binding parameters: {self.binding_id}")
+        response_paths = [item.path for item in self.response_fields]
+        if len(response_paths) != len(set(response_paths)):
+            raise ValueError(f"duplicate binding response paths: {self.binding_id}")
+        return self
+
+
+class ExplicitFrontendSkeletonArtifact(FrontendSkeletonArtifact):
+    """Explicit v2 artifact; legacy frontend output remains replay-compatible."""
+
+    api_bindings: list[ExplicitApiBinding] = Field(default_factory=list)

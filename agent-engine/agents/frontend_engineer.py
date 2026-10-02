@@ -1,11 +1,18 @@
 from typing import Any
 
 from agents.base import ModelClient
-from fixtures.software_domains import fixture_for_requirement
+from fixtures.software_domains import (
+    explicit_backend_for_fixture,
+    explicit_frontend_for_fixture,
+    fixture_for_requirement,
+)
 from runtime.structured_output import generate_structured_output
 from schemas.architecture_design import ArchitectureDesignArtifact
 from schemas.backend_design import BackendDesignArtifact
-from schemas.frontend_skeleton import FrontendSkeletonArtifact
+from schemas.frontend_skeleton import (
+    ExplicitFrontendSkeletonArtifact,
+    FrontendSkeletonArtifact,
+)
 from schemas.prd import PrdArtifact
 from schemas.traceability import fallback_requirement_mapping, remap_requirement_refs
 
@@ -26,7 +33,8 @@ class FrontendEngineerAgent:
         context_manifest: dict[str, Any] | None = None,
         rework_directive: dict[str, Any] | None = None,
         shared_contract_required: bool = False,
-    ) -> FrontendSkeletonArtifact:
+        explicit_contract_required: bool = False,
+    ) -> FrontendSkeletonArtifact | ExplicitFrontendSkeletonArtifact:
         input_payload: dict[str, Any] = {
             "requirement": requirement,
             "prd": prd.model_dump(),
@@ -41,12 +49,23 @@ class FrontendEngineerAgent:
         if self.model_client is not None:
             return generate_structured_output(
                 self.model_client,
-                "FrontendEngineerAgent_v2" if shared_contract_required else self.prompt_name,
+                (
+                    "FrontendEngineerAgent_v4"
+                    if explicit_contract_required
+                    else "FrontendEngineerAgent_v2"
+                    if shared_contract_required
+                    else self.prompt_name
+                ),
                 input_payload,
-                FrontendSkeletonArtifact,
+                ExplicitFrontendSkeletonArtifact if explicit_contract_required else FrontendSkeletonArtifact,
             )
 
-        return fixture_for_requirement(requirement).frontend
+        fixture = fixture_for_requirement(requirement)
+        if explicit_contract_required:
+            return explicit_frontend_for_fixture(
+                fixture, explicit_backend_for_fixture(fixture)
+            )
+        return fixture.frontend
 
         fallback = {
                 "routes": [

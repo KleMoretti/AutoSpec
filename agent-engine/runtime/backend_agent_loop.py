@@ -42,6 +42,7 @@ from schemas.prd import PrdArtifact
 from schemas.tool import ToolCallRequest
 from schemas.verification import VerificationFact, VerificationReport
 from spec_verifier.compiler import compile_spec
+from spec_verifier.artifact_adapter import explicit_spec_contract_from_artifacts
 from spec_verifier.fixtures import spec_contract_from_artifacts
 
 
@@ -644,12 +645,20 @@ async def _verify_backend_candidate(
             "TOOL_DEADLINE_EXCEEDED",
         )
 
-    contract = spec_contract_from_artifacts(
-        prd,
-        candidate,
-        None,
-        contract_id="GeneratedSpec",
-    )
+    if policy.get("verifier_version") == "spec-verifier-v2":
+        contract = explicit_spec_contract_from_artifacts(
+            prd,
+            candidate,
+            None,
+            contract_id="GeneratedSpec",
+        )
+    else:
+        contract = spec_contract_from_artifacts(
+            prd,
+            candidate,
+            None,
+            contract_id="GeneratedSpec",
+        )
     compiled = compile_spec(contract)
     result = await execute_current_tool(
         ToolCallRequest(

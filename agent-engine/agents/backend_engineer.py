@@ -1,10 +1,10 @@
 from typing import Any, Mapping
 
 from agents.base import ModelClient
-from fixtures.software_domains import fixture_for_requirement
+from fixtures.software_domains import explicit_backend_for_fixture, fixture_for_requirement
 from runtime.structured_output import generate_structured_output
 from schemas.architecture_design import ArchitectureDesignArtifact
-from schemas.backend_design import BackendDesignArtifact
+from schemas.backend_design import BackendDesignArtifact, ExplicitBackendDesignArtifact
 from schemas.prd import PrdArtifact
 from schemas.traceability import fallback_requirement_mapping, remap_requirement_refs
 
@@ -24,7 +24,8 @@ class BackendEngineerAgent:
         context_manifest: dict[str, Any] | None = None,
         rework_directive: dict[str, Any] | None = None,
         shared_contract_required: bool = False,
-    ) -> BackendDesignArtifact:
+        explicit_contract_required: bool = False,
+    ) -> BackendDesignArtifact | ExplicitBackendDesignArtifact:
         input_payload: Mapping[str, Any] = {
             "requirement": requirement,
             "prd": prd.model_dump(),
@@ -47,12 +48,23 @@ class BackendEngineerAgent:
         if self.model_client is not None:
             return generate_structured_output(
                 self.model_client,
-                "BackendEngineerAgent_v3" if shared_contract_required else self.prompt_name,
+                (
+                    "BackendEngineerAgent_v7"
+                    if explicit_contract_required
+                    else "BackendEngineerAgent_v3"
+                    if shared_contract_required
+                    else self.prompt_name
+                ),
                 input_payload,
-                BackendDesignArtifact,
+                ExplicitBackendDesignArtifact if explicit_contract_required else BackendDesignArtifact,
             )
 
-        return fixture_for_requirement(requirement).backend
+        fixture = fixture_for_requirement(requirement)
+        return (
+            explicit_backend_for_fixture(fixture)
+            if explicit_contract_required
+            else fixture.backend
+        )
 
         fallback = {
                 "tables": [

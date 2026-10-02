@@ -117,6 +117,12 @@ class SpecApi(SpecBase):
         return self
 
 
+class SpecApiV2(SpecApi):
+    """API shape with an explicit successful response status."""
+
+    success_status: int = Field(ge=200, le=299)
+
+
 class SpecBindingParameter(SpecBase):
     name: str = Field(pattern=SQL_IDENTIFIER)
     source: str = Field(min_length=1, max_length=256)
@@ -130,6 +136,39 @@ class SpecFrontendBinding(SpecBase):
     path: str = Field(pattern=SAFE_PATH)
     parameters: list[SpecBindingParameter] = Field(default_factory=list)
     requirement_refs: list[str] = Field(default_factory=list)
+
+
+class SpecBindingParameterV2(SpecBindingParameter):
+    location: LOCATIONS
+    type: SpecFieldType
+    required: bool
+
+
+class SpecBindingResponseFieldV2(SpecBase):
+    path: str = Field(pattern=r"^[A-Za-z][A-Za-z0-9_.]*$")
+    type: SpecFieldType
+    nullable: bool
+
+
+class SpecFrontendBindingV2(SpecFrontendBinding):
+    parameters: list[SpecBindingParameterV2]
+    response_fields: list[SpecBindingResponseFieldV2]
+
+    @model_validator(mode="after")
+    def validate_mapping_ids(self) -> "SpecFrontendBindingV2":
+        parameter_ids = [(item.location, item.name) for item in self.parameters]
+        if len(parameter_ids) != len(set(parameter_ids)):
+            raise ValueError(f"duplicate binding parameters: {self.binding_id}")
+        response_paths = [item.path for item in self.response_fields]
+        if len(response_paths) != len(set(response_paths)):
+            raise ValueError(f"duplicate binding response paths: {self.binding_id}")
+        return self
+
+
+class ExplicitType(SpecFieldType):
+    """Shared type shape used by the explicit artifact versions."""
+
+    pass
 
 
 class SpecRequirement(SpecBase):
@@ -161,5 +200,17 @@ class SpecContract(SpecBase):
         return self
 
 
+class SpecContractV2(SpecContract):
+    """Explicit contract with independent frontend request/response mappings."""
+
+    schema_version: Literal["spec-contract-v2"] = "spec-contract-v2"
+    apis: list[SpecApiV2] = Field(default_factory=list)
+    frontend_bindings: list[SpecFrontendBindingV2] = Field(default_factory=list)
+
+
 def normalise_spec_contract(value: SpecContract | dict) -> SpecContract:
-    return value if isinstance(value, SpecContract) else SpecContract.model_validate(value)
+    if isinstance(value, SpecContract):
+        return value
+    if value.get("schema_version") == "spec-contract-v2":
+        return SpecContractV2.model_validate(value)
+    return SpecContract.model_validate(value)

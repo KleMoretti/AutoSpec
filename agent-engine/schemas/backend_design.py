@@ -5,6 +5,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from schemas.citation import SourceCitation
+from schemas.spec_contract import ExplicitType
 from schemas.traceability import ComponentId, RequirementId, stable_id, unique_refs
 
 
@@ -124,3 +125,39 @@ class BackendDesignArtifact(BaseModel):
         if len(operations) != len(set(operations)):
             raise ValueError("backend API method/path pairs must be unique")
         return self
+
+
+class ExplicitFieldDesign(FieldDesign):
+    """Versioned field shape for candidates that feed the executable contract."""
+
+    primary_key: bool
+    unique: bool = False
+    foreign_key: ExplicitForeignKey | None
+    type: ExplicitType
+
+
+class ExplicitTableDesign(TableDesign):
+    fields: list[ExplicitFieldDesign] = Field(min_length=1)
+
+
+class ExplicitRequestParam(RequestParam):
+    type: ExplicitType
+    location: Literal["path", "query", "body"]
+
+
+class ExplicitResponseField(ResponseField):
+    type: ExplicitType
+    nullable: bool
+
+
+class ExplicitApiDesign(ApiDesign):
+    success_status: int = Field(ge=200, le=299)
+    request_params: list[ExplicitRequestParam] = Field(default_factory=list)
+    response_fields: list[ExplicitResponseField] = Field(default_factory=list)
+
+
+class ExplicitBackendDesignArtifact(BackendDesignArtifact):
+    """Explicit v2 artifact; legacy ``BackendDesignArtifact`` is unchanged."""
+
+    tables: list[ExplicitTableDesign] = Field(min_length=1)
+    apis: list[ExplicitApiDesign] = Field(min_length=1)

@@ -7,7 +7,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from schemas.spec_contract import SpecContract
+from schemas.spec_contract import SpecContract, normalise_spec_contract
 from schemas.verification import VerificationCheck, VerificationIssue, VerificationReport
 from spec_verifier.compiler import COMPILER_VERSION, compile_spec
 
@@ -24,7 +24,7 @@ def validate_l1(
     raw = spec.model_dump(mode="json") if isinstance(spec, SpecContract) else spec
     source_digest = hashlib.sha256(_canonical(raw).encode("utf-8")).hexdigest()
     try:
-        contract = spec if isinstance(spec, SpecContract) else SpecContract.model_validate(spec)
+        contract = normalise_spec_contract(spec)
     except ValidationError as exc:
         issue = VerificationIssue(
             code="CONTRACT_SCHEMA_INVALID",

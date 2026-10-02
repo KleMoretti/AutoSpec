@@ -6,7 +6,14 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from schemas.spec_contract import SpecApi, SpecContract, SpecField, SpecFieldType, SpecTable
+from schemas.spec_contract import (
+    SpecApi,
+    SpecContract,
+    SpecField,
+    SpecFieldType,
+    SpecTable,
+    normalise_spec_contract,
+)
 
 
 COMPILER_VERSION = "spec-compiler-v1"
@@ -20,7 +27,7 @@ class CompiledSpec:
 
 
 def compile_spec(spec: SpecContract | dict[str, Any]) -> CompiledSpec:
-    contract = spec if isinstance(spec, SpecContract) else SpecContract.model_validate(spec)
+    contract = normalise_spec_contract(spec)
     canonical = _canonical(contract.model_dump(mode="json"))
     source_digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
     files = {
@@ -47,10 +54,11 @@ def compile_spec(spec: SpecContract | dict[str, Any]) -> CompiledSpec:
 def _openapi(spec: SpecContract) -> str:
     paths: dict[str, Any] = {}
     for api in sorted(spec.apis, key=lambda item: (item.path, item.method, item.api_id)):
+        success_status = str(getattr(api, "success_status", 200))
         operation: dict[str, Any] = {
             "operationId": api.api_id,
             "responses": {
-                "200": {
+                success_status: {
                     "description": "Successful response",
                     "content": {
                         "application/json": {
