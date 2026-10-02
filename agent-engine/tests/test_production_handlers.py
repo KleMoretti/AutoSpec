@@ -1,5 +1,6 @@
 import pytest
 
+from fixtures.software_domains import get_fixture
 from runtime.context_policy import ContextPolicyError
 from runtime.node_executor import NodeCommand, NodeExecutor
 from runtime.production_handlers import (
@@ -38,10 +39,43 @@ def test_registry_contains_all_builtin_v5_handlers() -> None:
     assert registry.resolve("BackendEngineerAgent", "v4")
     assert registry.resolve("BackendEngineerAgent", "v5")
     assert registry.resolve("BackendEngineerAgent", "v6")
+    assert registry.resolve("BackendEngineerAgent", "v7")
     assert registry.resolve("FrontendEngineerAgent", "v3")
+    assert registry.resolve("FrontendEngineerAgent", "v4")
     assert registry.resolve("ReviewerAgent", "v4")
     assert registry.resolve("ReviewerAgent", "v5")
     assert registry.resolve("EvaluatorAgent", "v4")
+
+
+@pytest.mark.asyncio
+async def test_explicit_handlers_return_explicit_fixture_artifacts() -> None:
+    fixture = get_fixture("campus_marketplace")
+    executor = NodeExecutor(build_production_registry())
+    shared = {
+        "requirement": "Build a campus marketplace",
+        "prd": fixture.prd.model_dump(mode="json"),
+        "architecture_design": fixture.shared_architecture().model_dump(mode="json"),
+    }
+
+    backend = await executor.execute(
+        command("BackendEngineerAgent", shared, node_id="backend_engineer").model_copy(
+            update={"handler_version": "v7"}
+        )
+    )
+    frontend = await executor.execute(
+        command("FrontendEngineerAgent", shared, node_id="frontend_engineer").model_copy(
+            update={"handler_version": "v4"}
+        )
+    )
+
+    assert backend.event_type == "NODE_SUCCEEDED", backend.error_message
+    assert frontend.event_type == "NODE_SUCCEEDED", frontend.error_message
+    assert backend.output_payload["tables"][0]["fields"][0]["primary_key"] is True
+    assert backend.output_payload["tables"][0]["fields"][0]["foreign_key"] is None
+    assert backend.output_payload["apis"][0]["request_params"][0]["location"] == "body"
+    assert backend.output_payload["apis"][0]["response_fields"][0]["nullable"] is False
+    assert frontend.output_payload["api_bindings"][0]["parameters"]
+    assert frontend.output_payload["api_bindings"][0]["response_fields"]
 
 
 @pytest.mark.asyncio

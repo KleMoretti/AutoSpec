@@ -13,9 +13,19 @@ from agents.frontend_engineer import FrontendEngineerAgent
 from agents.product_manager import ProductManagerAgent
 from agents.reviewer import ReviewerAgent
 from schemas.architecture_design import ArchitectureDesignArtifact, ArchitectureDesignArtifactV2
-from review.shared_contract import validate_backend_contract, validate_frontend_contract
-from schemas.backend_design import BackendDesignArtifact
-from schemas.frontend_skeleton import FrontendSkeletonArtifact
+from review.shared_contract import (
+    validate_backend_contract,
+    validate_explicit_backend_contract,
+    validate_frontend_contract,
+)
+from schemas.backend_design import (
+    BackendDesignArtifact,
+    ExplicitBackendDesignArtifact,
+)
+from schemas.frontend_skeleton import (
+    ExplicitFrontendSkeletonArtifact,
+    FrontendSkeletonArtifact,
+)
 from schemas.prd import PrdArtifact
 
 
@@ -108,6 +118,7 @@ def _run_node_output(
     rework_directive = payload.get("rework_directive")
     shared_contract_required = payload.get("shared_contract_required", False)
     rule_profile = payload.get("rule_profile", "legacy-marketplace-v1")
+    explicit_contract_required = bool(payload.get("explicit_contract_required", False))
 
     if node_name == "product_manager":
         return ProductManagerAgent(model_client).run(
@@ -140,9 +151,13 @@ def _run_node_output(
             context_manifest=context_manifest,
             rework_directive=rework_directive,
             shared_contract_required=shared_contract_required,
+            explicit_contract_required=explicit_contract_required,
         )
         if shared_contract_required:
-            validate_backend_contract(architecture_design, result)
+            if explicit_contract_required:
+                validate_explicit_backend_contract(architecture_design, result)
+            else:
+                validate_backend_contract(architecture_design, result)
         return result
 
     if node_name == "frontend_engineer":
@@ -155,13 +170,24 @@ def _run_node_output(
             context_manifest=context_manifest,
             rework_directive=rework_directive,
             shared_contract_required=shared_contract_required,
+            explicit_contract_required=explicit_contract_required,
         )
         if shared_contract_required:
             validate_frontend_contract(architecture_design, result)
         return result
 
-    backend_design = BackendDesignArtifact.model_validate(payload["backend_design"])
-    frontend_skeleton = FrontendSkeletonArtifact.model_validate(
+    backend_model = (
+        ExplicitBackendDesignArtifact
+        if explicit_contract_required
+        else BackendDesignArtifact
+    )
+    frontend_model = (
+        ExplicitFrontendSkeletonArtifact
+        if explicit_contract_required
+        else FrontendSkeletonArtifact
+    )
+    backend_design = backend_model.model_validate(payload["backend_design"])
+    frontend_skeleton = frontend_model.model_validate(
         payload["frontend_skeleton"]
     )
     return ReviewerAgent(

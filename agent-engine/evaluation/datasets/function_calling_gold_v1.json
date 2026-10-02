@@ -1,0 +1,37 @@
+{
+  "dataset_version": "autospec-function-calling-v1",
+  "cases": [
+    {
+      "case_id": "contract-lookup",
+      "expected": "TOOL_CALL",
+      "name": "contract.lookup",
+      "version": "v1",
+      "arguments": {"node_id": "backend_engineer"}
+    },
+    {
+      "case_id": "knowledge-search",
+      "expected": "TOOL_CALL",
+      "name": "knowledge.search",
+      "version": "v1",
+      "arguments": {"query": "approval policy", "limit": 5}
+    },
+    {
+      "case_id": "no-tool-final",
+      "expected": "FINAL_CANDIDATE"
+    },
+    {
+      "case_id": "unknown-tool-rejected",
+      "expected": "REJECT",
+      "name": "bundle.verify",
+      "version": "v1",
+      "arguments": {}
+    },
+    {
+      "case_id": "malformed-arguments-rejected",
+      "expected": "REJECT",
+      "name": "contract.lookup",
+      "version": "v1",
+      "arguments": "not-json"
+    }
+  ]
+}

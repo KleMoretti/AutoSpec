@@ -16,10 +16,10 @@ class SchemaInitSqlTest {
         source.setURL("jdbc:h2:mem:baseline;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH");
         try (var connection = source.getConnection()) {
             var flyway = Flyway.configure().dataSource(source).locations("classpath:db/migration").load();
-            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(4);
+            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(5);
             flyway.validate();
             assertThat(flyway.migrate().migrationsExecuted).isZero();
-            assertThat(flyway.info().current().getVersion().toString()).isEqualTo("4");
+            assertThat(flyway.info().current().getVersion().toString()).isEqualTo("5");
 
             Set<String> tables = new HashSet<>();
             try (var rows = connection.getMetaData().getTables(null, "public", "%", new String[]{"TABLE"})) {
@@ -44,6 +44,8 @@ class SchemaInitSqlTest {
                         + ", trust_status from project_memory_fact where 1 = 0");
                 statement.executeQuery("select stream_message_id, consumer_group, delivery_count "
                         + "from workflow_event_delivery_attempt where 1 = 0");
+                statement.executeQuery("select candidate_hash, verification_fact_ref "
+                        + "from workflow_agent_step_fact where 1 = 0");
                 try (var rows = statement.executeQuery("select version, status, spec_json from workflow_version")) {
                     assertThat(rows.next()).isTrue();
                     assertThat(rows.getString("version")).isEqualTo("pm-schema-repair-v12");

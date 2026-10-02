@@ -1,0 +1,84 @@
+{
+  "manifest_version": "autospec-experiment-manifest-v1",
+  "experiment_id": "autospec-p2-p3-fixture-full-20261002-development-r1",
+  "workflow_key": "autospec-v5",
+  "dataset_version": "autospec-interview-eval-v2",
+  "dataset_split": "development",
+  "random_seed": 20261002,
+  "budget": {
+    "repetitions": 3,
+    "run_max_cost": 10.0,
+    "total_max_cost": 1920.0,
+    "max_runs": 192,
+    "run_max_tokens": 500000,
+    "run_max_model_calls": 16
+  },
+  "groups": [
+    {
+      "group": "A",
+      "name": "single-shot",
+      "workflow_version_id": 2,
+      "contract_path": "autospec-spec-sandbox-ablation-a-20261002-r1.workflow.json",
+      "contract_hash": "64e90d031d61a78c038b635b319793f4d0fb31297ccfc32aa38fc4c90355ff26",
+      "prompt_schema_versions": {
+        "product_manager": "product_manager_schema:v1:86e9680fe28afcd4f0c884c90ad8a52b8da54be00d0edbdcaf2ebb1a7329dd53",
+        "architect": "architect_schema:v1:62b1d1d44432e80f5ee1863837efc45c426635bd5618e20b53c8ed1fc3f4c729",
+        "backend_engineer": "backend_engineer_loop_v3:v1:2678cf7396c34995cf38731ca5da9626bcde8d438378efabdf1c21a736e290b0",
+        "frontend_engineer": "frontend_schema:v1:2490b7c0f0e5f8dfaaf62c4a2a8807f2f05d85ae75fb670fa0cbfbe9789e5dbd",
+        "reviewer": "reviewer_schema_v2:v1:620549ea2a9afda11a3b07ddc10a8158770e65619690cc1193f2cb4241c90824",
+        "evaluator": "evaluator:v1:105c4913d48de2f875f8eafd17adc0870e1abb58d89eae44aeebfe0905ee9cf3"
+      }
+    },
+    {
+      "group": "B",
+      "name": "loop-no-tools",
+      "workflow_version_id": 3,
+      "contract_path": "autospec-spec-sandbox-ablation-b-20261002-r1.workflow.json",
+      "contract_hash": "8126dadcc298ad92ee5c723cd364f975dd8659dfcf828f380a578760ad3808df",
+      "prompt_schema_versions": {
+        "product_manager": "product_manager_schema:v1:86e9680fe28afcd4f0c884c90ad8a52b8da54be00d0edbdcaf2ebb1a7329dd53",
+        "architect": "architect_schema:v1:62b1d1d44432e80f5ee1863837efc45c426635bd5618e20b53c8ed1fc3f4c729",
+        "backend_engineer": "backend_engineer_loop_v3:v1:2678cf7396c34995cf38731ca5da9626bcde8d438378efabdf1c21a736e290b0",
+        "frontend_engineer": "frontend_schema:v1:2490b7c0f0e5f8dfaaf62c4a2a8807f2f05d85ae75fb670fa0cbfbe9789e5dbd",
+        "reviewer": "reviewer_schema_v2:v1:620549ea2a9afda11a3b07ddc10a8158770e65619690cc1193f2cb4241c90824",
+        "evaluator": "evaluator:v1:105c4913d48de2f875f8eafd17adc0870e1abb58d89eae44aeebfe0905ee9cf3"
+      }
+    },
+    {
+      "group": "C",
+      "name": "loop-with-tools",
+      "workflow_version_id": 4,
+      "contract_path": "autospec-spec-sandbox-ablation-c-20261002-r1.workflow.json",
+      "contract_hash": "0d5ae289a18a1afb5781c842a44fc397dadbd60bb715da1da792ba55c19062ea",
+      "prompt_schema_versions": {
+        "product_manager": "product_manager_schema:v1:86e9680fe28afcd4f0c884c90ad8a52b8da54be00d0edbdcaf2ebb1a7329dd53",
+        "architect": "architect_schema:v1:62b1d1d44432e80f5ee1863837efc45c426635bd5618e20b53c8ed1fc3f4c729",
+        "backend_engineer": "backend_engineer_loop_v3:v1:2678cf7396c34995cf38731ca5da9626bcde8d438378efabdf1c21a736e290b0",
+        "frontend_engineer": "frontend_schema:v1:2490b7c0f0e5f8dfaaf62c4a2a8807f2f05d85ae75fb670fa0cbfbe9789e5dbd",
+        "reviewer": "reviewer_schema_v2:v1:620549ea2a9afda11a3b07ddc10a8158770e65619690cc1193f2cb4241c90824",
+        "evaluator": "evaluator:v1:105c4913d48de2f875f8eafd17adc0870e1abb58d89eae44aeebfe0905ee9cf3"
+      }
+    },
+    {
+      "group": "D",
+      "name": "loop-tools-verify",
+      "workflow_version_id": 5,
+      "contract_path": "autospec-spec-sandbox-ablation-d-20261002-r1.workflow.json",
+      "contract_hash": "d409155c67efec43edd2762a7d6f1b41e9c075e44a970ccef214e751743de18d",
+      "prompt_schema_versions": {
+        "product_manager": "product_manager_schema:v1:86e9680fe28afcd4f0c884c90ad8a52b8da54be00d0edbdcaf2ebb1a7329dd53",
+        "architect": "architect_schema:v1:62b1d1d44432e80f5ee1863837efc45c426635bd5618e20b53c8ed1fc3f4c729",
+        "backend_engineer": "backend_engineer_loop_v3:v1:2678cf7396c34995cf38731ca5da9626bcde8d438378efabdf1c21a736e290b0",
+        "frontend_engineer": "frontend_schema:v1:2490b7c0f0e5f8dfaaf62c4a2a8807f2f05d85ae75fb670fa0cbfbe9789e5dbd",
+        "reviewer": "reviewer_schema_v2:v1:620549ea2a9afda11a3b07ddc10a8158770e65619690cc1193f2cb4241c90824",
+        "evaluator": "evaluator:v1:105c4913d48de2f875f8eafd17adc0870e1abb58d89eae44aeebfe0905ee9cf3"
+      }
+    }
+  ],
+  "pricing_snapshot": {
+    "mode": "FIXTURE_BASELINE",
+    "cost_status": "NOT_APPLICABLE_EXTERNAL",
+    "source": "local-fixture",
+    "observed_at": "2026-10-02"
+  }
+}

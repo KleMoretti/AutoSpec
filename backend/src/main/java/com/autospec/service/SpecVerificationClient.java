@@ -25,7 +25,7 @@ public class SpecVerificationClient {
     public SpecVerificationClient(
             ObjectMapper objectMapper,
             @Value("${autospec.spec-verifier.url:http://spec-verifier:8010}") String baseUrl,
-            @Value("${autospec.agent-engine.service-token:}") String serviceToken
+            @Value("${autospec.spec-verifier.service-token:}") String serviceToken
     ) {
         this.objectMapper = objectMapper;
         this.baseUrl = baseUrl == null ? "" : baseUrl.replaceAll("/+$", "");

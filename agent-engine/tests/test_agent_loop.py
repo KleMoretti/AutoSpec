@@ -9,7 +9,8 @@ from agents.architect import ArchitectAgent
 from agents.backend_engineer import BackendEngineerAgent
 from agents.product_manager import ProductManagerAgent
 from runtime.agent_loop_trace import capture_agent_loop_trace, current_agent_loop_trace
-from runtime.backend_agent_loop import run_backend_agent_loop
+import runtime.backend_agent_loop as backend_agent_loop
+from runtime.backend_agent_loop import BackendVerificationError, run_backend_agent_loop
 from runtime.execution_context import ModelExecutionContract, bind_model_execution_contract
 from runtime.tool_harness import (
     ToolHarness,
@@ -23,7 +24,10 @@ from schemas.workflow_spec import WorkflowSpec
 from runtime.model_telemetry import capture_model_invocations, record_model_invocation, ModelInvocationTelemetry
 from runtime.node_executor import InvocationRecord
 from runtime.tool_gateway import register_controlled_gateway_tools
+from schemas.backend_design import BackendDesignArtifact
 from schemas.tool_gateway import ToolGatewayResult
+from schemas.verification import VerificationFact, VerificationIssue
+from spec_verifier.fixtures import spec_contract_from_artifacts
 from spec_verifier.validators import validate_l1
 
 
@@ -278,6 +282,179 @@ async def test_candidate_backend_loop_replans_after_verifier_feedback() -> None:
     assert failed[0].verification_fact_ref
     assert any(step.phase == "REPLAN" for step in result.steps)
     assert result.steps[-1].verification_fact_ref
+
+
+@pytest.mark.asyncio
+async def test_backend_loop_stops_on_verifier_error_without_replan(monkeypatch) -> None:
+    requirement, prd, architecture = _inputs()
+    candidate = BackendEngineerAgent().run(requirement, prd, architecture).model_dump(mode="json")
+    responses = iter([
+        {"type": "PLAN", "goal": "design", "steps": ["draft", "verify"]},
+        {"type": "FINAL_CANDIDATE", "candidate": candidate},
+    ])
+
+    class Model:
+        def generate_json(self, _prompt_name, _payload):
+            return next(responses)
+
+    async def unavailable(_candidate, _prd):
+        raise BackendVerificationError("verification sidecar is unavailable", "TOOL_UNAVAILABLE")
+
+    monkeypatch.setattr(backend_agent_loop, "_verify_backend_candidate", unavailable)
+    loop_policy = LoopPolicy(version="agent-loop-v1", enabled=True, max_steps=4, max_replans=1)
+    contract = ModelExecutionContract(
+        execution_id="backend-verifier-error",
+        prompt_key="backend_engineer_shared",
+        prompt_version="v1",
+        prompt_checksum="a" * 64,
+        model_policy={"max_calls": 2},
+        deadline_epoch_ms=int(time.time() * 1000) + 30_000,
+        protocol_version=2,
+        contract_hash="b" * 64,
+        schema_version="BackendDesignArtifact",
+        tool_policy={"enabled": True, "allowed_tools": [{"name": "spec.verify", "version": "v1"}]},
+        agent_loop_policy=loop_policy.model_dump(mode="json"),
+        verification_policy={
+            "enabled": True,
+            "scope": "BACKEND",
+            "required_level": "L1",
+            "rule_profile": "spec-backend-v1",
+            "verifier_version": "spec-verifier-v1",
+            "compiler_version": "spec-compiler-v1",
+            "timeout_ms": 30_000,
+        },
+    )
+
+    with bind_model_execution_contract(contract):
+        result = await run_backend_agent_loop(
+            requirement=requirement,
+            prd=prd,
+            architecture_design=architecture.model_dump(mode="json"),
+            retrieved_sources=[],
+            context_manifest={},
+            rework_directive=None,
+            model_client=Model(),
+            policy=loop_policy,
+        )
+
+    assert result.completed is False
+    assert result.stop_reason == StopReason.VERIFICATION_ERROR
+    assert [step for step in result.steps if step.phase == "REPLAN"] == []
+    failed = [step for step in result.steps if step.reason_code == "TOOL_UNAVAILABLE"]
+    assert len(failed) == 1
+    assert failed[0].candidate_hash == stable_hash(candidate)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("marker", "expected_completed", "expected_stop_reason", "expected_calls"),
+    [
+        (
+            "[[fixture-verification-failure]]",
+            True,
+            StopReason.COMPLETED,
+            [True, False],
+        ),
+        (
+            "[[fixture-verification-oscillation]]",
+            False,
+            StopReason.REPLAN_LIMIT,
+            [True, True],
+        ),
+    ],
+)
+async def test_fixture_verification_marker_bounds_replan(
+    monkeypatch,
+    marker: str,
+    expected_completed: bool,
+    expected_stop_reason: StopReason,
+    expected_calls: list[bool],
+) -> None:
+    requirement, prd, architecture = _inputs()
+    requirement += f" {marker}"
+    calls: list[bool] = []
+
+    async def verify(candidate, _prd, *, inject_fixture_defect=False):
+        calls.append(inject_fixture_defect)
+        backend = (
+            candidate
+            if isinstance(candidate, BackendDesignArtifact)
+            else BackendDesignArtifact.model_validate(candidate)
+        )
+        report = validate_l1(
+            spec_contract_from_artifacts(_prd, backend, None, contract_id="GeneratedSpec"),
+            execution_id="fixture-verification-loop",
+            scope="BACKEND",
+        )
+        if inject_fixture_defect:
+            report = report.model_copy(update={
+                "status": "FAILED",
+                "gate_status": "BLOCKED",
+                "issues": [VerificationIssue(
+                    code="TABLE_PRIMARY_KEY_INVALID",
+                    severity="HIGH",
+                    message="fixture defect",
+                    path="tables.user_account",
+                )],
+            })
+        fact = VerificationFact.model_validate({
+            "execution_id": "fixture-verification-loop",
+            "workflow_run_id": 1,
+            "node_run_id": 2,
+            "fencing_token": 1,
+            "policy_hash": "b" * 64,
+            "source_digest": report.source_digest,
+            "verifier_version": "spec-verifier-v1",
+            "compiler_version": "spec-compiler-v1",
+            "achieved_level": "L1",
+            "status": "FAILED" if inject_fixture_defect else "PASSED",
+            "expires_at_epoch_ms": int(time.time() * 1000) + 60_000,
+            "report_hash": stable_hash(report.model_dump(mode="json")),
+        })
+        return report, fact
+
+    monkeypatch.setattr(backend_agent_loop, "_verify_backend_candidate", verify)
+    policy = LoopPolicy(version="agent-loop-v2", enabled=True, max_steps=7, max_replans=1)
+    contract = ModelExecutionContract(
+        execution_id="fixture-verification-loop",
+        prompt_key="backend_engineer_loop",
+        prompt_version="v1",
+        prompt_checksum="a" * 64,
+        model_policy={"max_calls": 7},
+        deadline_epoch_ms=int(time.time() * 1000) + 30_000,
+        protocol_version=2,
+        contract_hash="b" * 64,
+        schema_version="BackendDesignArtifact",
+        tool_policy={"enabled": True, "allowed_tools": []},
+        agent_loop_policy=policy.model_dump(mode="json"),
+        verification_policy={
+            "enabled": True,
+            "scope": "BACKEND",
+            "required_level": "L1",
+            "rule_profile": "spec-backend-v1",
+            "verifier_version": "spec-verifier-v1",
+            "compiler_version": "spec-compiler-v1",
+            "timeout_ms": 30_000,
+        },
+    )
+
+    with bind_model_execution_contract(contract):
+        result = await run_backend_agent_loop(
+            requirement=requirement,
+            prd=prd,
+            architecture_design=architecture.model_dump(mode="json"),
+            retrieved_sources=[],
+            context_manifest={},
+            rework_directive=None,
+            model_client=None,
+            policy=policy,
+        )
+
+    assert result.completed is expected_completed
+    assert result.stop_reason == expected_stop_reason
+    assert calls == expected_calls
+    assert any(step.reason_code == "SPEC_VERIFY_FAILED" for step in result.steps)
+    assert any(step.phase == "REPLAN" for step in result.steps)
 
 
 @pytest.mark.asyncio

@@ -9,6 +9,7 @@ import pytest
 from model_gateway import (
     ModelConfigurationError,
     ModelOutputLimitError,
+    ModelStructuredOutputError,
     OpenAICompatibleModelClient,
     RoutedModelClient,
     build_model_client,
@@ -73,17 +74,134 @@ def test_live_mode_fails_closed_when_credentials_are_missing() -> None:
         build_model_client({"AGENT_MODEL_MODE": "live"})
 
 
-def test_native_tool_protocol_does_not_fallback_to_json() -> None:
+def test_native_tool_protocol_uses_native_envelope_without_json_fallback() -> None:
+    calls = []
+
+    class Completions:
+        def create(self, **kwargs):
+            calls.append(kwargs)
+            return SimpleNamespace(
+                choices=[SimpleNamespace(
+                    finish_reason="tool_calls",
+                    message=SimpleNamespace(
+                        content=None,
+                        tool_calls=[SimpleNamespace(
+                            id="call-native-1",
+                            function=SimpleNamespace(
+                                name="contract_lookup__v1",
+                                arguments='{"node_id":"backend_engineer"}',
+                            ),
+                        )],
+                    ),
+                )]
+            )
+
     gateway = OpenAICompatibleModelClient(
         api_key="test-key",
         base_url="https://model.invalid/v1",
         model_name="test-model",
         capabilities={"json_object", "usage", "idempotency", "native_tool_calls"},
         output_protocol="NATIVE_TOOL_CALL",
-        client=SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=lambda **_: None))),
+        client=SimpleNamespace(chat=SimpleNamespace(completions=Completions())),
     )
-    with pytest.raises(ModelConfigurationError, match="fallback is disabled"):
-        gateway.generate_json("ProductManagerAgent_v1", {"requirement": "clinic"})
+    result = gateway.generate_json("ProductManagerAgent_v1", {
+        "requirement": "clinic",
+        "agent_loop": {"tools": [{
+            "name": "contract.lookup",
+            "version": "v1",
+            "description": "Read the frozen contract",
+            "input_schema": {
+                "type": "object",
+                "properties": {"node_id": {"type": "string"}},
+                "required": ["node_id"],
+            },
+        }]},
+    })
+
+    assert result["turn_type"] == "TOOL_CALL"
+    assert result["name"] == "contract.lookup"
+    assert result["version"] == "v1"
+    assert result["arguments"] == {"node_id": "backend_engineer"}
+    assert result["provider_call_id"] == "call-native-1"
+    assert calls[0]["tool_choice"] == "auto"
+    assert calls[0]["tools"][0]["function"]["name"] == "contract_lookup__v1"
+    assert "response_format" not in calls[0]
+
+
+@pytest.mark.parametrize(
+    "function_name,arguments,match",
+    [
+        ("unknown__v1", "{}", "unknown tool"),
+        ("contract_lookup__v1", "not-json", "not valid JSON"),
+    ],
+)
+def test_native_tool_protocol_rejects_unknown_or_invalid_calls(
+    function_name: str, arguments: str, match: str,
+) -> None:
+    class Completions:
+        def create(self, **kwargs):
+            return SimpleNamespace(
+                choices=[SimpleNamespace(
+                    finish_reason="tool_calls",
+                    message=SimpleNamespace(
+                        content=None,
+                        tool_calls=[SimpleNamespace(
+                            id="call-native-invalid",
+                            function=SimpleNamespace(name=function_name, arguments=arguments),
+                        )],
+                    ),
+                )]
+            )
+
+    gateway = OpenAICompatibleModelClient(
+        api_key="test-key",
+        base_url="https://model.invalid/v1",
+        model_name="test-model",
+        capabilities={"json_object", "usage", "idempotency", "native_tool_calls"},
+        output_protocol="NATIVE_TOOL_CALL",
+        client=SimpleNamespace(chat=SimpleNamespace(completions=Completions())),
+    )
+    with pytest.raises(ModelStructuredOutputError, match=match):
+        gateway.generate_json("ProductManagerAgent_v1", {
+            "requirement": "clinic",
+            "agent_loop": {"tools": [{
+                "name": "contract.lookup",
+                "version": "v1",
+                "input_schema": {"type": "object"},
+            }]},
+        })
+
+
+def test_native_tool_protocol_accepts_explicit_no_tool_final_response() -> None:
+    class Completions:
+        def create(self, **_kwargs):
+            return SimpleNamespace(
+                choices=[SimpleNamespace(
+                    finish_reason="stop",
+                    message=SimpleNamespace(
+                        content='{"type":"FINAL_CANDIDATE","candidate":{},"reason":"no tool needed"}',
+                        tool_calls=None,
+                    ),
+                )]
+            )
+
+    gateway = OpenAICompatibleModelClient(
+        api_key="test-key",
+        base_url="https://model.invalid/v1",
+        model_name="test-model",
+        capabilities={"json_object", "usage", "idempotency", "native_tool_calls"},
+        output_protocol="NATIVE_TOOL_CALL",
+        client=SimpleNamespace(chat=SimpleNamespace(completions=Completions())),
+    )
+    result = gateway.generate_json("ProductManagerAgent_v1", {
+        "requirement": "clinic",
+        "agent_loop": {"tools": [{
+            "name": "contract.lookup",
+            "version": "v1",
+            "input_schema": {"type": "object"},
+        }]},
+    })
+    assert result["turn_type"] == "FINAL_CANDIDATE"
 
 
 def test_explicit_empty_environment_does_not_inherit_process_model_configuration(

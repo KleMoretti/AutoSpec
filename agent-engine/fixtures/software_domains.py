@@ -8,14 +8,21 @@ request never silently falls back to one of these examples.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 from typing import Any
 
 from schemas.architecture_design import (
     ArchitectureDesignArtifact,
     ArchitectureDesignArtifactV2,
 )
-from schemas.backend_design import BackendDesignArtifact
-from schemas.frontend_skeleton import FrontendSkeletonArtifact
+from schemas.backend_design import (
+    BackendDesignArtifact,
+    ExplicitBackendDesignArtifact,
+)
+from schemas.frontend_skeleton import (
+    ExplicitFrontendSkeletonArtifact,
+    FrontendSkeletonArtifact,
+)
 from schemas.prd import PrdArtifact
 
 
@@ -172,6 +179,145 @@ def fixture_for_requirement(
     return get_fixture(fixture_key_for_requirement(requirement, explicit_key))
 
 
+_EXPLICIT_FOREIGN_KEYS: dict[str, dict[tuple[str, str], dict[str, str]]] = {
+    "campus_marketplace": {
+        ("product", "seller_id"): {"table": "user_account", "field": "id"},
+        ("favorite", "product_id"): {"table": "product", "field": "id"},
+    },
+    "inventory_management": {
+        ("stock_event", "item_id"): {"table": "inventory_item", "field": "id"},
+    },
+    "employee_leave_approval": {
+        ("leave_approval", "leave_request_id"): {
+            "table": "leave_request",
+            "field": "id",
+        },
+    },
+}
+
+
+_EXPLICIT_PARAMETER_LOCATIONS: dict[str, dict[str, dict[str, str]]] = {
+    "campus_marketplace": {
+        "API-PRODUCT-CREATE": {"title": "body"},
+        "API-PRODUCT-SEARCH": {"keyword": "query"},
+        "API-FAVORITE-CREATE": {"productId": "body"},
+        "API-PRODUCT-AUDIT": {"productId": "path", "decision": "body"},
+    },
+    "inventory_management": {
+        "API-STOCK-GET": {"itemId": "path"},
+        "API-STOCK-EVENT": {"itemId": "body", "eventId": "body", "delta": "body"},
+    },
+    "employee_leave_approval": {
+        "API-LEAVE-CREATE": {"startDate": "body", "endDate": "body"},
+        "API-LEAVE-APPROVE": {
+            "requestId": "path",
+            "decision": "body",
+            "reason": "body",
+        },
+    },
+}
+
+
+def explicit_backend_for_fixture(
+    fixture: SoftwareDomainFixture,
+) -> ExplicitBackendDesignArtifact:
+    """Return hand-authored explicit facts for deterministic fixture mode.
+
+    This helper is only used by the no-model fixture branch.  Live model
+    output is parsed directly by ``ExplicitBackendDesignArtifact`` and never
+    passes through this enrichment path.
+    """
+
+    payload = fixture.backend.model_dump(mode="json")
+    foreign_keys = _EXPLICIT_FOREIGN_KEYS[fixture.key]
+    locations = _EXPLICIT_PARAMETER_LOCATIONS[fixture.key]
+    for table in payload["tables"]:
+        for field in table["fields"]:
+            field["type"] = _fixture_explicit_type(field["type"])
+            field["primary_key"] = field["name"] == "id"
+            field["unique"] = False
+            field["foreign_key"] = foreign_keys.get((table["name"], field["name"]))
+    for api in payload["apis"]:
+        api["success_status"] = 200
+        api_locations = locations[api["api_id"]]
+        for parameter in api["request_params"]:
+            parameter["type"] = _fixture_explicit_type(parameter["type"])
+            parameter["location"] = api_locations[parameter["name"]]
+        for response in api["response_fields"]:
+            response["type"] = _fixture_explicit_type(response["type"])
+            response["nullable"] = False
+    return ExplicitBackendDesignArtifact.model_validate(payload)
+
+
+def explicit_frontend_for_fixture(
+    fixture: SoftwareDomainFixture,
+    backend: ExplicitBackendDesignArtifact | None = None,
+) -> ExplicitFrontendSkeletonArtifact:
+    """Return explicit, independent request/response claims for fixture mode."""
+
+    backend = backend or explicit_backend_for_fixture(fixture)
+    payload = fixture.frontend.model_dump(mode="json")
+    api_by_id = {api.api_id: api for api in backend.apis}
+    for binding in payload["api_bindings"]:
+        api = api_by_id[binding["backend_api_id"]]
+        binding["parameters"] = [
+            {
+                "name": parameter.name,
+                "location": parameter.location,
+                "source": (
+                    f"route.{parameter.name}"
+                    if parameter.location == "path"
+                    else f"state.{parameter.name}"
+                ),
+                "type": parameter.type.model_dump(mode="json"),
+                "required": parameter.required,
+            }
+            for parameter in api.request_params
+        ]
+        binding["response_fields"] = [
+            {
+                "path": response.name,
+                "type": response.type.model_dump(mode="json"),
+                "nullable": response.nullable,
+            }
+            for response in api.response_fields
+        ]
+    return ExplicitFrontendSkeletonArtifact.model_validate(payload)
+
+
+def _fixture_explicit_type(value: str) -> dict[str, Any]:
+    upper = value.upper()
+    if upper.startswith("VARCHAR"):
+        match = re.fullmatch(r"VARCHAR\((\d+)\)", upper)
+        if match is None:
+            raise ValueError(f"fixture type is not supported: {value}")
+        return {"kind": "string", "length": int(match.group(1))}
+    if upper in {"BIGINT", "LONG", "NUMBER"}:
+        return {"kind": "bigint"}
+    if upper in {"INT", "INTEGER"}:
+        return {"kind": "integer"}
+    if upper.startswith("DECIMAL"):
+        match = re.fullmatch(r"DECIMAL\((\d+),(\d+)\)", upper)
+        if match is None:
+            raise ValueError(f"fixture type is not supported: {value}")
+        return {
+            "kind": "decimal",
+            "precision": int(match.group(1)),
+            "scale": int(match.group(2)),
+        }
+    if upper in {"BOOLEAN", "BOOL"}:
+        return {"kind": "boolean"}
+    if upper == "DATE":
+        return {"kind": "date"}
+    if upper in {"DATETIME", "TIMESTAMP"}:
+        return {"kind": "datetime"}
+    if upper == "JSON" or upper.endswith("[]"):
+        return {"kind": "json"}
+    if upper == "STRING":
+        return {"kind": "string", "length": 255}
+    raise ValueError(f"fixture type is not supported: {value}")
+
+
 def _prd(
     project_name: str,
     users: list[str],
@@ -278,6 +424,7 @@ def _marketplace() -> SoftwareDomainFixture:
         features,
         [
             _story("STORY-PUBLISH", "student", "publish an idle item", "find a buyer on campus", ["REQ-PUBLISH"], [("AC-PUBLISH-DETAILS", "The listing stores title, price, category, description, and images."), ("AC-PUBLISH-PENDING", "The listing enters a pending audit state after submission.")]),
+            _story("STORY-SEARCH", "student", "search approved listings", "find relevant products on campus", ["REQ-SEARCH"], [("AC-SEARCH-KEYWORD", "Students can filter listings by a keyword."), ("AC-SEARCH-APPROVED", "Search results exclude listings that are not approved.")]),
             _story("STORY-AUDIT", "admin", "audit product listings", "keep prohibited goods out of the marketplace", ["REQ-AUDIT"], [("AC-AUDIT-ROLE", "Only admins can approve or reject pending listings."), ("AC-AUDIT-REASON", "Rejected listings include a visible reason.")]),
         ],
         ["Payment escrow and off-campus logistics are outside this fixture."],

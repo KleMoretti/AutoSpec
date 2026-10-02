@@ -42,6 +42,7 @@ from schemas.prd import PrdArtifact
 from schemas.tool import ToolCallRequest
 from schemas.verification import VerificationFact, VerificationReport
 from spec_verifier.compiler import compile_spec
+from spec_verifier.artifact_adapter import explicit_spec_contract_from_artifacts
 from spec_verifier.fixtures import spec_contract_from_artifacts
 
 
@@ -55,6 +56,10 @@ class BackendVerificationError(RuntimeError):
     def __init__(self, message: str, error_code: str = "SPEC_VERIFY_FAILED") -> None:
         super().__init__(message)
         self.error_code = error_code
+
+
+FIXTURE_VERIFICATION_FAILURE_MARKER = "[[fixture-verification-failure]]"
+FIXTURE_VERIFICATION_OSCILLATION_MARKER = "[[fixture-verification-oscillation]]"
 
 
 @dataclass
@@ -312,10 +317,27 @@ async def run_backend_agent_loop(
                 if _verification_required():
                     started = time.perf_counter()
                     try:
-                        report, fact = await _verify_backend_candidate(
-                            validation.candidate,
-                            prd,
+                        inject_fixture_defect = (
+                            model_client is None
+                            and (
+                                (
+                                    FIXTURE_VERIFICATION_FAILURE_MARKER in requirement
+                                    and state.replans == 0
+                                )
+                                or FIXTURE_VERIFICATION_OSCILLATION_MARKER in requirement
+                            )
                         )
+                        if inject_fixture_defect:
+                            report, fact = await _verify_backend_candidate(
+                                validation.candidate,
+                                prd,
+                                inject_fixture_defect=True,
+                            )
+                        else:
+                            report, fact = await _verify_backend_candidate(
+                                validation.candidate,
+                                prd,
+                            )
                     except ToolRuntimeError as error:
                         _append_step(
                             state,
@@ -349,6 +371,8 @@ async def run_backend_agent_loop(
                             state,
                             _verification_stop_reason(error_code)
                             if isinstance(error, BackendVerificationError)
+                            else StopReason.VERIFICATION_ERROR
+                            if isinstance(error, ValidationError)
                             else StopReason.VERIFICATION_FAILED,
                         )
 
@@ -382,6 +406,21 @@ async def run_backend_agent_loop(
                         if state.replans >= policy.max_replans:
                             return _result(state, StopReason.REPLAN_LIMIT)
                         continue
+                    if report.status in {"ERROR", "BLOCKED", "NOT_RUN"}:
+                        _append_step(
+                            state,
+                            StepPhase.OBSERVATION,
+                            StepStatus.FAILED,
+                            reason_code="SPEC_VERIFY_ERROR",
+                            plan_hash=_plan_hash(state),
+                            observation_hash=stable_hash(state.observation),
+                            candidate_hash=candidate_hash,
+                            verification_fact_ref=verification_fact_ref,
+                            validation_issue_codes=verification_codes,
+                            model_call_ref=model_call_ref,
+                            duration_ms=_elapsed(started),
+                        )
+                        return _result(state, StopReason.VERIFICATION_ERROR)
                     if report.status != "PASSED" or report.gate_status != "PASSED":
                         _append_step(
                             state,
@@ -625,6 +664,8 @@ def _verification_required() -> bool:
 async def _verify_backend_candidate(
     candidate: BackendDesignArtifact,
     prd: PrdArtifact,
+    *,
+    inject_fixture_defect: bool = False,
 ) -> tuple[VerificationReport, VerificationFact]:
     execution = current_model_execution_contract()
     if execution is None or not _verification_required():
@@ -644,12 +685,28 @@ async def _verify_backend_candidate(
             "TOOL_DEADLINE_EXCEEDED",
         )
 
-    contract = spec_contract_from_artifacts(
-        prd,
-        candidate,
-        None,
-        contract_id="GeneratedSpec",
-    )
+    if policy.get("verifier_version") == "spec-verifier-v2":
+        contract = explicit_spec_contract_from_artifacts(
+            prd,
+            candidate,
+            None,
+            contract_id="GeneratedSpec",
+        )
+    else:
+        contract = spec_contract_from_artifacts(
+            prd,
+            candidate,
+            None,
+            contract_id="GeneratedSpec",
+        )
+    if inject_fixture_defect:
+        primary_key = next(
+            field
+            for table in contract.tables
+            for field in table.fields
+            if field.primary_key
+        )
+        primary_key.primary_key = False
     compiled = compile_spec(contract)
     result = await execute_current_tool(
         ToolCallRequest(
@@ -771,6 +828,32 @@ def _verification_stop_reason(error_code: str) -> StopReason:
         return StopReason.TOOL_BUDGET_EXHAUSTED
     if error_code in {"TOOL_TIMEOUT", "TOOL_DEADLINE_EXCEEDED", "SPEC_VERIFY_DEADLINE_EXCEEDED"}:
         return StopReason.DEADLINE_EXCEEDED
+    if error_code in {
+        "TOOL_UNAVAILABLE",
+        "TOOL_PERMISSION_DENIED",
+        "TOOL_EXECUTION_FAILED",
+        "TOOL_INPUT_INVALID",
+        "SPEC_VERIFY_POLICY_MISSING",
+        "SPEC_VERIFY_SCOPE_INVALID",
+        "SPEC_VERIFY_PROTOCOL_ERROR",
+        "SPEC_VERIFY_FACT_MISSING",
+        "SPEC_VERIFY_EXECUTION_MISMATCH",
+        "SPEC_VERIFY_SCOPE_MISMATCH",
+        "SPEC_VERIFY_SOURCE_MISMATCH",
+        "SPEC_VERIFY_FACT_MISMATCH",
+        "SPEC_VERIFY_REPORT_HASH_MISMATCH",
+        "SPEC_VERIFY_FACT_EXPIRED",
+        "L2_DATABASE_UNAVAILABLE",
+        "L2_DATABASE_DRIVER_UNAVAILABLE",
+        "L2_DATABASE_DSN_INVALID",
+        "L2_DATABASE_SCHEMA_NAME_INVALID",
+        "L2_DATABASE_CLEANUP_FAILED",
+        "L2_TYPESCRIPT_UNAVAILABLE",
+        "L2_TYPESCRIPT_TIMEOUT",
+        "L2_TYPESCRIPT_FAILED",
+        "L2_RESULT_LIMIT_EXCEEDED",
+    }:
+        return StopReason.VERIFICATION_ERROR
     return StopReason.VERIFICATION_FAILED
 
 

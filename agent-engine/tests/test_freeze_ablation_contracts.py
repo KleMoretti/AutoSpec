@@ -9,6 +9,7 @@ from schemas.workflow_spec import WorkflowSpec
 
 ROOT = Path(__file__).resolve().parents[1]
 BASE = ROOT / "contracts" / "autospec-pm-schema-repair-v12.workflow.json"
+SANDBOX_BASE = ROOT / "contracts" / "autospec-spec-sandbox.workflow.json"
 
 
 def _node(spec: dict, node_id: str) -> dict:
@@ -57,3 +58,19 @@ def test_freeze_does_not_modify_published_base() -> None:
     before = BASE.read_bytes()
     freeze_contracts(BASE, TEST_OUTPUT, "test")
     assert BASE.read_bytes() == before
+
+
+def test_freeze_preserves_candidate_backend_verification_level() -> None:
+    frozen = freeze_contracts(SANDBOX_BASE, TEST_OUTPUT, "candidate")
+
+    for group in ("A", "B", "C"):
+        backend = _node(frozen[group]["spec"], "backend_engineer")
+        assert backend["verification_policy"]["enabled"] is False
+        assert backend["verification_policy"]["required_level"] == "NONE"
+    backend = _node(frozen["D"]["spec"], "backend_engineer")
+    assert backend["verification_policy"]["enabled"] is True
+    assert backend["verification_policy"]["required_level"] == "L2"
+    assert all(
+        item["path"].name.startswith("autospec-spec-sandbox-ablation-")
+        for item in frozen.values()
+    )

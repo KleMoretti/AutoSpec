@@ -181,6 +181,13 @@ public class DeliveryGateService {
                     "The evaluation report does not belong to the latest run"
             );
         }
+        if (!"GENERATED".equals(evaluation.getStatus())
+                || !Objects.equals(evaluator.getHandlerKey(), evaluation.getSourceAgent())) {
+            throw new ResponseStatusException(
+                    HttpStatus.UNPROCESSABLE_ENTITY,
+                    "A generated evaluation report from the latest evaluator node is required before delivery"
+            );
+        }
         try {
             JsonNode report = objectMapper.readTree(evaluation.getContent());
             if (!"PASSED".equals(report.path("gate_status").asText())

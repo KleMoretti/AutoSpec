@@ -217,6 +217,8 @@ export interface WorkflowTraceStepResponse {
   reasonCode?: string;
   planHash?: string;
   observationHash?: string;
+  candidateHash?: string;
+  verificationFactRef?: string;
   validationIssueCodes?: string[];
   modelCallRef?: string;
   toolCallRef?: string;

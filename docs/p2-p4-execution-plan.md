@@ -1,7 +1,8 @@
 ---
 plan_id: autospec-p2-p4-execution
-status: blocked
+status: in_progress
 created_at: 2026-09-30
+updated_at: 2026-10-02
 parent: docs/autospec-v5-spec-sandbox-plan.md
 baseline: autospec-v5:pm-schema-repair-v12
 database_baseline: V1
@@ -9,17 +10,19 @@ database_baseline: V1
 
 # AutoSpec P2–P4 修复执行手册
 
+> 2026-10-02 审查修订（历史快照）：PR #12 已合并，master 普通 CI 四项全绿，详见 [复核记录](archive/evidence/spec-sandbox-review-2026-10-02.md)。该快照记录的 BASE-02 未接通判断不覆盖后续续作；当前状态以第 3 节状态表和 12.4 交接为准。完整 live 仍受批次授权/安全执行条件限制，P2-E 保持 `blocked`。
+
 本文件分解 [总计划](autospec-v5-spec-sandbox-plan.md) 的 P2（证据）、P3（可靠性及独立扩展）、P4（展示），与 [P0/P1 手册](p0-p1-execution-plan.md) 属于同一条路线。按用户要求保留在 `docs/` 根目录。适用对象是上下文较短、推理能力较弱的执行模型：一次只完成一个任务，按明确输入、步骤、测试和验收推进，不自行扩展目标。
 
 **本文件已更新为实施交接记录。** 本轮完成了可在本地离线验证的 P2–P4 代码、契约、迁移、界面和测试，并完成带 `spec-verifier` 的隔离 fixture 六节点、10/20 并发、取消、worker 重启、Redis poison 和 Outbox 进程中断恢复运行；2026-10-01 又按 README 走通了 Docker fixture 浏览器演示和审批/Trace 门禁观察，补齐平台管理员只读 A/B/C/D 评测比较接口、结果目录加载和明确未执行看板，并使用本地真实模型完成 P3-K3 同集 embedding 对照。P2-F 已补齐冻结输入下的 10/20 成功容量批次；r10 身份一致的 fixture smoke 已通过，随后在用户授权的 13 元 DeepSeek 预算内完成了 A/B/C/D live smoke 及迁移后的 D-only 重试，并用 `--resume` 补齐了 r1 的结果矩阵与 `NOT_EVALUATED` gate。live smoke 的失败、质量门禁和预算保留原样，不能晋级为完整 dev/holdout 或发布结论；P4-E 截图归档按用户明确要求豁免。剩余缺项、验证命令和下一步见 [阶段交接证据](archive/evidence/p2-p4-2026-09-30.md) 与 [浏览器演示补充证据](archive/evidence/p2-p4-2026-10-01.md)。
 
 ## 1. 开工基线与必须纠正的旧假设
 
-先读 [AGENTS.md](../AGENTS.md) 和 [基线收敛记录](archive/evidence/baseline-consolidation-2026-09-30.md)。以下是编写时的源码/记录快照，执行时按 BASE-01 重新核对。
+先读 [AGENTS.md](../AGENTS.md)、[基线收敛记录](archive/evidence/baseline-consolidation-2026-09-30.md) 和 10-02 复核。以下表格保留开工阶段快照，并注明本次已核对项；Trace/评测入口等旧差距已有后续实现，不能当成当前全貌，执行时按 BASE-01 与第 3 节当前状态核对。
 
 | 项目 | 当前依据 | 对后续执行的要求 |
 | --- | --- | --- |
-| 数据库 | 迁移目录仅 `V1__autospec_baseline.sql` | 不恢复 V104–V117；下一条迁移从实际最大版本 + 1 分配，当前应为 V2 |
+| 数据库 | 10-02 源码有 `V1__autospec_baseline.sql` 与 `V2__workflow_delivery_claims.sql` | 不恢复 V104–V117 或修改 V1/V2；下一条从实施时实际最大版本 + 1 分配 |
 | 当前工作流 | `agent-engine/contracts/autospec-pm-schema-repair-v12.workflow.json` | 不能再写“保持 v5-parallel 为默认”；先读实际部署选择，再保护该版本 |
 | 已保留数据 | 上轮记录为 run 34–38、36 个 Artifact，v10/v11/v12 冻结版本 | 不重复清库、取消或重编号；历史记录不充当新实验样本 |
 | 本地回归 | 上轮记录为 Agent 176、Backend 179、Frontend 25 项通过 | 本轮必须重新执行直接相关测试和里程碑回归；结果写入交接证据 |
@@ -56,35 +59,35 @@ P3-MCP 在 P3-S/P3-F 后、且外部集成需求明确时插入；P3-I 在 BASE-
 
 入口路径约定：Python 的 `runtime/`、`schemas/`、`evaluation/`、`spec_verifier/`、`review/`、`tests/` 均相对 `agent-engine/`；Java 包路径相对 `backend/src/main/java/com/autospec/`，测试相对 `backend/src/test/java/com/autospec/`。只写类名的入口先用 `rg --files backend/src | rg '类名'` 定位，不猜目录。前端以 `frontend/src/` 为根。“拟新增”才允许创建；现有入口找不到时先查重命名，不创建平行替代模块。
 
-| 本文 ID | 总计划映射 | 前置 | 初始状态 | 输出证据键 |
+| 本文 ID | 总计划映射 | 前置 | 当前状态 | 输出证据键 |
 | --- | --- | --- | --- | --- |
 | BASE-01 | 全部任务前置核验 | 无 | done | baseline |
-| BASE-02 | SIG-P1-00 / 01 补缺 | BASE-01 | done | explicit-contract |
-| BASE-03 | SIG-P1-04 补缺 | BASE-02 | done | trusted-delivery |
-| P2-A | SIG-P2-01 | BASE-03 | done | experiment-manifest |
+| BASE-02 | SIG-P1-00 / 01 补缺 | BASE-01 | done：显式适配器已接入 Backend/Frontend 生产候选，正式 spec-sandbox API/Worker 运行已使用显式候选输入；旧推断适配仅保留兼容路径 | explicit-contract |
+| BASE-03 | SIG-P1-04 补缺 | BASE-02 | done（限定候选）：FULL/L2、来源、台账、DeliveryGate 与缺失/过期/错 scope/伪造 fact 负例已有正式证据；真实 `.env` 冷启动仍不冒充通过 | trusted-delivery |
+| P2-A | SIG-P2-01 | BASE-03 | done：`p2-p3-20261002-r1` 四组新候选、版本 2–5、contract hash、数据/价格/预算 manifest 均冻结并通过 validate-only | experiment-manifest |
 | P2-B | SIG-P2-02 采集器 | P2-A | done | collector |
-| P2-C | SIG-P2-02 数据集 | P2-A | done | dataset |
+| P2-C | SIG-P2-02 数据集 | P2-A | done：development 16 / holdout 8，三次重复、A/B/C/D、价格/预算与新 hash 已冻结；holdout 未参与调参 | dataset |
 | P2-D | SIG-P2-02 判分统计 | P2-B、P2-C | done | metrics-gate |
-| P2-E | SIG-P2-02 正式评测 | P2-D、有效预算 | blocked：A/B/C/D `#10/#11/#12/#13`、r10 fixture smoke、r11 完整 fixture development/holdout 和用户授权的 live smoke 已完成；完整 live development `192` 与 holdout `96` 样本尚未执行，不能形成晋级结论 | ablation |
-| P2-F | SIG-P2-03 | P2-B；质量结论另依赖 P2-E | done：隔离空项目冻结 inventory 输入后完成 10/20 并发，30/30 run 六节点成功、Evaluator `100/A/PASSED`、预算已结算且无重试/恢复/重复副作用；另保留动态知识索引导致的失败 smoke，未将 fixture 观测晋级为生产 SLA 或跨配置质量结论 | traces-capacity |
+| P2-E | SIG-P2-02 正式评测 | P2-D、有效预算与修复验收 | blocked：新 r1 live development/holdout 均 validate-only 通过；完整批次保守上限 `384 + 192 = 576 CNY`，安全执行层拒绝启动，未创建 live project/run；fixture 全量不替代 live 结论 | ablation |
+| P2-F | SIG-P2-03 | P2-B；质量结论另依赖 P2-E | done（限定环境）：既有 10/20 容量、正式失败→Replan→修复、预算拒绝与 `REPLAN_LIMIT` Trace 加本轮 192/96 fixture 完整采集；不泛化为生产 SLA，P2-E 仍独立 blocked | traces-capacity |
 | P3-R1 | SIG-P3-05 watchdog | BASE-01 | done | watchdog |
 | P3-R2 | SIG-P3-05 poison / DLQ | P3-R1 | done | poison |
 | P3-R3 | SIG-P3-05 outbox 占用 | P3-R2 | done | outbox-claim |
 | P3-R4 | SIG-P3-05 cancel | P3-R3 | done | cancellation |
 | P3-S | SIG-P3-02 | BASE-03 | done | injection |
-| P3-F | SIG-P3-03 | P3-S、P2-D | done | function-calling |
+| P3-F | SIG-P3-03 | P3-S、P2-D | done：`06798eda`/`c5f4528` 接入 native tool_calls、allowlist/ID/错误边界；5 条同集协议 fixture 对照完成，未宣称 live 质量收益 | function-calling |
 | P3-K1 | SIG-P3-04 文档语料 | BASE-01 | done | corpus-ingest |
 | P3-K2 | SIG-P3-04 记忆批准与召回 | P3-K1 | done | memory |
 | P3-K3 | SIG-P3-04 embedding 对照 | P3-K2、有效预算或本地模型 | done：本地 `sentence-transformers` 真实模型与 hashing 在 100 条、5 领域、`top_k=5` 同集对照；外部 provider 仍未配置 | retrieval-eval |
 | P3-MCP | SIG-P3-01 | P3-S、P3-F、明确外部需求 | deferred | mcp |
 | P3-I | SIG-P3-06 | 主线完成、明确选择 | deferred | impact |
 | P4-A | SIG-P4-01 数据接口 | BASE-03、P2-D | done：已同步知识上传、Trace steps 和平台管理员评测比较契约 | ui-contract |
-| P4-B | SIG-P4-01 Trace / DAG | P4-A | done：步骤时间线已接入；未宣称动态 DAG 图验收 | trace-dag |
+| P4-B | SIG-P4-01 Trace / DAG | P4-A | in_progress：步骤时间线已接入；动态 DAG 图仍未验收，不能以 Trace 完成关闭整个工作包 | trace-dag |
 | P4-C | SIG-P4-01 矩阵 / 验证 | P4-B | done | verification-ui |
 | P4-D | SIG-P4-01 评测看板 | P4-A、P2-D | done（看板实现）：已实现平台管理员只读比较 API/DTO、结果目录加载、fixture/live 分离、split 展示和 live smoke 组计数；完整 dev/holdout 四组矩阵仍缺失，因此页面继续显示 `NOT_EVALUATED`，P2-E/P4-D 晋级证据保持 blocked | eval-ui |
 | P4-E | SIG-P4-02 | P4-B/C/D | done（截图归档按用户明确要求豁免）：Docker + fixture 浏览器演示、审批/Trace/验证/交付链路已走通，截图仍只保留受控会话证据，不生成仓库图片文件 | demo-readme |
 | P4-F | SIG-P4-03 | P4-E | done：15 张问答卡片已归档 | interview-cards |
-| END-01 | 总计划 DoD | 必选任务完成或明确列缺项 | blocked：见交接证据中的外部条件 | final-handoff |
+| END-01 | 总计划 DoD | 必选任务完成或明确列缺项 | in_progress：本轮 P2/P3 离线与 fixture 主线已收口；P2-E 完整 live 证据 blocked，P4 不在本轮范围 | final-handoff |
 
 ### 每个任务的固定算法
 
@@ -547,7 +550,7 @@ P3-MCP 在 P3-S/P3-F 后、且外部集成需求明确时插入；P3-I 在 BASE-
 3. 数据库有新迁移时，在隔离测试库验证“空库 V1→最新”和“本轮起点版本→最新”。比较保留的运行/Artifact 引用和冻结 hash；使用脱敏快照，不对业务库做回滚演练。禁止修改 V1 让测试通过。
 4. 正式 fixture 六节点运行一次，检查审批、至少一次受控返工、最终交付门禁及 Markdown/PDF/ZIP。复用 P4-E 演示的同一次运行；高风险拒绝场景复用 BASE-03 测试，不重复生成三套数据。
 5. live 证据复用 P2-E 已授权批次；若 P3-F/P3-K 改变拟交付候选的实际执行配置，只补受影响的对照/最小 smoke，并重新核对预算。不把旧批次的 PROMOTE 直接贴到新配置。
-6. 读取 `.github/workflows/quality.yml`，区分本地单元回归与 CI 的集成任务。远端 CI 未执行或失败时如实记载；只有获得发布授权后才 push/触发远端操作。旧 CI 失败不能靠本地通过“注销”。
+6. 读取 `.github/workflows/quality.yml`，区分本地回归、普通 CI 与 Sandbox 专项 CI。10-02 已确认 master 普通 CI 通过，旧失败不是当前阻塞；verification config、verifier 镜像、真实 L2 和正式 fixture run 尚缺覆盖。新提交/push/远端操作仍按有效授权执行，不因更新文档自动启动。
 7. 更新总计划对应条目、本文状态、README 中已实现能力及一份最终脱敏证据。拟用 `docs/archive/evidence/p2-p4-<实际日期>.md`；日期取实际执行日，不预填成功。
 8. 检查无密钥、真实用户文档、模型完整敏感输入、本机绝对路径、原始数据库备份进入提交候选。只在得到明确提交授权时按任务分组提交，避免混入本轮起点已有修改。
 
@@ -696,7 +699,7 @@ try {
 } finally { Pop-Location }
 ```
 
-`integration-test` profile 不是普通 `mvn test` 的替代；它跳过单元测试并由 Failsafe 运行 IT。P3-R1 补测锁竞争，P3-R3 补测 claim 租约竞争；不因上述两个类通过就宣称全部恢复边界通过。原 CI 的 `MySqlFailureRecoveryIT` 检测超时需要定位实际轮询/超时配置；不单纯增大断言或删除测试。
+`integration-test` profile 不是普通 `mvn test` 的替代；它跳过单元测试并由 Failsafe 运行 IT。P3-R1 补测锁竞争，P3-R3 补测 claim 租约竞争；不因上述两个类通过就宣称全部恢复边界通过。原 `MySqlFailureRecoveryIT` 检测超时已有修复和后续 CI 通过记录，本次没有分析中间失败日志或做时序稳定性复测；保留原断言，不将一次绿泛化为全环境稳定。
 
 ### 10.4 里程碑完整验证
 
@@ -825,12 +828,23 @@ next_task: "前置满足的下一项"
 
 > 阅读 AGENTS.md、docs/autospec-v5-spec-sandbox-plan.md、docs/p2-p4-execution-plan.md，以及最新一条脱敏交接记录。先只读核对当前分支、未提交改动、任务状态和实际版本，不重置数据库，不恢复旧迁移，不覆盖当前工作区。选择手册第 3 节首个前置满足的未完成必选任务，一次只执行这一项；从其 next_step 继续，不重做已有证据支持的步骤。按对应文件入口修改，复用最小必要边界测试，完成后写第 12.1 节记录并更新状态。新参数/脚本必须先实现并验证，不能假设存在。付费调用前核对该批次的有效授权、剩余预算和冻结配置；不足时停止付费但继续独立离线任务。不要自动实现 deferred 扩展、切默认版本、提交、push 或删除用户数据。最后明确交付了什么、实际运行了什么、尚未执行什么，以及下一项。
 
-### 12.3 本轮阶段交接状态
+### 12.3 当前阶段交接（2026-10-02）
 
-- 离线实施范围已完成：显式规格适配、评测 manifest/数据集/统计、可靠性边界、原生协议拒绝降级、项目知识上传与可信记忆、Trace/验证展示、OpenAPI 同步和 15 张问答卡片。
-- 必须保持 `blocked` 的项目：P2-E 的完整 dev/holdout 正式消融与 P4-D 的完整 live/holdout 晋级证据；P4-E 截图归档已按用户要求豁免。当前批次已通过正式 API 发布 A/B/C/D `#10/#11/#12/#13`；r10 已修正 manifest 身份，fixture smoke 的 run `119–122` 四组成功，manifest hash 为 `689a6e56618ffbf521da79d43ddacbc65093ccb61103aef421d85f3c8907cb9a`。其 `AUTO_APPROVE_FOR_TEST` 是预注册 fixture 规则，不是人工批准，结果仍为 `FIXTURE_BASELINE/NOT_EVALUATED`，不能替代 live 结论；历史 r9 因 manifest 内部 experiment ID 与配置不一致，现已被 `--validate-only` 拒绝，不作为当前批次。用户随后授权 13 元 DeepSeek 预算，live smoke 的配置、run、迁移修复和 D-only 重试见 2026-10-01 证据；台账五次尝试保守预占 10 元、仅剩 3 元，而采集器按每个 `group × case × repetition` 预占一个 run，完整 dev/holdout 共需 288 个 run，在现行 2 CNY/run 上限下需 576 CNY，不能在当前授权内完成，不继续追加无法解除完整性阻塞的 live 子集。中间 r7 因根目录 `.env` 的 live 模式误注入而启动的两个 live 运行已停止采集并正式取消，不纳入证据；隔离 Agent API/Worker 随后强制为 fixture。P4-D 已增加 `AUTOSPEC_EVALUATION_RESULT_DIR` 只读结果目录加载、混合模式和 fixture 伪晋级拒绝；结果目录在缺组或缺重复时仍明确返回 `NOT_EVALUATED`。P4-E 的 Docker fixture 浏览器演示已走通并捕获审批、Evaluator 门禁负例、Evaluator 通过和交付 bundle 画面，截图归档按用户要求不提交。P2-F 已完成冻结输入下的 10/20 成功容量证据：项目 41 的 run 56–65、项目 42 的 run 66–85 均为 `COMPLETED`，各批次六节点成功、Evaluator `100/A/PASSED`，队列 P50/P95 为 10/13 秒与 18/20 秒，执行 P50/P95 为 101/108 毫秒与 101/107 毫秒；此前动态知识索引造成的失败 smoke 仍保留为负面边界，不将本地 fixture 观测写成生产 SLA 或跨配置质量结论。提交 `00fe70d` 已补齐 Agent Engine 本地/Compose 地址边界，并通过重建后的健康检查与首页复验。
-- 余额授权更新后，r12 完整 live development/holdout 配置已冻结并通过 `--validate-only`（192 + 96 个 run，共享 `autospec-p2-p4-live-full-20261001-cny576` 授权标识）；安全执行层尚未接受该批量付费启动，因此没有新增 live project/run 或外部调用。完整 live 矩阵仍是唯一必选缺口，fixture 全量结果不替代它。
-- P3-K3 已完成本地真实模型对照：100 条、5 个领域、`top_k=5`，hashing 与 local semantic 的 Recall@5 都为 `1.0`，ACL/过期泄漏均为 `0`；MRR/nDCG、耗时和模型指纹见 [2026-10-01 证据](archive/evidence/p2-p4-2026-10-01.md)。该结果不宣称语义质量提升，也不替代外部 provider 生产配置。
-- P3-MCP、P3-I 继续 `deferred`，因为本轮没有明确外部集成或变更影响范围选择。
-- 可复核命令、实际结果、变更文件、阻塞条件和下一步写入 [p2-p4-2026-09-30.md](archive/evidence/p2-p4-2026-09-30.md)；浏览器演示补充写入 [p2-p4-2026-10-01.md](archive/evidence/p2-p4-2026-10-01.md)。后续续做先读最新记录和实际工作区，不依赖口头结论。
-- 本轮收口回归已通过：Agent Engine `226 passed`、Backend `185 tests`、Frontend `29 tests` 与生产构建；WorkflowSpec 同步校验、三个 Compose 配置面和隔离项目 9 服务健康检查均通过。该结果不解除 P2-E 完整 dev/holdout 或 P4-D 完整晋级矩阵的阻塞；P4-E 截图归档已按用户要求豁免。
+- **Git / CI 已关闭旧阻塞**：PR #12 已合并，master `944f1bde` 与本地、origin 一致；普通远端 run 36873079480 四项全绿，见 [10-02 复核记录](archive/evidence/spec-sandbox-review-2026-10-02.md)。当前 CI 没有覆盖 verification config、verifier 镜像、L2 或最小正式工作流，不作为 Sandbox 验收。
+- **已实现范围保留**：评测 manifest/采集器/统计、可靠性边界、原生协议适配、知识上传/批准记忆、Trace/验证/看板、OpenAPI 同步和 15 张问答卡片。不能再把“显式规格适配已写出”当成生产已接通：两个生产调用点仍使用推断适配器。
+- **重开的必选项**：BASE-02/03、P2-A/C/F、P3-F、P4-B 按第 3 节记录剩余验收；总计划 P1 包含随机 schema/清理、完整显式输入/独立消费、L1 补缺、隔离/资源、错误分类、FULL/L2 与正式修复 Trace。下一步按总计划第 9 节先修测量对象，不继续以“完整 live 是唯一缺项”交接。
+- **容量子项已有证据**：冻结 inventory 输入下，project 41/run 56–65 与 project 42/run 66–85 共 30/30 `COMPLETED`，六节点成功、Evaluator `100/A/PASSED`；保留动态知识索引导致的失败 smoke 和限定环境。P2-F 仍缺正式 verifier 失败→Replan→修复与终止 Trace，容量成功不关闭整个证据包。
+- **历史 fixture 对照保留**：r10 身份一致的正式 API smoke run 119–122 四组通过；r11 全量 development 12/192 通过、holdout 0/96，失败均 `QUALITY_GATE_BLOCKED`，均为 `FIXTURE_BASELINE/NOT_EVALUATED`。历史 r9 已被 validate-only 的 manifest 身份检查拒绝，不能作为当前配置；具体 hash/journal 见 10-01 证据。
+- **Live 仍缺完整质量结果**：r1 为 1 case × 1 repetition × 4 groups，首轮没有可用的交付通过对照；D-only run 127 完成六节点但 Evaluator `QUALITY_GATE_BLOCKED`，也不能单独比较 A。旧 13 CNY 授权下五次尝试预占 10 CNY 的台账保留，不把该额度误写为当前唯一授权。
+- **r12 启动条件与重冻**：历史完整配置 development 192 + holdout 96 共 288 run、按 2 CNY/run 为 576 CNY 保守预占；已记录新授权标识并通过 validate-only，但安全执行层未接受批量启动，未新增 live project/run。P1 修复后不能沿用旧 hash，须重冻并核对授权/启动条件，缺完整矩阵继续 `NOT_EVALUATED`；不以小批追加绕过限制。
+- **检索与展示边界**：P3-K3 本地 100 条、5 领域、top_k=5 semantic/hashing 的 Recall@5 都为 1.0，不宣称质量提升；外部 provider 仍未配置。P4-D 数据通路已有但缺完整晋级证据；P4-E fixture 浏览器演示已有，截图归档豁免继续有效；动态 DAG 图未验收。P3-MCP、P3-I 继续 deferred。
+- **验证时间范围**：Agent 226、Backend 185、Frontend 29 与生产构建、三个 Compose 配置面/健康检查是 10-01 收口记录，本次未复跑。普通远端 CI 的本次查询另见 10-02 复核，不能把历史测试数量写为本次执行结果。
+- **记录与续做**：[09-30 阶段证据](archive/evidence/p2-p4-2026-09-30.md)、[10-01 补充证据](archive/evidence/p2-p4-2026-10-01.md) 原样保留；当前差距与顺序由总计划和 10-02 复核覆盖。继续前先读最新状态及实际工作区，不按旧未 push 快照操作远端，不自动实现 deferred 扩展或付费调用。
+
+### 12.4 P2/P3 本轮继续交接（2026-10-02）
+
+- **本轮证据**：P2-A/C 新候选冻结、正式版本 2–5、Docker/Sandbox probe、development `192/192` 和 holdout `96/96` fixture 矩阵、P3-F native 协议对照及 P3-K3 本地 embedding 对照见 [P2/P3 证据](archive/evidence/p2-p3-2026-10-02.md)。
+- **代码提交**：P2-A 冻结等级修复为 `3cf305dd`；P3-F native tool protocol 为 `06798eda`，no-tool 归一化修复为 `c5f4528`。Agent Engine 全量回归为 `259 passed`。
+- **P2 状态**：P2-A/B/C/D/F 按限定环境验收；P2-E 的新 live manifest 已 validate-only，但完整 development/holdout 付费批次未启动，保守上限 `576 CNY` 被安全执行层拒绝，保持 `blocked/NOT_EVALUATED`。fixture 四组结果不能代替 live 质量晋级。
+- **P3 状态**：R1–R4、S、K1/K2/K3 沿用既有边界证据；P3-F 已完成显式协议适配和同集 fixture 对照。P3-MCP、P3-I 保持 deferred；P4 本轮不实施。
+- **Docker 状态**：隔离项目 `autospec-p2p3-20261002` 已恢复 `AGENT_MODEL_MODE=fixture`，9 服务 healthy；不保留 live Key 注入状态。

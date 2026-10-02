@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from schemas.architecture_design import ArchitectureDesignArtifact
@@ -16,6 +17,10 @@ from schemas.prd import PrdArtifact
 from schemas.review import ReviewReport
 from schemas.verification import VerificationFact
 from review.citation_gate import validate_citations
+
+
+_PERMISSION_TERMS = re.compile(r"\b(?:admin|approve|approval|audit|owner|permission)\b")
+_ADMIN_ACTION_TERMS = re.compile(r"\b(?:admin|approve|approval|audit)\b")
 
 
 def evaluate_artifacts(
@@ -349,20 +354,14 @@ def _permission_coverage_score(
         and (
             api.method in {"POST", "PUT", "PATCH", "DELETE"}
             or "{" in api.path
-            or any(
-                term in f"{api.path} {api.description}".lower()
-                for term in ("admin", "approve", "audit", "owner", "permission")
-            )
+            or _PERMISSION_TERMS.search(f"{api.path} {api.description}") is not None
         )
         and (not api.auth_required or not api.required_roles)
     ]
     admin_role_gaps = [
         api.path
         for api in backend_design.apis
-        if any(
-            term in f"{api.path} {api.description}".lower()
-            for term in ("admin", "approve", "audit")
-        )
+        if _ADMIN_ACTION_TERMS.search(f"{api.path} {api.description}") is not None
         and "ADMIN" not in {role.upper() for role in api.required_roles}
     ]
     uncovered_paths = list(dict.fromkeys([*uncovered_paths, *admin_role_gaps]))

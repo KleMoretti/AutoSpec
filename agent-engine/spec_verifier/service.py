@@ -14,6 +14,10 @@ from spec_verifier.sandbox import run_l2
 from spec_verifier.validators import validate_l1
 
 
+MAX_VERIFY_REQUEST_BYTES = 512 * 1024
+MAX_VERIFY_RESPONSE_BYTES = 512 * 1024
+
+
 class VerifyRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -64,7 +68,7 @@ def verify_payload(payload: VerifyRequest) -> VerificationReport:
 
 def create_app(token: str | None = None) -> FastAPI:
     app = FastAPI(title="AutoSpec Spec Verifier", version="spec-verifier-v1")
-    expected_token = token if token is not None else os.environ.get("AGENT_ENGINE_SERVICE_TOKEN", "")
+    expected_token = token if token is not None else os.environ.get("SPEC_VERIFIER_SERVICE_TOKEN", "")
 
     @app.get("/health")
     async def health() -> dict[str, str]:
@@ -73,7 +77,7 @@ def create_app(token: str | None = None) -> FastAPI:
     @app.post("/verify", response_model=VerificationReport)
     async def verify(request: Request, x_autospec_service_token: str | None = Header(default=None)) -> VerificationReport:
         body = await request.body()
-        if len(body) > 512 * 1024:
+        if len(body) > MAX_VERIFY_REQUEST_BYTES:
             raise HTTPException(status_code=413, detail="verification request is too large")
         if not expected_token or x_autospec_service_token != expected_token:
             raise HTTPException(status_code=401, detail="invalid verifier service token")
@@ -102,7 +106,15 @@ def create_app(token: str | None = None) -> FastAPI:
                     "errors": safe_errors,
                 },
             ) from exc
-        return verify_payload(payload)
+        report = verify_payload(payload)
+        response_body = json.dumps(
+            report.model_dump(mode="json"),
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ).encode("utf-8")
+        if len(response_body) > MAX_VERIFY_RESPONSE_BYTES:
+            raise HTTPException(status_code=413, detail="verification response is too large")
+        return report
 
     return app
 

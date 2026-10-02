@@ -531,6 +531,8 @@ function WorkflowReplayPanel({
                                           ) : null}
                                           {step.planHash ? <Descriptions.Item label={t('workflow.trace.planHash')}><Typography.Text code>{shortHash(step.planHash)}</Typography.Text></Descriptions.Item> : null}
                                           {step.observationHash ? <Descriptions.Item label={t('workflow.trace.observationHash')}><Typography.Text code>{shortHash(step.observationHash)}</Typography.Text></Descriptions.Item> : null}
+                                          {step.candidateHash ? <Descriptions.Item label={t('workflow.trace.candidateHash')}><Typography.Text code title={step.candidateHash}>{shortHash(step.candidateHash)}</Typography.Text></Descriptions.Item> : null}
+                                          {step.verificationFactRef ? <Descriptions.Item label={t('workflow.trace.verificationFact')}><Typography.Text code title={step.verificationFactRef}>{shortHash(step.verificationFactRef)}</Typography.Text></Descriptions.Item> : null}
                                           {step.modelCallRef ? <Descriptions.Item label={t('workflow.trace.modelCall')}>{step.modelCallRef}</Descriptions.Item> : null}
                                           {step.toolCallRef ? <Descriptions.Item label={t('workflow.trace.toolCall')}>{step.toolCallRef}</Descriptions.Item> : null}
                                         </Descriptions>

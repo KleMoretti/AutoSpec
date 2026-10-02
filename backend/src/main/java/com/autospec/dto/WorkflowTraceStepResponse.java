@@ -10,6 +10,8 @@ public record WorkflowTraceStepResponse(
         String reasonCode,
         String planHash,
         String observationHash,
+        String candidateHash,
+        String verificationFactRef,
         List<String> validationIssueCodes,
         String modelCallRef,
         String toolCallRef,

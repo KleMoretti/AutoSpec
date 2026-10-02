@@ -21,7 +21,7 @@ from runtime.model_telemetry import ModelInvocationTelemetry, record_model_invoc
 from runtime.tool_harness import execute_current_tool
 from schemas.architecture_design import ArchitectureDesignArtifact, ArchitectureDesignArtifactV2
 from schemas.agent_loop import LoopPolicy
-from schemas.backend_design import BackendDesignArtifact
+from schemas.backend_design import BackendDesignArtifact, ExplicitBackendDesignArtifact
 from schemas.evaluation import (
     EvaluationInput,
     EvaluationInputV2,
@@ -30,13 +30,17 @@ from schemas.evaluation import (
     EvaluationReport,
     EvaluationReportV2,
 )
-from schemas.frontend_skeleton import FrontendSkeletonArtifact
+from schemas.frontend_skeleton import (
+    ExplicitFrontendSkeletonArtifact,
+    FrontendSkeletonArtifact,
+)
 from schemas.prd import PrdArtifact
 from schemas.rework import ReworkDirective
 from schemas.review import ReviewReport, ReviewReportV2
 from schemas.tool import ToolCallRequest
 from schemas.verification import VerificationFact, VerificationReport
 from spec_verifier.compiler import compile_spec
+from spec_verifier.artifact_adapter import explicit_spec_contract_from_artifacts
 from spec_verifier.fixtures import spec_contract_from_artifacts
 from review.shared_contract import validate_backend_contract
 
@@ -151,10 +155,12 @@ def build_production_registry(model_client: ModelClient | None = None) -> Handle
         ("ArchitectAgent", "v3", "architect", PrdNodeInput, ArchitectureDesignArtifactV2, "ArchitectureInput", "ArchitectureDesignArtifactV2", "architect_schema"),
         ("BackendEngineerAgent", "v3", "backend_engineer", BackendDesignInput, BackendDesignArtifact, "BackendDesignInput", "BackendDesignArtifact", "backend_engineer_shared"),
         ("BackendEngineerAgent", "v4", "backend_engineer", BackendDesignInput, BackendDesignArtifact, "BackendDesignInput", "BackendDesignArtifact", "backend_engineer_loop"),
-        ("BackendEngineerAgent", "v5", "backend_engineer", BackendDesignInput, BackendDesignArtifact, "BackendDesignInput", "BackendDesignArtifact", "backend_engineer_loop_v2"),
-        ("BackendEngineerAgent", "v6", "backend_engineer", BackendDesignInput, BackendDesignArtifact, "BackendDesignInput", "BackendDesignArtifact", "backend_engineer_loop_v3"),
-        ("FrontendEngineerAgent", "v2", "frontend_engineer", FrontendNodeInputV2, FrontendSkeletonArtifact, "FrontendSkeletonInputV2", "FrontendSkeletonArtifact", "frontend_engineer_shared"),
-        ("FrontendEngineerAgent", "v3", "frontend_engineer", FrontendNodeInputV2, FrontendSkeletonArtifact, "FrontendSkeletonInputV2", "FrontendSkeletonArtifact", "frontend_schema"),
+         ("BackendEngineerAgent", "v5", "backend_engineer", BackendDesignInput, BackendDesignArtifact, "BackendDesignInput", "BackendDesignArtifact", "backend_engineer_loop_v2"),
+         ("BackendEngineerAgent", "v6", "backend_engineer", BackendDesignInput, BackendDesignArtifact, "BackendDesignInput", "BackendDesignArtifact", "backend_engineer_loop_v3"),
+         ("BackendEngineerAgent", "v7", "backend_engineer", BackendDesignInput, ExplicitBackendDesignArtifact, "BackendDesignInput", "ExplicitBackendDesignArtifact", "backend_engineer_explicit"),
+         ("FrontendEngineerAgent", "v2", "frontend_engineer", FrontendNodeInputV2, FrontendSkeletonArtifact, "FrontendSkeletonInputV2", "FrontendSkeletonArtifact", "frontend_engineer_shared"),
+         ("FrontendEngineerAgent", "v3", "frontend_engineer", FrontendNodeInputV2, FrontendSkeletonArtifact, "FrontendSkeletonInputV2", "FrontendSkeletonArtifact", "frontend_schema"),
+         ("FrontendEngineerAgent", "v4", "frontend_engineer", FrontendNodeInputV2, ExplicitFrontendSkeletonArtifact, "FrontendSkeletonInputV2", "ExplicitFrontendSkeletonArtifact", "frontend_explicit"),
         ("ReviewerAgent", "v2", "reviewer", ReviewerNodeInputV2, ReviewReport, "ReviewInputV2", "ReviewReport", "reviewer_shared"),
         ("ReviewerAgent", "v4", "reviewer", ReviewerNodeInputV2, ReviewReportV2, "ReviewInputV4", "ReviewReportV2", "reviewer_schema"),
         ("ReviewerAgent", "v5", "reviewer", ReviewerNodeInputV2, ReviewReportV2, "ReviewInputV4", "ReviewReportV2", "reviewer_schema_v2"),
@@ -255,6 +261,9 @@ def _register_agent_node(
             and handler_version in {"v3", "v4", "v5", "v6"}
         ):
             compacted_input["shared_contract_required"] = True
+        if output_model in {ExplicitBackendDesignArtifact, ExplicitFrontendSkeletonArtifact}:
+            compacted_input["shared_contract_required"] = True
+            compacted_input["explicit_contract_required"] = True
         if rule_profile is not None:
             compacted_input["rule_profile"] = rule_profile
         elif handler_key == "ReviewerAgent" and handler_version in {"v2", "v3"}:
@@ -301,14 +310,30 @@ def _register_agent_node(
         if not verification_policy.get("enabled"):
             raise RuntimeError("candidate reviewer requires an enabled verification policy")
         prd = PrdArtifact.model_validate(compacted_input["prd"])
-        backend = BackendDesignArtifact.model_validate(compacted_input["backend_design"])
-        frontend = FrontendSkeletonArtifact.model_validate(compacted_input["frontend_skeleton"])
-        contract = spec_contract_from_artifacts(
-            prd,
-            backend,
-            frontend,
-            contract_id="GeneratedSpec",
-        )
+        explicit_contract = _explicit_contract_required(verification_policy)
+        if explicit_contract:
+            from schemas.backend_design import ExplicitBackendDesignArtifact
+            from schemas.frontend_skeleton import ExplicitFrontendSkeletonArtifact
+
+            backend = ExplicitBackendDesignArtifact.model_validate(
+                compacted_input["backend_design"]
+            )
+            frontend = ExplicitFrontendSkeletonArtifact.model_validate(
+                compacted_input["frontend_skeleton"]
+            )
+            contract = explicit_spec_contract_from_artifacts(
+                prd, backend, frontend, contract_id="GeneratedSpec"
+            )
+            compacted_input["explicit_contract_required"] = True
+        else:
+            backend = BackendDesignArtifact.model_validate(compacted_input["backend_design"])
+            frontend = FrontendSkeletonArtifact.model_validate(compacted_input["frontend_skeleton"])
+            contract = spec_contract_from_artifacts(
+                prd,
+                backend,
+                frontend,
+                contract_id="GeneratedSpec",
+            )
         compiled = compile_spec(contract)
         result = await execute_current_tool(
             ToolCallRequest(
@@ -392,7 +417,7 @@ def _register_agent_node(
             )
         return result.candidate
 
-    if node_name == "backend_engineer":
+    if node_name == "backend_engineer" and output_model is not ExplicitBackendDesignArtifact:
         execute = execute_backend
     elif handler_key == "ReviewerAgent" and handler_version in {"v3", "v4", "v5"}:
         execute = execute_reviewer
@@ -446,6 +471,14 @@ def _record_fixture_invocation(
     )
 
 
+def _explicit_contract_required(verification_policy: dict[str, Any]) -> bool:
+    # The verifier version is already frozen in the execution contract and is
+    # accepted by the legacy WorkflowSpec schema.  Use it as the versioned
+    # boundary so adding explicit artifact fields does not change old handler
+    # input/output hashes or make old WorkflowSpecs fail validation.
+    return verification_policy.get("verifier_version") == "spec-verifier-v2"
+
+
 def _compile_context(
     node_name: str,
     serialized_input: dict[str, Any],
@@ -478,11 +511,24 @@ def _compile_context(
 
 
 def _validate_artifact_context(payload: dict[str, Any]) -> None:
+    execution = current_model_execution_contract()
+    verification_policy = dict(execution.verification_policy) if execution else {}
+    explicit_contract = _explicit_contract_required(verification_policy)
+    if explicit_contract:
+        from schemas.backend_design import ExplicitBackendDesignArtifact
+        from schemas.frontend_skeleton import ExplicitFrontendSkeletonArtifact
+
     artifact_models: dict[str, type[BaseModel]] = {
         "prd": PrdArtifact,
         "architecture_design": ArchitectureDesignArtifact,
-        "backend_design": BackendDesignArtifact,
-        "frontend_skeleton": FrontendSkeletonArtifact,
+        "backend_design": (
+            ExplicitBackendDesignArtifact if explicit_contract else BackendDesignArtifact
+        ),
+        "frontend_skeleton": (
+            ExplicitFrontendSkeletonArtifact
+            if explicit_contract
+            else FrontendSkeletonArtifact
+        ),
         "review_report": ReviewReport,
     }
     parsed: dict[str, BaseModel] = {}
@@ -519,9 +565,7 @@ def _validate_artifact_context(payload: dict[str, Any]) -> None:
 
     backend = parsed.get("backend_design")
     frontend = parsed.get("frontend_skeleton")
-    if isinstance(backend, BackendDesignArtifact) and isinstance(
-        frontend, FrontendSkeletonArtifact
-    ):
+    if backend is not None and frontend is not None:
         known_api_ids = {api.api_id for api in backend.apis if api.api_id is not None}
         referenced_api_ids = {
             binding.backend_api_id
@@ -567,14 +611,21 @@ def _execute_evaluator(input_payload: EvaluationInput) -> EvaluationReport | Eva
 
 
 def _evaluate(input_payload: EvaluationInput) -> EvaluationReport | EvaluationReportV2:
+    explicit_contract = _explicit_contract_required(
+        getattr(input_payload, "verification_policy", {})
+    )
+    backend_model = ExplicitBackendDesignArtifact if explicit_contract else BackendDesignArtifact
+    frontend_model = (
+        ExplicitFrontendSkeletonArtifact if explicit_contract else FrontendSkeletonArtifact
+    )
     report = evaluate_artifacts(
         requirement=input_payload.requirement,
         prd=PrdArtifact.model_validate(input_payload.prd),
         architecture_design=(ArchitectureDesignArtifactV2 if "shared_contract" in input_payload.architecture_design else ArchitectureDesignArtifact).model_validate(
             input_payload.architecture_design
         ),
-        backend_design=BackendDesignArtifact.model_validate(input_payload.backend_design),
-        frontend_skeleton=FrontendSkeletonArtifact.model_validate(
+        backend_design=backend_model.model_validate(input_payload.backend_design),
+        frontend_skeleton=frontend_model.model_validate(
             input_payload.frontend_skeleton
         ),
         review_report=(
