@@ -104,7 +104,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Start isolated verifier
-        run: docker compose -p "$VERIFIER_COMPOSE_PROJECT" up --build -d spec-verifier
+        run: docker compose -p "$VERIFIER_COMPOSE_PROJECT" up --build -d --wait --wait-timeout 120 spec-verifier
       - name: Run verifier sandbox probes
         run: python scripts/verify_spec_sandbox.py --project "$VERIFIER_COMPOSE_PROJECT"
       - name: Stop isolated verifier
