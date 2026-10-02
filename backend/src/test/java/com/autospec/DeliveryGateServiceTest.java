@@ -173,6 +173,25 @@ class DeliveryGateServiceTest {
     }
 
     @Test
+    void rejectsHumanEditedEvaluationEvenWhenFactLooksValid() {
+        when(workflowRunService.list(org.mockito.ArgumentMatchers.<Wrapper<WorkflowRun>>any()))
+                .thenReturn(List.of(verifiedRun("COMPLETED")));
+        WorkflowNodeRun evaluator = evaluator(71L);
+        when(workflowNodeRunMapper.selectOne(any())).thenReturn(evaluator);
+        Artifact edited = evaluationWithVerification(71L, System.currentTimeMillis() + 60_000);
+        edited.setStatus("PENDING_REVIEW");
+        edited.setSourceAgent("HUMAN_EDITOR");
+        when(artifactService.list(org.mockito.ArgumentMatchers.<Wrapper<Artifact>>any()))
+                .thenReturn(List.of(edited));
+
+        assertThatThrownBy(() -> deliveryGateService.requireDeliverable(9L))
+                .isInstanceOfSatisfying(ResponseStatusException.class, ex -> {
+                    assertThat(ex.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+                    assertThat(ex.getReason()).contains("generated evaluation report");
+                });
+    }
+
+    @Test
     void doesNotReuseBuildVerificationFromDifferentArtifactVersions() {
         when(workflowRunService.list(org.mockito.ArgumentMatchers.<Wrapper<WorkflowRun>>any()))
                 .thenReturn(List.of(run("COMPLETED")));
@@ -225,6 +244,7 @@ class DeliveryGateServiceTest {
         node.setId(id);
         node.setWorkflowRunId(44L);
         node.setNodeId("evaluator");
+        node.setHandlerKey("EvaluatorAgent");
         node.setStatus("SUCCEEDED");
         return node;
     }
@@ -236,6 +256,7 @@ class DeliveryGateServiceTest {
         artifact.setType("EVALUATION_REPORT");
         artifact.setVersion(1);
         artifact.setStatus("GENERATED");
+        artifact.setSourceAgent("EvaluatorAgent");
         artifact.setWorkflowNodeRunId(nodeRunId);
         artifact.setContent("{\"gate_status\":\"" + gateStatus + "\"}");
         return artifact;
