@@ -15,6 +15,8 @@ predecessor: docs/archive/agent-execution-plan.md
 
 > 本文件是当前任务总计划，具体入口和历史执行过程见 [P0/P1 执行手册](p0-p1-execution-plan.md)、[P2–P4 执行手册](p2-p4-execution-plan.md)。两份手册属于同一任务；与本次审查冲突的旧 `done` 或“未 push / CI 待验证”判断，以本次状态修订为准。其他文档、样例与证据放在 [archive/](archive/README.md)，只作参考，不生成另一条实施路线。文件名按用户指定保留，产品名称统一为 AutoSpec。
 
+> 2026-10-02 P2/P3 续作已完成新候选冻结、完整 fixture development/holdout、Docker Sandbox probe、native tool-call 协议对照和本地 embedding 对照；P2-E 完整 live 批次因安全执行层未接受 `576 CNY` 批量外部调用而保持 `blocked/NOT_EVALUATED`。详见 [P2/P3 续作证据](archive/evidence/p2-p3-2026-10-02.md)；P4 不在本轮实施范围。
+
 > 数据库已于 2026-09-30 经授权收敛为 V1，后续迁移只增不改，从实际最大版本 + 1 分配；当前源码已有 V2。保留运行的 WorkflowSpec / Prompt / Schema / Handler 冻结版本不变，不能恢复 V104–V117 或重写 V1。详见 [基线收敛记录](archive/evidence/baseline-consolidation-2026-09-30.md)。新数据库的产品基线为 `pm-schema-repair-v12`；旧 `v5-parallel` 仅为历史兼容输入。
 
 ## 1. 结论

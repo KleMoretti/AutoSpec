@@ -10,7 +10,7 @@ database_baseline: V1
 
 # AutoSpec P2–P4 修复执行手册
 
-> 2026-10-02 审查修订：PR #12 已合并，master 普通 CI 四项全绿，详见 [复核记录](archive/evidence/spec-sandbox-review-2026-10-02.md)。BASE-02 的生产显式适配仍未接通，相关 P1、FULL/L2 与正式修复 Trace 重新列为待验收；完整 live 既缺样本，也须先修复测量对象。顶层改为 `in_progress` 以继续本地修复，P2-E 仍为 `blocked`。当前顺序与验收以 [总计划第 9 节](autospec-v5-spec-sandbox-plan.md#9-下一批可执行任务按顺序) 为准，旧时点证据不改写。
+> 2026-10-02 审查修订（历史快照）：PR #12 已合并，master 普通 CI 四项全绿，详见 [复核记录](archive/evidence/spec-sandbox-review-2026-10-02.md)。该快照记录的 BASE-02 未接通判断不覆盖后续续作；当前状态以第 3 节状态表和 12.4 交接为准。完整 live 仍受批次授权/安全执行条件限制，P2-E 保持 `blocked`。
 
 本文件分解 [总计划](autospec-v5-spec-sandbox-plan.md) 的 P2（证据）、P3（可靠性及独立扩展）、P4（展示），与 [P0/P1 手册](p0-p1-execution-plan.md) 属于同一条路线。按用户要求保留在 `docs/` 根目录。适用对象是上下文较短、推理能力较弱的执行模型：一次只完成一个任务，按明确输入、步骤、测试和验收推进，不自行扩展目标。
 
