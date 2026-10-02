@@ -346,9 +346,32 @@ async def test_backend_loop_stops_on_verifier_error_without_replan(monkeypatch) 
 
 
 @pytest.mark.asyncio
-async def test_fixture_verification_failure_marker_replans_once_and_repairs(monkeypatch) -> None:
+@pytest.mark.parametrize(
+    ("marker", "expected_completed", "expected_stop_reason", "expected_calls"),
+    [
+        (
+            "[[fixture-verification-failure]]",
+            True,
+            StopReason.COMPLETED,
+            [True, False],
+        ),
+        (
+            "[[fixture-verification-oscillation]]",
+            False,
+            StopReason.REPLAN_LIMIT,
+            [True, True],
+        ),
+    ],
+)
+async def test_fixture_verification_marker_bounds_replan(
+    monkeypatch,
+    marker: str,
+    expected_completed: bool,
+    expected_stop_reason: StopReason,
+    expected_calls: list[bool],
+) -> None:
     requirement, prd, architecture = _inputs()
-    requirement += " [[fixture-verification-failure]]"
+    requirement += f" {marker}"
     calls: list[bool] = []
 
     async def verify(candidate, _prd, *, inject_fixture_defect=False):
@@ -427,8 +450,9 @@ async def test_fixture_verification_failure_marker_replans_once_and_repairs(monk
             policy=policy,
         )
 
-    assert result.completed is True
-    assert calls == [True, False]
+    assert result.completed is expected_completed
+    assert result.stop_reason == expected_stop_reason
+    assert calls == expected_calls
     assert any(step.reason_code == "SPEC_VERIFY_FAILED" for step in result.steps)
     assert any(step.phase == "REPLAN" for step in result.steps)
 

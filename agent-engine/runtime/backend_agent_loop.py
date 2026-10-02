@@ -59,6 +59,7 @@ class BackendVerificationError(RuntimeError):
 
 
 FIXTURE_VERIFICATION_FAILURE_MARKER = "[[fixture-verification-failure]]"
+FIXTURE_VERIFICATION_OSCILLATION_MARKER = "[[fixture-verification-oscillation]]"
 
 
 @dataclass
@@ -316,11 +317,17 @@ async def run_backend_agent_loop(
                 if _verification_required():
                     started = time.perf_counter()
                     try:
-                        if (
+                        inject_fixture_defect = (
                             model_client is None
-                            and FIXTURE_VERIFICATION_FAILURE_MARKER in requirement
-                            and state.replans == 0
-                        ):
+                            and (
+                                (
+                                    FIXTURE_VERIFICATION_FAILURE_MARKER in requirement
+                                    and state.replans == 0
+                                )
+                                or FIXTURE_VERIFICATION_OSCILLATION_MARKER in requirement
+                            )
+                        )
+                        if inject_fixture_defect:
                             report, fact = await _verify_backend_candidate(
                                 validation.candidate,
                                 prd,
