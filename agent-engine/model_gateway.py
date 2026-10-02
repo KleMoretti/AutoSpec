@@ -15,6 +15,7 @@ from openai import OpenAI
 
 from runtime.context_policy import estimate_tokens
 from runtime.model_protocol import normalize_native_tool_call, validate_output_protocol
+from schemas.agent_loop import parse_agent_turn
 from runtime.model_telemetry import (
     ModelInvocationTelemetry,
     ModelRoutingDecision,
@@ -394,6 +395,8 @@ class OpenAICompatibleModelClient:
                         raise ModelStructuredOutputError(
                             "Native no-tool response must be a JSON object"
                         )
+                    parsed = parse_agent_turn(parsed).model_dump(mode="json")
+                    content = json.dumps(parsed, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
                 elif len(tool_calls) != 1:
                     raise ModelStructuredOutputError(
                         "Parallel native tool calls are not supported by this bounded executor"
