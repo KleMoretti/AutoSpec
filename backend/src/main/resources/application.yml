@@ -76,6 +76,7 @@ autospec:
     service-token: ${AGENT_ENGINE_SERVICE_TOKEN:}
   spec-verifier:
     url: ${AUTOSPEC_SPEC_VERIFIER_URL:http://spec-verifier:8010}
+    service-token: ${SPEC_VERIFIER_SERVICE_TOKEN:}
   knowledge:
     embedding:
       mode: ${AUTOSPEC_EMBEDDING_MODE:fixture}
