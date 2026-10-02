@@ -304,6 +304,7 @@ services:
       MYSQL_ROOT_PASSWORD: ${VERIFY_MYSQL_ROOT_PASSWORD:-}
     volumes:
       - autospec_verify_mysql_data:/var/lib/mysql
+      - ./agent-engine/spec_verifier/mysql-init/10-verifier-schema-grant.sql:/docker-entrypoint-initdb.d/10-verifier-schema-grant.sql:ro
     networks:
       - verification_internal
     healthcheck:
