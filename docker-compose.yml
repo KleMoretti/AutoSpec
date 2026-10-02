@@ -121,6 +121,7 @@ services:
       AGENT_ENGINE_SERVICE_TOKEN: ${AGENT_ENGINE_SERVICE_TOKEN:?AGENT_ENGINE_SERVICE_TOKEN is required}
       AGENT_ENGINE_URL: ${AGENT_ENGINE_URL:-http://agent-engine:8000}
       AUTOSPEC_SPEC_VERIFIER_URL: ${AUTOSPEC_SPEC_VERIFIER_URL:-http://spec-verifier:8010}
+      SPEC_VERIFIER_SERVICE_TOKEN: ${SPEC_VERIFIER_SERVICE_TOKEN:?SPEC_VERIFIER_SERVICE_TOKEN is required}
       WORKFLOW_OUTBOX_ENABLED: "true"
       WORKFLOW_EVENT_POLLING_ENABLED: "true"
       WORKFLOW_EVENT_CONSUMER_NAME: control-plane
@@ -139,6 +140,8 @@ services:
       mysql:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      spec-verifier:
         condition: service_healthy
     networks:
       - default
@@ -292,19 +295,17 @@ services:
 
   verify-mysql:
     image: mysql:8.4
-    profiles: ["verification"]
     restart: "no"
     logging: *default-logging
     environment:
       MYSQL_DATABASE: autospec_verify
       MYSQL_USER: verify
-      # The verification profile must be started with explicit passwords; the
-      # empty defaults keep the ordinary compose config check side-effect free.
-      MYSQL_PASSWORD: ${VERIFY_MYSQL_PASSWORD:-}
-      MYSQL_ROOT_PASSWORD: ${VERIFY_MYSQL_ROOT_PASSWORD:-}
+      MYSQL_PASSWORD: ${VERIFY_MYSQL_PASSWORD:?VERIFY_MYSQL_PASSWORD is required}
+      MYSQL_ROOT_PASSWORD: ${VERIFY_MYSQL_ROOT_PASSWORD:?VERIFY_MYSQL_ROOT_PASSWORD is required}
     volumes:
-      - autospec_verify_mysql_data:/var/lib/mysql
       - ./agent-engine/spec_verifier/mysql-init/10-verifier-schema-grant.sql:/docker-entrypoint-initdb.d/10-verifier-schema-grant.sql:ro
+    tmpfs:
+      - /var/lib/mysql:size=768m,mode=1770
     networks:
       - verification_internal
     healthcheck:
@@ -317,13 +318,26 @@ services:
     build:
       context: ./agent-engine
       dockerfile: spec_verifier/Dockerfile
-    profiles: ["verification"]
-    restart: "no"
+    restart: unless-stopped
     logging: *default-logging
     environment:
-      AGENT_ENGINE_SERVICE_TOKEN: ${AGENT_ENGINE_SERVICE_TOKEN:?AGENT_ENGINE_SERVICE_TOKEN is required}
-      AUTOSPEC_VERIFY_MYSQL_DSN: mysql://verify:${VERIFY_MYSQL_PASSWORD:-}@verify-mysql:3306/autospec_verify
+      SPEC_VERIFIER_SERVICE_TOKEN: ${SPEC_VERIFIER_SERVICE_TOKEN:?SPEC_VERIFIER_SERVICE_TOKEN is required}
+      AUTOSPEC_VERIFY_MYSQL_DSN: mysql://verify:${VERIFY_MYSQL_PASSWORD}@verify-mysql:3306/autospec_verify
       AUTOSPEC_TSC_PATH: tsc
+      PYTHONDONTWRITEBYTECODE: "1"
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 768m
+    cpus: "1.0"
+    ulimits:
+      nofile:
+        soft: 1024
+        hard: 1024
     networks:
       - verification_internal
     depends_on:
@@ -339,6 +353,7 @@ services:
         limits:
           cpus: "1.0"
           memory: 768M
+          pids: 128
 
   prometheus:
     image: prom/prometheus:v3.5.0
@@ -420,7 +435,6 @@ volumes:
   autospec_prometheus_data:
   autospec_grafana_data:
   autospec_tempo_data:
-  autospec_verify_mysql_data:
 
 networks:
   verification_internal:

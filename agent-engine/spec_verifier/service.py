@@ -64,7 +64,7 @@ def verify_payload(payload: VerifyRequest) -> VerificationReport:
 
 def create_app(token: str | None = None) -> FastAPI:
     app = FastAPI(title="AutoSpec Spec Verifier", version="spec-verifier-v1")
-    expected_token = token if token is not None else os.environ.get("AGENT_ENGINE_SERVICE_TOKEN", "")
+    expected_token = token if token is not None else os.environ.get("SPEC_VERIFIER_SERVICE_TOKEN", "")
 
     @app.get("/health")
     async def health() -> dict[str, str]:

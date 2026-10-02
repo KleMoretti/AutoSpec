@@ -127,6 +127,9 @@ MYSQL_PASSWORD=change-me
 MYSQL_ROOT_PASSWORD=change-me
 REDIS_PASSWORD=change-me
 AGENT_ENGINE_SERVICE_TOKEN=change-me
+SPEC_VERIFIER_SERVICE_TOKEN=use-a-different-verifier-token
+VERIFY_MYSQL_PASSWORD=change-me
+VERIFY_MYSQL_ROOT_PASSWORD=change-me
 AUTH_DEMO_USER_PASSWORD=change-me
 ~~~
 
@@ -146,6 +149,11 @@ docker compose config --quiet
 docker compose up --build -d
 docker compose ps
 ~~~
+
+The executable-spec verifier and its ephemeral verification MySQL start with
+the default stack. The verifier uses a dedicated service token and creates a
+random `autospec_verify_*` database per check; it does not use the business
+MySQL volume. Set the three verification values above before starting.
 
 Open:
 
@@ -292,6 +300,7 @@ The GitHub Actions quality workflow additionally runs integration checks and bui
 - Published ports bind to localhost by default in the development Compose topology.
 - Retrieval is scoped to the current project and citation references are validated.
 - Production rejects fixture model mode, demo login, root database users and missing security configuration.
+- The verifier is reachable only on the internal verification network, runs with a read-only root filesystem and bounded resources, and fails closed when its token or MySQL dependency is unavailable.
 - Secrets remain environment-only; prompts, workflow contracts, events and logs never need to contain API keys.
 
 ## Observability
