@@ -67,15 +67,22 @@ jobs:
       MYSQL_ROOT_PASSWORD: ci-autospec-root-password
       REDIS_PASSWORD: ci-autospec-redis-password
       AGENT_ENGINE_SERVICE_TOKEN: ci-autospec-service-token
+      SPEC_VERIFIER_SERVICE_TOKEN: ci-autospec-verifier-token
+      VERIFY_MYSQL_PASSWORD: ci-autospec-verifier-mysql-password
+      VERIFY_MYSQL_ROOT_PASSWORD: ci-autospec-verifier-mysql-root-password
     steps:
       - uses: actions/checkout@v4
       - name: Validate default Compose graph
         run: docker compose config --quiet
       - name: Validate monitoring Compose graph
         run: docker compose --profile monitoring config --quiet
+      - name: Validate verification Compose graph
+        run: docker compose --profile verification config --quiet
       - name: Build backend image
         run: docker build backend
       - name: Build Agent image
         run: docker build agent-engine
+      - name: Build spec verifier image
+        run: docker build --file agent-engine/spec_verifier/Dockerfile agent-engine
       - name: Build frontend image
         run: docker build frontend
