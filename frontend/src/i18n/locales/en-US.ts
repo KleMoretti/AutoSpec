@@ -276,6 +276,8 @@ const enUS = {
       duration: 'Duration',
       planHash: 'Plan hash',
       observationHash: 'Observation hash',
+      candidateHash: 'Candidate hash',
+      verificationFact: 'Verification fact',
       modelCall: 'Model call',
       toolCall: 'Tool call',
       noSteps: 'No agent steps recorded.'

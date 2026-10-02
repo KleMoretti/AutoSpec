@@ -276,6 +276,8 @@ const zhCN = {
       duration: '耗时',
       planHash: '计划哈希',
       observationHash: '观察哈希',
+      candidateHash: '候选哈希',
+      verificationFact: '验证事实',
       modelCall: '模型调用',
       toolCall: '工具调用',
       noSteps: '没有记录 Agent 步骤。'

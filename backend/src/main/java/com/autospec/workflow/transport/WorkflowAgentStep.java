@@ -18,6 +18,8 @@ public record WorkflowAgentStep(
         @JsonProperty("reason_code") String reasonCode,
         @JsonProperty("plan_hash") String planHash,
         @JsonProperty("observation_hash") String observationHash,
+        @JsonProperty("candidate_hash") String candidateHash,
+        @JsonProperty("verification_fact_ref") String verificationFactRef,
         @JsonProperty("validation_issue_codes") List<String> validationIssueCodes,
         @JsonProperty("model_call_ref") String modelCallRef,
         @JsonProperty("tool_call_ref") String toolCallRef,

@@ -2603,6 +2603,12 @@ components:
         observationHash:
           type: string
           nullable: true
+        candidateHash:
+          type: string
+          nullable: true
+        verificationFactRef:
+          type: string
+          nullable: true
         validationIssueCodes:
           type: array
           items:

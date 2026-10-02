@@ -180,6 +180,8 @@ public class WorkflowTraceService {
                 step.getReasonCode(),
                 step.getPlanHash(),
                 step.getObservationHash(),
+                step.getCandidateHash(),
+                step.getVerificationFactRef(),
                 issueCodes,
                 step.getModelCallRef(),
                 step.getToolCallRef(),

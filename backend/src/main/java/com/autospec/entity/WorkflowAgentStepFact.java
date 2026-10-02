@@ -26,6 +26,8 @@ public class WorkflowAgentStepFact {
     private String reasonCode;
     private String planHash;
     private String observationHash;
+    private String candidateHash;
+    private String verificationFactRef;
     private String validationIssueCodesJson;
     private String modelCallRef;
     private String toolCallRef;

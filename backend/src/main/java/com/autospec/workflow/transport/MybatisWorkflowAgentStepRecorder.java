@@ -60,6 +60,8 @@ public class MybatisWorkflowAgentStepRecorder implements WorkflowAgentStepRecord
             fact.setReasonCode(step.reasonCode());
             fact.setPlanHash(step.planHash());
             fact.setObservationHash(step.observationHash());
+            fact.setCandidateHash(step.candidateHash());
+            fact.setVerificationFactRef(step.verificationFactRef());
             fact.setValidationIssueCodesJson(serialize(step.validationIssueCodes()));
             fact.setModelCallRef(step.modelCallRef());
             fact.setToolCallRef(step.toolCallRef());
