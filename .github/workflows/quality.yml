@@ -86,3 +86,26 @@ jobs:
         run: docker build --file agent-engine/spec_verifier/Dockerfile agent-engine
       - name: Build frontend image
         run: docker build frontend
+
+  verifier-sandbox-probes:
+    runs-on: ubuntu-latest
+    env:
+      MYSQL_PASSWORD: ci-autospec-password
+      MYSQL_ROOT_PASSWORD: ci-autospec-root-password
+      REDIS_PASSWORD: ci-autospec-redis-password
+      AGENT_ENGINE_SERVICE_TOKEN: ci-autospec-service-token
+      SPEC_VERIFIER_SERVICE_TOKEN: ci-autospec-verifier-token
+      VERIFY_MYSQL_PASSWORD: ci-autospec-verifier-mysql-password
+      VERIFY_MYSQL_ROOT_PASSWORD: ci-autospec-verifier-mysql-root-password
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Start isolated verifier
+        run: docker compose -p autospec-verifier-ci up --build -d spec-verifier
+      - name: Run verifier sandbox probes
+        run: python scripts/verify_spec_sandbox.py --project autospec-verifier-ci
+      - name: Stop isolated verifier
+        if: always()
+        run: docker compose -p autospec-verifier-ci down --remove-orphans
