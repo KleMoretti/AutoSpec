@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import hashlib
 import os
+import re
 import time
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -13,7 +14,7 @@ from typing import Any, Iterator, Mapping
 from openai import OpenAI
 
 from runtime.context_policy import estimate_tokens
-from runtime.model_protocol import validate_output_protocol
+from runtime.model_protocol import normalize_native_tool_call, validate_output_protocol
 from runtime.model_telemetry import (
     ModelInvocationTelemetry,
     ModelRoutingDecision,
@@ -58,6 +59,47 @@ class ModelConfigurationError(RuntimeError):
 
 class ModelOutputLimitError(RuntimeError):
     error_code = "MODEL_OUTPUT_LIMIT"
+
+
+def _native_tool_alias(name: str, version: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_-]", "_", f"{name}__{version}")
+
+
+def _native_tool_specs(
+    input_payload: Mapping[str, Any],
+) -> tuple[list[dict[str, Any]], dict[str, tuple[str, str]]]:
+    loop = input_payload.get("agent_loop")
+    raw_tools = loop.get("tools") if isinstance(loop, Mapping) else None
+    if not isinstance(raw_tools, list) or not raw_tools:
+        raise ModelConfigurationError(
+            "NATIVE_TOOL_CALL requires tools declared by the frozen allowlist"
+        )
+    specifications: list[dict[str, Any]] = []
+    aliases: dict[str, tuple[str, str]] = {}
+    for raw in raw_tools:
+        if not isinstance(raw, Mapping):
+            raise ModelConfigurationError("Native tool schema must be an object")
+        name = raw.get("name")
+        version = raw.get("version")
+        schema = raw.get("input_schema")
+        if not isinstance(name, str) or not name or not isinstance(version, str) or not version:
+            raise ModelConfigurationError("Native tool schema requires name and version")
+        if not isinstance(schema, Mapping):
+            raise ModelConfigurationError(f"Native tool schema is missing for {name}:{version}")
+        alias = _native_tool_alias(name, version)
+        if alias in aliases:
+            raise ModelConfigurationError(f"Native tool alias collision: {alias}")
+        aliases[alias] = (name, version)
+        aliases[name] = (name, version)
+        specifications.append({
+            "type": "function",
+            "function": {
+                "name": alias,
+                "description": str(raw.get("description") or f"Controlled tool {name}:{version}"),
+                "parameters": dict(schema),
+            },
+        })
+    return specifications, aliases
 
 
 class ModelStructuredOutputError(RuntimeError):
@@ -201,11 +243,10 @@ class OpenAICompatibleModelClient:
             )
         except ValueError as error:
             raise ModelConfigurationError(str(error)) from error
-        if output_protocol != "JSON_OBJECT":
-            raise ModelConfigurationError(
-                "NATIVE_TOOL_CALL requires a provider adapter that returns a native call envelope; "
-                "JSON_OBJECT fallback is disabled"
-            )
+        if output_protocol == "NATIVE_TOOL_CALL":
+            native_tools, native_aliases = _native_tool_specs(input_payload)
+        else:
+            native_tools, native_aliases = [], {}
 
         max_output_tokens = int(
             policy.get("max_output_tokens", self._max_output_tokens)
@@ -248,7 +289,7 @@ class OpenAICompatibleModelClient:
             {"role": "system", "content": system_content},
             {"role": "user", "content": user_content},
         ]
-        response_format = {"type": "json_object"}
+        response_format = {"type": "json_object"} if output_protocol == "JSON_OBJECT" else None
         thinking_mode = policy.get("thinking_mode")
         if thinking_mode is not None:
             if self.provider_key != "deepseek" or thinking_mode not in {"enabled", "disabled"}:
@@ -260,7 +301,9 @@ class OpenAICompatibleModelClient:
                     "model": self.model_name,
                     "temperature": temperature,
                     "max_tokens": max_output_tokens,
+                    "output_protocol": output_protocol,
                     "response_format": response_format,
+                    "tools": native_tools,
                     **({"thinking_mode": thinking_mode} if thinking_mode is not None else {}),
                     "system_hash": hashlib.sha256(
                         system_content.encode("utf-8")
@@ -283,6 +326,11 @@ class OpenAICompatibleModelClient:
                 )
             }
         request_options["max_tokens"] = max_output_tokens
+        if output_protocol == "NATIVE_TOOL_CALL":
+            request_options["tools"] = native_tools
+            request_options["tool_choice"] = "auto"
+        else:
+            request_options["response_format"] = response_format
 
         input_rate = float(
             policy.get("input_cost_per_million", self._input_cost_per_million)
@@ -309,7 +357,6 @@ class OpenAICompatibleModelClient:
             completion = self._client.chat.completions.create(
                 model=self.model_name,
                 temperature=temperature,
-                response_format=response_format,
                 messages=messages,
                 **request_options,
             )
@@ -325,15 +372,71 @@ class OpenAICompatibleModelClient:
                 raise RuntimeError("Model returned no choices")
             if getattr(completion.choices[0], "finish_reason", None) == "length":
                 raise ModelOutputLimitError("Model exhausted the frozen output token allowance before completing its JSON response")
-            content = completion.choices[0].message.content
-            if content is None or not content.strip():
-                raise ModelStructuredOutputError("Model returned an empty response")
-            try:
-                parsed = json.loads(content)
-            except json.JSONDecodeError as exc:
-                raise ModelStructuredOutputError("Model response was not valid JSON") from exc
-            if not isinstance(parsed, dict):
-                raise ModelStructuredOutputError("Model response must be a JSON object")
+            message = completion.choices[0].message
+            if output_protocol == "NATIVE_TOOL_CALL":
+                tool_calls = getattr(message, "tool_calls", None)
+                if not isinstance(tool_calls, list) or not tool_calls:
+                    # A native-capable provider may legitimately finish a turn
+                    # without requesting a tool. This is a provider-native
+                    # no-tool response, not an implicit JSON-in-prompt retry.
+                    content = message.content
+                    if content is None or not content.strip():
+                        raise ModelStructuredOutputError(
+                            "Native tool protocol response was empty"
+                        )
+                    try:
+                        parsed = json.loads(content)
+                    except json.JSONDecodeError as exc:
+                        raise ModelStructuredOutputError(
+                            "Native no-tool response was not valid JSON"
+                        ) from exc
+                    if not isinstance(parsed, dict):
+                        raise ModelStructuredOutputError(
+                            "Native no-tool response must be a JSON object"
+                        )
+                elif len(tool_calls) != 1:
+                    raise ModelStructuredOutputError(
+                        "Parallel native tool calls are not supported by this bounded executor"
+                    )
+                else:
+                    raw_call = tool_calls[0]
+                    call_id = getattr(raw_call, "id", None)
+                    function = getattr(raw_call, "function", None)
+                    provider_name = getattr(function, "name", None)
+                    raw_arguments = getattr(function, "arguments", None)
+                    if not isinstance(call_id, str) or not call_id:
+                        raise ModelStructuredOutputError("Native tool call is missing its provider call id")
+                    if not isinstance(provider_name, str) or provider_name not in native_aliases:
+                        raise ModelStructuredOutputError("Native tool call requested an unknown tool")
+                    try:
+                        arguments = (
+                            json.loads(raw_arguments)
+                            if isinstance(raw_arguments, str)
+                            else raw_arguments
+                        )
+                    except json.JSONDecodeError as exc:
+                        raise ModelStructuredOutputError(
+                            "Native tool call arguments were not valid JSON"
+                        ) from exc
+                    canonical_name, version = native_aliases[provider_name]
+                    parsed = normalize_native_tool_call({
+                        "protocol": "NATIVE_TOOL_CALL",
+                        "id": call_id,
+                        "name": canonical_name,
+                        "version": version,
+                        "arguments": arguments,
+                    })
+                    content = json.dumps(parsed, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+            else:
+                content = message.content
+                if content is None or not content.strip():
+                    raise ModelStructuredOutputError("Model returned an empty response")
+                try:
+                    parsed = json.loads(content)
+                except json.JSONDecodeError as exc:
+                    raise ModelStructuredOutputError("Model response was not valid JSON") from exc
+                if not isinstance(parsed, dict):
+                    raise ModelStructuredOutputError("Model response must be a JSON object")
         except Exception as exception:
             estimated_cost = _invocation_cost(
                 input_tokens,

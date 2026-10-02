@@ -57,6 +57,7 @@ class ToolCallTurn(BaseModel):
     arguments: dict[str, Any] = Field(default_factory=dict)
     reason: str = Field(min_length=1)
     expected_evidence: list[str] = Field(default_factory=list, max_length=16)
+    provider_call_id: str | None = Field(default=None, min_length=1, max_length=255)
 
 
 class FinalCandidateTurn(BaseModel):
