@@ -58,6 +58,9 @@ class BackendVerificationError(RuntimeError):
         self.error_code = error_code
 
 
+FIXTURE_VERIFICATION_FAILURE_MARKER = "[[fixture-verification-failure]]"
+
+
 @dataclass
 class _LoopState:
     steps: list[AgentStepRecord]
@@ -313,10 +316,21 @@ async def run_backend_agent_loop(
                 if _verification_required():
                     started = time.perf_counter()
                     try:
-                        report, fact = await _verify_backend_candidate(
-                            validation.candidate,
-                            prd,
-                        )
+                        if (
+                            model_client is None
+                            and FIXTURE_VERIFICATION_FAILURE_MARKER in requirement
+                            and state.replans == 0
+                        ):
+                            report, fact = await _verify_backend_candidate(
+                                validation.candidate,
+                                prd,
+                                inject_fixture_defect=True,
+                            )
+                        else:
+                            report, fact = await _verify_backend_candidate(
+                                validation.candidate,
+                                prd,
+                            )
                     except ToolRuntimeError as error:
                         _append_step(
                             state,
@@ -643,6 +657,8 @@ def _verification_required() -> bool:
 async def _verify_backend_candidate(
     candidate: BackendDesignArtifact,
     prd: PrdArtifact,
+    *,
+    inject_fixture_defect: bool = False,
 ) -> tuple[VerificationReport, VerificationFact]:
     execution = current_model_execution_contract()
     if execution is None or not _verification_required():
@@ -676,6 +692,14 @@ async def _verify_backend_candidate(
             None,
             contract_id="GeneratedSpec",
         )
+    if inject_fixture_defect:
+        primary_key = next(
+            field
+            for table in contract.tables
+            for field in table.fields
+            if field.primary_key
+        )
+        primary_key.primary_key = False
     compiled = compile_spec(contract)
     result = await execute_current_tool(
         ToolCallRequest(
