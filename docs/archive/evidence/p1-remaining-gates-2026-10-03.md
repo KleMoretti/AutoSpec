@@ -8,6 +8,7 @@
 - 旧 head `492a388` 的 quality run `37130062282` 已完成，最终 `success`。
 - `backend-tests`、`agent-tests`、`frontend-tests`、`compose-and-images` 和 `verifier-sandbox-probes` 全部 success；Sandbox probe job 已实际在 GitHub runner 执行。
 - 最新 head `8003ba4fe371acc85315cad0ddb4c3f87d4aaac8` 的 run `37130433346` 已重新完成并成功；`backend-tests`、`agent-tests`、`frontend-tests`、`compose-and-images` 和 `verifier-sandbox-probes` 全部 success。
+- 跨节点返工修复后的最新 head `9d745f7f400db457a761591e85e6d79c1b6d7695` 的 run `37131885506` 也已完成 success；五个 quality job（含 `verifier-sandbox-probes`）全部 success。
 
 ## 跨节点责任返工
 
