@@ -8,6 +8,7 @@
 - `4ed8585`：`/verify` 先校验专用 Token，再通过 `request.stream()` 累计读取请求体，超过 512 KiB 立即返回 413；`timeout_ms` 上限收紧为 30 秒，拒绝 900 秒任意延长。
 - `c47716d`：L2 以 monotonic deadline 贯穿 TypeScript 子进程和 MySQL schema 执行；子进程创建独立进程组，超时后终止并回收；每条 DDL 执行前检查剩余时间并刷新 socket timeout；规格错误/环境错误分类保持 fail-closed。
 - `8dbd878`：Java `ToolGatewayService` 将 `deadline_epoch_ms` 传给 `SpecVerificationClient`，HTTP timeout 与冻结 execution deadline、请求 timeout 取最小值，剩余不足时不再发起调用。
+- `c6667f4`：每个验证 MySQL session 在执行 DDL 前设置有界 `innodb_lock_wait_timeout`，并继续在每条语句前检查剩余 monotonic deadline。
 
 ## 验证
 
@@ -19,5 +20,5 @@
 
 ## 尚未关闭
 
-- PID/进程超时主动注入已通过；尚未主动注入内存 OOM（避免杀死 verifier 主进程），也未完成真实 `.env` 冷启动和远端 Sandbox CI。
+- PID/进程超时和 server-side lock wait 上限已实现/测试；尚未主动注入内存 OOM（避免杀死 verifier 主进程），也未完成真实 `.env` 冷启动和远端 Sandbox CI。
 - MySQL 语句级取消依赖驱动 socket timeout 和剩余时间检查，尚未在真实锁等待/断连场景做专门故障注入。
