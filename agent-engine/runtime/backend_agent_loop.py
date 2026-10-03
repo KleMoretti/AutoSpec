@@ -37,7 +37,7 @@ from schemas.agent_loop import (
     agent_turn_schema,
     validate_loop_budget,
 )
-from schemas.backend_design import BackendDesignArtifact
+from schemas.backend_design import BackendDesignArtifact, ExplicitBackendDesignArtifact
 from schemas.prd import PrdArtifact
 from schemas.tool import ToolCallRequest
 from schemas.verification import VerificationFact, VerificationReport
@@ -97,6 +97,10 @@ async def run_backend_agent_loop(
 
     state = _LoopState(steps=[])
     contract = current_model_execution_contract()
+    explicit_contract_required = bool(
+        contract
+        and contract.verification_policy.get("verifier_version") == "spec-verifier-v2"
+    )
     if contract is not None:
         validate_loop_budget(policy, int(contract.model_policy.get("max_calls", 1)),
                              bool(contract.tool_policy.get("enabled", False)))
@@ -106,6 +110,8 @@ async def run_backend_agent_loop(
         "architecture_design": architecture_design,
         "retrieved_sources": retrieved_sources,
         "context_manifest": context_manifest,
+        "shared_contract_required": True,
+        "explicit_contract_required": explicit_contract_required,
     }
     if rework_directive is not None:
         base_payload["rework_directive"] = rework_directive
@@ -298,6 +304,7 @@ async def run_backend_agent_loop(
                 state.candidate,
                 prd,
                 profile=policy.validator_profile,
+                explicit_contract_required=explicit_contract_required,
             )
             state.issues = validation.issues
             codes = [issue.code for issue in validation.issues]
@@ -497,7 +504,11 @@ async def _next_turn(
             issue.model_dump(mode="json") for issue in (state.issues or [])
         ],
         "turn_schema": agent_turn_schema(),
-        "candidate_schema": BackendDesignArtifact.model_json_schema(),
+        "candidate_schema": (
+            ExplicitBackendDesignArtifact.model_json_schema()
+            if base_payload.get("explicit_contract_required")
+            else BackendDesignArtifact.model_json_schema()
+        ),
         "allowed_turn_types": _allowed_turns(phase),
         "tools": current_tool_harness().describe_allowed() if current_tool_harness() else [],
         "remaining_steps": policy.max_steps - state.iterations,
@@ -508,7 +519,11 @@ async def _next_turn(
         return turn, _record_fixture_model_call(payload, turn)
     output = await asyncio.to_thread(
         model_client.generate_json,
-        "BackendEngineerAgent_v2" if policy.version == "agent-loop-v2" else "BackendEngineerAgent_v1",
+        "BackendEngineerAgent_v7"
+        if base_payload.get("explicit_contract_required")
+        else "BackendEngineerAgent_v2"
+        if policy.version == "agent-loop-v2"
+        else "BackendEngineerAgent_v1",
         payload,
     )
     turn = parse_agent_turn(output)
@@ -526,6 +541,11 @@ def _fixture_turn(
     rework_directive: dict[str, Any] | None,
     policy: LoopPolicy,
 ) -> AgentTurn:
+    execution = current_model_execution_contract()
+    explicit_contract_required = bool(
+        execution
+        and execution.verification_policy.get("verifier_version") == "spec-verifier-v2"
+    )
     if phase == "PLAN":
         return PlanTurn(
             goal="Produce a traceable backend design.",
@@ -556,6 +576,7 @@ def _fixture_turn(
         retrieved_sources=retrieved_sources,
         context_manifest=context_manifest,
         rework_directive=rework_directive,
+        explicit_contract_required=explicit_contract_required,
     )
     return FinalCandidateTurn(
         candidate=candidate.model_dump(mode="json"),

@@ -42,7 +42,10 @@ from schemas.verification import VerificationFact, VerificationReport
 from spec_verifier.compiler import compile_spec
 from spec_verifier.artifact_adapter import explicit_spec_contract_from_artifacts
 from spec_verifier.fixtures import spec_contract_from_artifacts
-from review.shared_contract import validate_backend_contract
+from review.shared_contract import (
+    validate_backend_contract,
+    validate_explicit_backend_contract,
+)
 
 
 class ProductManagerInput(BaseModel):
@@ -385,8 +388,10 @@ def _register_agent_node(
 
     async def execute_backend(input_payload: BaseModel) -> dict[str, Any]:
         compacted_input, quality_profile = compact_input(input_payload)
-        if handler_version in {"v3", "v4", "v5", "v6"}:
+        if handler_version in {"v3", "v4", "v5", "v6", "v7"}:
             compacted_input["shared_contract_required"] = True
+        if output_model is ExplicitBackendDesignArtifact:
+            compacted_input["explicit_contract_required"] = True
         contract = current_model_execution_contract()
         policy = LoopPolicy.model_validate(
             contract.agent_loop_policy if contract is not None else {}
@@ -410,14 +415,19 @@ def _register_agent_node(
                 f"Backend Engineer loop stopped with {result.stop_reason.value}",
                 result.stop_reason.value,
             )
-        if prompt_key.endswith("_shared"):
+        if output_model is ExplicitBackendDesignArtifact:
+            validate_explicit_backend_contract(
+                ArchitectureDesignArtifactV2.model_validate(compacted_input["architecture_design"]),
+                ExplicitBackendDesignArtifact.model_validate(result.candidate),
+            )
+        elif prompt_key.endswith("_shared"):
             validate_backend_contract(
                 ArchitectureDesignArtifactV2.model_validate(compacted_input["architecture_design"]),
                 BackendDesignArtifact.model_validate(result.candidate),
             )
         return result.candidate
 
-    if node_name == "backend_engineer" and output_model is not ExplicitBackendDesignArtifact:
+    if node_name == "backend_engineer":
         execute = execute_backend
     elif handler_key == "ReviewerAgent" and handler_version in {"v3", "v4", "v5"}:
         execute = execute_reviewer
