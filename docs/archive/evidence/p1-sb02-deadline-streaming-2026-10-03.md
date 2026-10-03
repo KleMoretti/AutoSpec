@@ -15,8 +15,9 @@
 - Agent Engine 全量：`262 passed`。
 - Backend `mvn test`：退出码 0；正常测试中的故障日志是既有故障恢复测试主动注入，不是失败。
 - 重建后的 `scripts/verify_spec_sandbox.py --project autospec-formal`：401/413/422、FULL/L2、tmp/schema 清理、外网阻断和容器 hard-limit 全部通过。
+- 同一重建镜像新增主动探针：TypeScript 子进程超时返回 `ERROR/L2_TYPESCRIPT_TIMEOUT`，实际 elapsed `1.045s`；有界子进程创建触发 PID limit 并完成全部回收，`active_pid_limit=true`。
 
 ## 尚未关闭
 
-- 尚未主动注入 PID/内存/进程树故障或真实 `.env` 冷启动；远端 Sandbox CI job 未在本轮重新触发。
+- PID/进程超时主动注入已通过；尚未主动注入内存 OOM（避免杀死 verifier 主进程），也未完成真实 `.env` 冷启动和远端 Sandbox CI。
 - MySQL 语句级取消依赖驱动 socket timeout 和剩余时间检查，尚未在真实锁等待/断连场景做专门故障注入。
