@@ -17,8 +17,9 @@
 - Backend `mvn test`：退出码 0；正常测试中的故障日志是既有故障恢复测试主动注入，不是失败。
 - 重建后的 `scripts/verify_spec_sandbox.py --project autospec-formal`：401/413/422、FULL/L2、tmp/schema 清理、外网阻断和容器 hard-limit 全部通过。
 - 同一重建镜像新增主动探针：TypeScript 子进程超时返回 `ERROR/L2_TYPESCRIPT_TIMEOUT`，实际 elapsed `1.045s`；有界子进程创建触发 PID limit 并完成全部回收，`active_pid_limit=true`。
+- 另用同一 verifier image 创建一次性 `--rm` 临时容器，施加 `64m` memory、`64` PID、read-only/cap-drop/no-new-privileges 后申请 256 MiB，容器以 exit code `137` 退出；现有 verifier 服务未受影响。
 
 ## 尚未关闭
 
-- PID/进程超时和 server-side lock wait 上限已实现/测试；尚未主动注入内存 OOM（避免杀死 verifier 主进程），也未完成真实 `.env` 冷启动和远端 Sandbox CI。
+- PID/进程超时、server-side lock wait 和一次性 memory cgroup 注入均有证据；真实 `.env` 冷启动和远端 Sandbox CI 仍未完成。
 - MySQL 语句级取消依赖驱动 socket timeout 和剩余时间检查，尚未在真实锁等待/断连场景做专门故障注入。
