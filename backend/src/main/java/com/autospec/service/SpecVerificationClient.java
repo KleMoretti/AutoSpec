@@ -37,6 +37,10 @@ public class SpecVerificationClient {
     }
 
     public JsonNode verify(String executionId, JsonNode arguments) {
+        return verify(executionId, arguments, null);
+    }
+
+    public JsonNode verify(String executionId, JsonNode arguments, Long deadlineEpochMs) {
         if (baseUrl.isBlank() || serviceToken.isBlank()) {
             throw new IllegalStateException("spec verifier is not configured");
         }
@@ -46,6 +50,17 @@ public class SpecVerificationClient {
             throw new IllegalArgumentException("spec.verify requires contract and required_level");
         }
         try {
+            long requestedTimeoutMs = arguments.path("timeout_ms").asLong(30_000L);
+            long remainingMs = deadlineEpochMs == null
+                    ? 35_000L
+                    : deadlineEpochMs - System.currentTimeMillis();
+            if (remainingMs < 1_000L) {
+                throw new IllegalStateException("spec verifier deadline elapsed");
+            }
+            long effectiveTimeoutMs = Math.min(35_000L, Math.min(requestedTimeoutMs, remainingMs));
+            if (effectiveTimeoutMs < 1_000L) {
+                throw new IllegalStateException("spec verifier timeout is below the minimum remaining deadline");
+            }
             var payload = objectMapper.createObjectNode();
             payload.put("execution_id", executionId);
             payload.set("contract", arguments.path("contract").deepCopy());
@@ -59,13 +74,11 @@ public class SpecVerificationClient {
             if (arguments.has("source_digest")) {
                 payload.set("source_digest", arguments.path("source_digest").deepCopy());
             }
-            if (arguments.has("timeout_ms")) {
-                payload.set("timeout_ms", arguments.path("timeout_ms").deepCopy());
-            }
+            payload.put("timeout_ms", effectiveTimeoutMs);
             String payloadJson = objectMapper.writeValueAsString(payload);
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(baseUrl + "/verify"))
-                    .timeout(Duration.ofSeconds(35))
+                    .timeout(Duration.ofMillis(effectiveTimeoutMs))
                     .header("Content-Type", "application/json")
                     .header(ToolGatewayService.SERVICE_HEADER, serviceToken)
                     .POST(HttpRequest.BodyPublishers.ofByteArray(payloadJson.getBytes(StandardCharsets.UTF_8)))
