@@ -98,6 +98,7 @@ def test_mysql_verification_uses_a_fresh_schema_and_drops_it(monkeypatch, fixtur
 
     create_statements = [statement for statement in fake_mysql.statements if statement.startswith("CREATE DATABASE")]
     drop_statements = [statement for statement in fake_mysql.statements if statement.startswith("DROP DATABASE")]
+    assert any(statement.startswith("SET SESSION innodb_lock_wait_timeout") for statement in fake_mysql.statements)
     assert len(create_statements) == len(drop_statements) == 2
     created_names = {statement.split("`")[1] for statement in create_statements}
     dropped_names = {statement.split("`")[1] for statement in drop_statements}

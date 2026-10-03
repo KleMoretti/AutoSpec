@@ -178,6 +178,11 @@ def _verify_mysql(
         schema_created = True
         connection.select_db(schema_name)
         with connection.cursor() as cursor:
+            remaining = _remaining_seconds(deadline)
+            if remaining <= 0:
+                raise _VerifierDeadlineExceeded
+            lock_wait_seconds = max(1, min(120, int(remaining)))
+            cursor.execute(f"SET SESSION innodb_lock_wait_timeout = {lock_wait_seconds}")
             for statement in _sql_statements(compiled.files["schema.sql"]):
                 statement = statement.strip()
                 if statement and not statement.startswith("--") and statement != "SET NAMES utf8mb4":
