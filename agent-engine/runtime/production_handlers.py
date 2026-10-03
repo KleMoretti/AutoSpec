@@ -170,6 +170,7 @@ def build_production_registry(model_client: ModelClient | None = None) -> Handle
          ("FrontendEngineerAgent", "v3", "frontend_engineer", FrontendNodeInputV2, FrontendSkeletonArtifact, "FrontendSkeletonInputV2", "FrontendSkeletonArtifact", "frontend_schema"),
          ("FrontendEngineerAgent", "v4", "frontend_engineer", FrontendNodeInputV2, ExplicitFrontendSkeletonArtifact, "FrontendSkeletonInputV2", "ExplicitFrontendSkeletonArtifact", "frontend_explicit"),
          ("FrontendEngineerAgent", "v5", "frontend_engineer", FrontendNodeInputV2, ExplicitFrontendSkeletonArtifact, "FrontendSkeletonInputV2", "ExplicitFrontendSkeletonArtifact", "frontend_explicit_v2"),
+         ("FrontendEngineerAgent", "v6", "frontend_engineer", FrontendNodeInputV2, ExplicitFrontendSkeletonArtifact, "FrontendSkeletonInputV2", "ExplicitFrontendSkeletonArtifact", "frontend_explicit_v3"),
         ("ReviewerAgent", "v2", "reviewer", ReviewerNodeInputV2, ReviewReport, "ReviewInputV2", "ReviewReport", "reviewer_shared"),
         ("ReviewerAgent", "v4", "reviewer", ReviewerNodeInputV2, ReviewReportV2, "ReviewInputV4", "ReviewReportV2", "reviewer_schema"),
         ("ReviewerAgent", "v5", "reviewer", ReviewerNodeInputV2, ReviewReportV2, "ReviewInputV4", "ReviewReportV2", "reviewer_schema_v2"),
