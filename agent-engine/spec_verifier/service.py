@@ -50,7 +50,7 @@ def verify_payload(payload: VerifyRequest) -> VerificationReport:
         compiled = compile_spec(payload.contract)
     except Exception as exc:
         report.level = "L2"
-        report.status = "ERROR"
+        report.status = "FAILED"
         report.gate_status = "BLOCKED"
         report.issues.append(VerificationIssue(
             code="L2_COMPILER_FAILED",

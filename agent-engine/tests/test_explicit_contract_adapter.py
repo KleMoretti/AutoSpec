@@ -182,6 +182,7 @@ def test_explicit_compiler_generates_typed_request_and_independent_consumer() ->
     assert "URLSearchParams" in client
     assert "JSON.stringify(body)" in client
     assert "from './client'" in bindings
+    assert "type Json" in bindings
     assert "consumeBIND_AUDIT" in bindings
     assert "source.route.productId" in bindings
     assert "response.auditStatus" in bindings

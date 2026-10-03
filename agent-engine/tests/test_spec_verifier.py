@@ -5,7 +5,8 @@ import pytest
 from spec_verifier import compile_spec, validate_l1
 from spec_verifier.fixtures import defect_spec_fixtures, normal_spec_fixtures
 from spec_verifier.fixtures import spec_fixture
-from spec_verifier.sandbox import _verify_mysql
+from schemas.verification import VerificationIssue
+from spec_verifier.sandbox import _verify_mysql, compiled_report
 
 
 class _FakeCursor:
@@ -124,3 +125,20 @@ def test_mysql_verification_does_not_swallow_cleanup_failure(monkeypatch) -> Non
     issues = _verify_mysql(compiled, "mysql://verify:secret@mysql:3306/autospec_verify", 5.0)
 
     assert "L2_DATABASE_CLEANUP_FAILED" in {issue.code for issue in issues}
+
+
+def test_l2_spec_failures_are_failed_but_environment_failures_are_errors() -> None:
+    compiled = compile_spec(spec_fixture("campus_marketplace"))
+    spec_failure = VerificationIssue(
+        code="L2_TYPESCRIPT_FAILED",
+        severity="HIGH",
+        message="generated consumer does not type-check",
+    )
+    environment_failure = VerificationIssue(
+        code="L2_TYPESCRIPT_TIMEOUT",
+        severity="HIGH",
+        message="compiler deadline elapsed",
+    )
+
+    assert compiled_report(compiled, "spec-failure", [spec_failure], []).status == "FAILED"
+    assert compiled_report(compiled, "environment-failure", [environment_failure], []).status == "ERROR"

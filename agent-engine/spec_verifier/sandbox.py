@@ -15,6 +15,14 @@ from spec_verifier.validators import VERIFIER_VERSION, VERIFIER_VERSION_V2
 
 _VERIFY_SCHEMA_PREFIX = "autospec_verify_"
 _VERIFY_SCHEMA_PATTERN = re.compile(r"^autospec_verify_[0-9a-f]{24}$")
+_SPEC_FAILURE_CODES = {
+    "L2_COMPILER_FAILED",
+    "L2_TYPESCRIPT_FAILED",
+    "L2_DATABASE_SCHEMA_FAILED",
+}
+_DATABASE_ENVIRONMENT_ERRNOS = {
+    1044, 1045, 1049, 1142, 1205, 1213, 2003, 2006, 2013, 2055,
+}
 
 
 def run_l2(
@@ -55,7 +63,19 @@ def run_l2(
         else:
             if result.returncode != 0:
                 issues.append(VerificationIssue(code="L2_TYPESCRIPT_FAILED", severity="HIGH", message=(result.stderr or result.stdout or "tsc failed")[:1000]))
-        checks.append(VerificationCheck(category="typescript_compile", status="PASSED" if not issues else "ERROR", issue_codes=[issue.code for issue in issues]))
+        typescript_issue_codes = [issue.code for issue in issues]
+        typescript_status = (
+            "PASSED"
+            if not typescript_issue_codes
+            else "FAILED"
+            if "L2_TYPESCRIPT_FAILED" in typescript_issue_codes
+            else "ERROR"
+        )
+        checks.append(VerificationCheck(
+            category="typescript_compile",
+            status=typescript_status,
+            issue_codes=typescript_issue_codes,
+        ))
 
         # Database execution is intentionally opt-in inside the sidecar.  A
         # configured MySQL verifier can replace this check; a missing one must
@@ -132,7 +152,11 @@ def _verify_mysql(
                 if statement and not statement.startswith("--") and statement != "SET NAMES utf8mb4":
                     cursor.execute(statement)
     except Exception as exc:  # the sidecar converts all database failures to evidence
-        issues.append(VerificationIssue(code="L2_DATABASE_SCHEMA_FAILED", severity="HIGH", message=str(exc)[:1000]))
+        issues.append(VerificationIssue(
+            code=_database_issue_code(exc, connection),
+            severity="HIGH",
+            message=str(exc)[:1000],
+        ))
     finally:
         if schema_created:
             cleanup_connection = connection
@@ -160,6 +184,19 @@ def _verify_mysql(
         elif connection is not None:
             connection.close()
     return issues
+
+
+def _database_issue_code(exc: Exception, connection: object | None) -> str:
+    """Separate candidate DDL failures from verifier connectivity failures."""
+
+    raw_errno = exc.args[0] if exc.args and isinstance(exc.args[0], int) else None
+    if raw_errno in _DATABASE_ENVIRONMENT_ERRNOS or connection is None:
+        return "L2_DATABASE_UNAVAILABLE"
+    if type(exc).__name__ in {"ProgrammingError", "IntegrityError", "DataError"}:
+        return "L2_DATABASE_SCHEMA_FAILED"
+    if raw_errno in {1005, 1064, 1118, 1215, 1216, 1217}:
+        return "L2_DATABASE_SCHEMA_FAILED"
+    return "L2_DATABASE_SCHEMA_FAILED"
 
 
 def _sql_statements(sql: str) -> list[str]:
@@ -194,6 +231,13 @@ def compiled_report(
     scope: str = "FULL",
 ) -> VerificationReport:
     blocked = bool(issues)
+    status = (
+        "PASSED"
+        if not issues
+        else "FAILED"
+        if any(issue.code in _SPEC_FAILURE_CODES for issue in issues)
+        else "ERROR"
+    )
     return VerificationReport(
         execution_id=execution_id,
         contract_id=compiled.manifest["contract_id"],
@@ -205,7 +249,7 @@ def compiled_report(
         ),
         compiler_version=compiled.manifest["compiler_version"],
         level="L2",
-        status="ERROR" if blocked else "PASSED",
+        status=status,
         gate_status="BLOCKED" if blocked else "PASSED",
         source_digest=compiled.source_digest,
         checks=checks,

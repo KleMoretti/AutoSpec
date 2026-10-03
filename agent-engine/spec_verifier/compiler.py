@@ -274,6 +274,7 @@ def _bindings_ts_v2(spec: SpecContractV2) -> str:
         imports.add(
             f"{api_name}, type {api_name}Args, type {api_name}Response"
         )
+    imports.add("type Json")
     if imports:
         lines.append(
             "import { "
@@ -281,7 +282,7 @@ def _bindings_ts_v2(spec: SpecContractV2) -> str:
             + ", type RequestOptions } from './client';"
         )
     else:
-        lines.append("import type { RequestOptions } from './client';")
+        lines.append("import type { Json, RequestOptions } from './client';")
     lines.append("")
 
     for binding in sorted(spec.frontend_bindings, key=lambda item: item.binding_id):
