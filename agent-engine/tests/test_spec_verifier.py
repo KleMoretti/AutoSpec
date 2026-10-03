@@ -7,6 +7,7 @@ from spec_verifier.fixtures import defect_spec_fixtures, normal_spec_fixtures
 from spec_verifier.fixtures import spec_fixture
 from schemas.verification import VerificationIssue
 from spec_verifier.sandbox import _verify_mysql, compiled_report
+import spec_verifier.sandbox as sandbox_module
 
 
 class _FakeCursor:
@@ -142,3 +143,29 @@ def test_l2_spec_failures_are_failed_but_environment_failures_are_errors() -> No
 
     assert compiled_report(compiled, "spec-failure", [spec_failure], []).status == "FAILED"
     assert compiled_report(compiled, "environment-failure", [environment_failure], []).status == "ERROR"
+
+
+def test_l2_passes_one_remaining_deadline_to_typescript_process(monkeypatch) -> None:
+    class FakeProcess:
+        pid = 1234
+        returncode = 0
+
+        def communicate(self, timeout=None):
+            self.timeout = timeout
+            return "", ""
+
+        def poll(self):
+            return self.returncode
+
+    process = FakeProcess()
+    monkeypatch.setattr(sandbox_module.subprocess, "Popen", lambda *args, **kwargs: process)
+    monkeypatch.delenv("AUTOSPEC_VERIFY_MYSQL_DSN", raising=False)
+
+    report = sandbox_module.run_l2(
+        compile_spec(spec_fixture("campus_marketplace")),
+        execution_id="deadline-test",
+        timeout_ms=1_000,
+    )
+
+    assert 0 < process.timeout <= 1.0
+    assert "L2_DATABASE_UNAVAILABLE" in {issue.code for issue in report.issues}

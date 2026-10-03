@@ -3,8 +3,10 @@ from __future__ import annotations
 import os
 import re
 import secrets
+import signal
 import subprocess
 import tempfile
+import time
 from urllib.parse import unquote, urlparse
 from pathlib import Path
 
@@ -25,6 +27,10 @@ _DATABASE_ENVIRONMENT_ERRNOS = {
 }
 
 
+class _VerifierDeadlineExceeded(RuntimeError):
+    pass
+
+
 def run_l2(
     compiled: CompiledSpec,
     *,
@@ -40,29 +46,40 @@ def run_l2(
 
     issues: list[VerificationIssue] = []
     checks: list[VerificationCheck] = []
-    timeout_seconds = max(1.0, timeout_ms / 1000)
+    deadline_monotonic = time.monotonic() + max(1.0, timeout_ms / 1000)
     with tempfile.TemporaryDirectory(prefix="autospec-verify-") as temp_dir:
         root = Path(temp_dir)
         for name, content in compiled.files.items():
             (root / name).write_text(content, encoding="utf-8", newline="\n")
         tsc = os.environ.get("AUTOSPEC_TSC_PATH", "tsc")
+        process = None
         try:
-            result = subprocess.run(
+            remaining = _remaining_seconds(deadline_monotonic)
+            if remaining <= 0:
+                raise _VerifierDeadlineExceeded
+            creation_flags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+            process = subprocess.Popen(
                 [tsc, "--noEmit", "--project", str(root / "tsconfig.json")],
                 cwd=root,
-                check=False,
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 text=True,
-                timeout=timeout_seconds,
                 shell=False,
+                start_new_session=os.name != "nt",
+                creationflags=creation_flags if os.name == "nt" else 0,
             )
+            stdout, stderr = process.communicate(timeout=remaining)
         except FileNotFoundError:
             issues.append(VerificationIssue(code="L2_TYPESCRIPT_UNAVAILABLE", severity="HIGH", message="TypeScript compiler is not available in the verifier sandbox."))
         except subprocess.TimeoutExpired:
+            if process is not None:
+                _terminate_process_group(process)
             issues.append(VerificationIssue(code="L2_TYPESCRIPT_TIMEOUT", severity="HIGH", message="TypeScript verification exceeded its deadline."))
+        except _VerifierDeadlineExceeded:
+            issues.append(VerificationIssue(code="L2_DEADLINE_EXCEEDED", severity="HIGH", message="Verification deadline elapsed before TypeScript verification."))
         else:
-            if result.returncode != 0:
-                issues.append(VerificationIssue(code="L2_TYPESCRIPT_FAILED", severity="HIGH", message=(result.stderr or result.stdout or "tsc failed")[:1000]))
+            if process is not None and process.returncode != 0:
+                issues.append(VerificationIssue(code="L2_TYPESCRIPT_FAILED", severity="HIGH", message=(stderr or stdout or "tsc failed")[:1000]))
         typescript_issue_codes = [issue.code for issue in issues]
         typescript_status = (
             "PASSED"
@@ -85,7 +102,12 @@ def run_l2(
             issues.append(VerificationIssue(code="L2_DATABASE_UNAVAILABLE", severity="HIGH", message="No isolated verification MySQL DSN is configured."))
             checks.append(VerificationCheck(category="mysql_schema", status="ERROR", issue_codes=["L2_DATABASE_UNAVAILABLE"]))
         else:
-            database_issues = _verify_mysql(compiled, dsn, timeout_seconds)
+            database_issues = _verify_mysql(
+                compiled,
+                dsn,
+                max(1.0, timeout_ms / 1000),
+                deadline_monotonic=deadline_monotonic,
+            )
             issues.extend(database_issues)
             checks.append(VerificationCheck(
                 category="mysql_schema",
@@ -100,6 +122,8 @@ def _verify_mysql(
     compiled: CompiledSpec,
     dsn: str,
     timeout_seconds: float,
+    *,
+    deadline_monotonic: float | None = None,
 ) -> list[VerificationIssue]:
     """Apply the generated DDL in a per-execution database namespace.
 
@@ -123,15 +147,19 @@ def _verify_mysql(
     if _VERIFY_SCHEMA_PATTERN.fullmatch(schema_name) is None:
         return [VerificationIssue(code="L2_DATABASE_SCHEMA_NAME_INVALID", severity="CRITICAL", message="generated verification schema name failed its safety check.")]
 
+    deadline = deadline_monotonic or time.monotonic() + max(1.0, timeout_seconds)
+    initial_remaining = _remaining_seconds(deadline)
+    if initial_remaining <= 0:
+        return [VerificationIssue(code="L2_DEADLINE_EXCEEDED", severity="HIGH", message="Verification deadline elapsed before MySQL verification.")]
     connection_kwargs = {
         "host": parsed.hostname,
         "port": parsed.port or 3306,
         "user": unquote(parsed.username or ""),
         "password": unquote(parsed.password or ""),
         "database": bootstrap_database,
-        "connect_timeout": max(1, int(timeout_seconds)),
-        "read_timeout": max(1, int(timeout_seconds)),
-        "write_timeout": max(1, int(timeout_seconds)),
+        "connect_timeout": max(1, int(initial_remaining)),
+        "read_timeout": max(1, int(initial_remaining)),
+        "write_timeout": max(1, int(initial_remaining)),
         "autocommit": True,
     }
     connection = None
@@ -150,7 +178,13 @@ def _verify_mysql(
             for statement in _sql_statements(compiled.files["schema.sql"]):
                 statement = statement.strip()
                 if statement and not statement.startswith("--") and statement != "SET NAMES utf8mb4":
+                    remaining = _remaining_seconds(deadline)
+                    if remaining <= 0:
+                        raise _VerifierDeadlineExceeded
+                    _set_socket_timeout(connection, remaining)
                     cursor.execute(statement)
+    except _VerifierDeadlineExceeded:
+        issues.append(VerificationIssue(code="L2_DEADLINE_EXCEEDED", severity="HIGH", message="Verification deadline elapsed during MySQL schema verification."))
     except Exception as exc:  # the sidecar converts all database failures to evidence
         issues.append(VerificationIssue(
             code=_database_issue_code(exc, connection),
@@ -184,6 +218,33 @@ def _verify_mysql(
         elif connection is not None:
             connection.close()
     return issues
+
+
+def _remaining_seconds(deadline_monotonic: float) -> float:
+    return max(0.0, deadline_monotonic - time.monotonic())
+
+
+def _set_socket_timeout(connection: object, remaining_seconds: float) -> None:
+    socket = getattr(connection, "_sock", None)
+    if socket is not None and hasattr(socket, "settimeout"):
+        socket.settimeout(max(0.05, remaining_seconds))
+
+
+def _terminate_process_group(process: subprocess.Popen[str]) -> None:
+    if process.poll() is not None:
+        return
+    try:
+        if os.name == "nt":
+            process.kill()
+        else:
+            os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+    except (OSError, ProcessLookupError):
+        process.kill()
+    try:
+        process.communicate(timeout=1.0)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.communicate()
 
 
 def _database_issue_code(exc: Exception, connection: object | None) -> str:
