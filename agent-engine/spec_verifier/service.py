@@ -16,6 +16,7 @@ from spec_verifier.validators import validate_l1
 
 MAX_VERIFY_REQUEST_BYTES = 512 * 1024
 MAX_VERIFY_RESPONSE_BYTES = 512 * 1024
+MAX_VERIFY_TIMEOUT_MS = 30_000
 
 
 class VerifyRequest(BaseModel):
@@ -27,7 +28,7 @@ class VerifyRequest(BaseModel):
     required_level: Literal["L1", "L2"]
     rule_profile: str = Field(default="spec-full-v1", min_length=1, max_length=128)
     source_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
-    timeout_ms: int = Field(default=30_000, ge=1_000, le=900_000)
+    timeout_ms: int = Field(default=30_000, ge=1_000, le=MAX_VERIFY_TIMEOUT_MS)
 
 
 def verify_payload(payload: VerifyRequest) -> VerificationReport:
@@ -76,11 +77,16 @@ def create_app(token: str | None = None) -> FastAPI:
 
     @app.post("/verify", response_model=VerificationReport)
     async def verify(request: Request, x_autospec_service_token: str | None = Header(default=None)) -> VerificationReport:
-        body = await request.body()
-        if len(body) > MAX_VERIFY_REQUEST_BYTES:
-            raise HTTPException(status_code=413, detail="verification request is too large")
         if not expected_token or x_autospec_service_token != expected_token:
             raise HTTPException(status_code=401, detail="invalid verifier service token")
+        chunks: list[bytes] = []
+        body_size = 0
+        async for chunk in request.stream():
+            body_size += len(chunk)
+            if body_size > MAX_VERIFY_REQUEST_BYTES:
+                raise HTTPException(status_code=413, detail="verification request is too large")
+            chunks.append(chunk)
+        body = b"".join(chunks)
         try:
             payload = VerifyRequest.model_validate_json(body)
         except ValueError as exc:
