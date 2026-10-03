@@ -512,7 +512,12 @@ def _compile_context(
 
 def _validate_artifact_context(payload: dict[str, Any]) -> None:
     execution = current_model_execution_contract()
-    verification_policy = dict(execution.verification_policy) if execution else {}
+    input_policy = payload.get("verification_policy")
+    verification_policy = (
+        dict(input_policy)
+        if isinstance(input_policy, dict)
+        else dict(execution.verification_policy) if execution else {}
+    )
     explicit_contract = _explicit_contract_required(verification_policy)
     if explicit_contract:
         from schemas.backend_design import ExplicitBackendDesignArtifact
