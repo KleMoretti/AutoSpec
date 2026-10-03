@@ -37,6 +37,7 @@ def run_l2(
     execution_id: str,
     timeout_ms: int = 30_000,
     scope: str = "FULL",
+    tsc_command: list[str] | None = None,
 ) -> VerificationReport:
     """Run the isolated compile checks used by the optional L2 sidecar.
 
@@ -52,6 +53,8 @@ def run_l2(
         for name, content in compiled.files.items():
             (root / name).write_text(content, encoding="utf-8", newline="\n")
         tsc = os.environ.get("AUTOSPEC_TSC_PATH", "tsc")
+        command = list(tsc_command or [tsc])
+        command.extend(["--noEmit", "--project", str(root / "tsconfig.json")])
         process = None
         try:
             remaining = _remaining_seconds(deadline_monotonic)
@@ -59,7 +62,7 @@ def run_l2(
                 raise _VerifierDeadlineExceeded
             creation_flags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
             process = subprocess.Popen(
-                [tsc, "--noEmit", "--project", str(root / "tsconfig.json")],
+                command,
                 cwd=root,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
