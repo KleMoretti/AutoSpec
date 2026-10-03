@@ -288,34 +288,6 @@ def _register_agent_node(
             )
         if record.status != "SUCCEEDED" or record.output_payload is None:
             raise RuntimeError(record.error_message or f"{node_name} execution failed")
-        output_payload = record.output_payload
-        if (
-            model_client is None
-            and FIXTURE_CROSS_NODE_REWORK_MARKER in str(compacted_input.get("requirement", ""))
-            and frozen is not None
-            and ":reviewer:1:" in frozen.execution_id
-        ):
-            report = ReviewReportV2.model_validate(output_payload)
-            injected_issue = ReviewIssue(
-                severity="HIGH",
-                issue_type="FIXTURE_CROSS_NODE_REWORK",
-                description="Fixture-only first review requires a bounded Backend responsibility handoff.",
-                suggestion="Re-run backend_engineer against the frozen Shared Contract without changing stable API ids.",
-                issue_id="ISS-FIXTURE-CROSS-NODE",
-            )
-            output_payload = ReviewReportV2(
-                score=min(report.score, 80),
-                issues=[*report.issues, injected_issue],
-                decision="REWORK",
-                routes=[ReworkRoute(
-                    target_node="backend_engineer",
-                    issue_ids=[injected_issue.issue_id],
-                    required_changes=[injected_issue.suggestion],
-                    invalidate_downstream=True,
-                )],
-                verification_fact=report.verification_fact,
-            ).model_dump(mode="json")
-            record = replace(record, output_payload=output_payload)
         _record_fixture_invocation(
             model_client=model_client,
             record=record,
@@ -409,6 +381,34 @@ def _register_agent_node(
             )
         if record.status != "SUCCEEDED" or record.output_payload is None:
             raise RuntimeError(record.error_message or f"{node_name} execution failed")
+        output_payload = record.output_payload
+        if (
+            model_client is None
+            and FIXTURE_CROSS_NODE_REWORK_MARKER in str(compacted_input.get("requirement", ""))
+            and frozen is not None
+            and ":reviewer:1:" in frozen.execution_id
+        ):
+            report = ReviewReportV2.model_validate(output_payload)
+            injected_issue = ReviewIssue(
+                severity="HIGH",
+                issue_type="FIXTURE_CROSS_NODE_REWORK",
+                description="Fixture-only first review requires a bounded Backend responsibility handoff.",
+                suggestion="Re-run backend_engineer against the frozen Shared Contract without changing stable API ids.",
+                issue_id="ISS-FIXTURE-CROSS-NODE",
+            )
+            output_payload = ReviewReportV2(
+                score=min(report.score, 80),
+                issues=[*report.issues, injected_issue],
+                decision="REWORK",
+                routes=[ReworkRoute(
+                    target_node="backend_engineer",
+                    issue_ids=[injected_issue.issue_id],
+                    required_changes=[injected_issue.suggestion],
+                    invalidate_downstream=True,
+                )],
+                verification_fact=report.verification_fact,
+            ).model_dump(mode="json")
+            record = replace(record, output_payload=output_payload)
         _record_fixture_invocation(
             model_client=model_client,
             record=record,
