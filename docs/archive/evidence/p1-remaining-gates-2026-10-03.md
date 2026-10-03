@@ -7,7 +7,7 @@
 
 - 旧 head `492a388` 的 quality run `37130062282` 已完成，最终 `success`。
 - `backend-tests`、`agent-tests`、`frontend-tests`、`compose-and-images` 和 `verifier-sandbox-probes` 全部 success；Sandbox probe job 已实际在 GitHub runner 执行。
-- 本地随后新增的 SB-02/SB-03 提交尚未包含在该 run，必须由最新 head 再触发一次，不能复用旧 run 作为当前 head 证据。
+- 最新 head `8003ba4fe371acc85315cad0ddb4c3f87d4aaac8` 的 run `37130433346` 已重新完成并成功；`backend-tests`、`agent-tests`、`frontend-tests`、`compose-and-images` 和 `verifier-sandbox-probes` 全部 success。
 
 ## 跨节点责任返工
 
