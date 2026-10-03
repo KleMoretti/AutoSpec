@@ -165,9 +165,11 @@ def build_production_registry(model_client: ModelClient | None = None) -> Handle
          ("BackendEngineerAgent", "v5", "backend_engineer", BackendDesignInput, BackendDesignArtifact, "BackendDesignInput", "BackendDesignArtifact", "backend_engineer_loop_v2"),
          ("BackendEngineerAgent", "v6", "backend_engineer", BackendDesignInput, BackendDesignArtifact, "BackendDesignInput", "BackendDesignArtifact", "backend_engineer_loop_v3"),
          ("BackendEngineerAgent", "v7", "backend_engineer", BackendDesignInput, ExplicitBackendDesignArtifact, "BackendDesignInput", "ExplicitBackendDesignArtifact", "backend_engineer_explicit"),
+         ("BackendEngineerAgent", "v8", "backend_engineer", BackendDesignInput, ExplicitBackendDesignArtifact, "BackendDesignInput", "ExplicitBackendDesignArtifact", "backend_engineer_explicit_loop"),
          ("FrontendEngineerAgent", "v2", "frontend_engineer", FrontendNodeInputV2, FrontendSkeletonArtifact, "FrontendSkeletonInputV2", "FrontendSkeletonArtifact", "frontend_engineer_shared"),
          ("FrontendEngineerAgent", "v3", "frontend_engineer", FrontendNodeInputV2, FrontendSkeletonArtifact, "FrontendSkeletonInputV2", "FrontendSkeletonArtifact", "frontend_schema"),
          ("FrontendEngineerAgent", "v4", "frontend_engineer", FrontendNodeInputV2, ExplicitFrontendSkeletonArtifact, "FrontendSkeletonInputV2", "ExplicitFrontendSkeletonArtifact", "frontend_explicit"),
+         ("FrontendEngineerAgent", "v5", "frontend_engineer", FrontendNodeInputV2, ExplicitFrontendSkeletonArtifact, "FrontendSkeletonInputV2", "ExplicitFrontendSkeletonArtifact", "frontend_explicit_v2"),
         ("ReviewerAgent", "v2", "reviewer", ReviewerNodeInputV2, ReviewReport, "ReviewInputV2", "ReviewReport", "reviewer_shared"),
         ("ReviewerAgent", "v4", "reviewer", ReviewerNodeInputV2, ReviewReportV2, "ReviewInputV4", "ReviewReportV2", "reviewer_schema"),
         ("ReviewerAgent", "v5", "reviewer", ReviewerNodeInputV2, ReviewReportV2, "ReviewInputV4", "ReviewReportV2", "reviewer_schema_v2"),
@@ -420,7 +422,7 @@ def _register_agent_node(
 
     async def execute_backend(input_payload: BaseModel) -> dict[str, Any]:
         compacted_input, quality_profile = compact_input(input_payload)
-        if handler_version in {"v3", "v4", "v5", "v6", "v7"}:
+        if handler_version in {"v3", "v4", "v5", "v6", "v7", "v8"}:
             compacted_input["shared_contract_required"] = True
         if output_model is ExplicitBackendDesignArtifact:
             compacted_input["explicit_contract_required"] = True
