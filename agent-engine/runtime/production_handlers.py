@@ -633,7 +633,14 @@ def _compile_context(
     compacted_input.pop("context_manifest", None)
     try:
         _validate_artifact_context(compacted_input)
-        validated = input_model.model_validate(compacted_input).model_dump(mode="json")
+        validation_input = dict(compacted_input)
+        # The baseline is trusted control-plane provenance. Historical
+        # evaluator schemas remain hash-compatible; the candidate evaluator
+        # carries this field in the envelope but does not widen the frozen v3
+        # model contract.
+        if input_model is EvaluationInputV3:
+            validation_input.pop("requirement_baseline", None)
+        validated = input_model.model_validate(validation_input).model_dump(mode="json")
     except ValidationError as exception:
         raise ContextPolicyError(
             "Compacted context failed the frozen node input schema"

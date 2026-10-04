@@ -7,6 +7,7 @@ import com.autospec.mapper.ModelInvocationMapper;
 import com.autospec.mapper.WorkflowNodeRunMapper;
 import com.autospec.service.KnowledgeIndexService;
 import com.autospec.service.ProjectMemoryService;
+import com.autospec.service.RequirementBaselineService;
 import com.autospec.util.ContentHash;
 import com.autospec.workflow.spec.WorkflowNodeDocument;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
@@ -36,6 +37,7 @@ public class WorkflowNodeInputAssembler {
     private final ModelInvocationMapper modelInvocationMapper;
     private final KnowledgeIndexService knowledgeIndexService;
     private final ProjectMemoryService projectMemoryService;
+    private final RequirementBaselineService requirementBaselineService;
 
     public WorkflowNodeInputAssembler(
             WorkflowNodeRunMapper nodeRunMapper,
@@ -45,7 +47,6 @@ public class WorkflowNodeInputAssembler {
         this(nodeRunMapper, objectMapper, modelInvocationMapper, null, null);
     }
 
-    @Autowired
     public WorkflowNodeInputAssembler(
             WorkflowNodeRunMapper nodeRunMapper,
             ObjectMapper objectMapper,
@@ -62,11 +63,31 @@ public class WorkflowNodeInputAssembler {
             KnowledgeIndexService knowledgeIndexService,
             ProjectMemoryService projectMemoryService
     ) {
+        this(
+                nodeRunMapper,
+                objectMapper,
+                modelInvocationMapper,
+                knowledgeIndexService,
+                projectMemoryService,
+                null
+        );
+    }
+
+    @Autowired
+    public WorkflowNodeInputAssembler(
+            WorkflowNodeRunMapper nodeRunMapper,
+            ObjectMapper objectMapper,
+            ModelInvocationMapper modelInvocationMapper,
+            KnowledgeIndexService knowledgeIndexService,
+            ProjectMemoryService projectMemoryService,
+            RequirementBaselineService requirementBaselineService
+    ) {
         this.nodeRunMapper = nodeRunMapper;
         this.objectMapper = objectMapper;
         this.modelInvocationMapper = modelInvocationMapper;
         this.knowledgeIndexService = knowledgeIndexService;
         this.projectMemoryService = projectMemoryService;
+        this.requirementBaselineService = requirementBaselineService;
     }
 
     public void assemble(CompiledWorkflow graph, WorkflowNodeRun target) {
@@ -78,7 +99,11 @@ public class WorkflowNodeInputAssembler {
             if (source == null || !"SUCCEEDED".equals(source.getStatus()) || source.getOutputJson() == null) {
                 continue;
             }
-            input.set(inputField(graph.nodes().get(ancestor)), json(source.getOutputJson()));
+            WorkflowNodeDocument sourceSpec = graph.nodes().get(ancestor);
+            input.set(
+                    inputField(sourceSpec),
+                    outputForDownstream(sourceSpec, json(source.getOutputJson()))
+            );
         }
         if ("evaluator".equals(target.getNodeId())) {
             input.set("records", trustedRecords(latest, ancestorIds));
@@ -105,6 +130,8 @@ public class WorkflowNodeInputAssembler {
                 }
             }
         }
+        attachClarificationPolicy(input, graph.nodes().get(target.getNodeId()));
+        attachRequirementBaseline(input, target);
         recallProjectMemory(input, target);
         retrieveNodeSources(input, target);
         String assembled = input.toString();
@@ -318,6 +345,37 @@ public class WorkflowNodeInputAssembler {
         copyIfPresent(query, "rework_directive", input);
         query.put("retrieval_task", nodeId + ":current-input");
         return query.toString();
+    }
+
+    private void attachClarificationPolicy(ObjectNode input, WorkflowNodeDocument spec) {
+        if (spec != null && spec.clarificationPolicy() != null
+                && spec.clarificationPolicy().isObject()
+                && !spec.clarificationPolicy().isEmpty()) {
+            input.set("clarification_policy", spec.clarificationPolicy().deepCopy());
+        }
+    }
+
+    private JsonNode outputForDownstream(WorkflowNodeDocument sourceSpec, JsonNode output) {
+        if (sourceSpec != null
+                && "PRD".equalsIgnoreCase(sourceSpec.artifactType())
+                && output.isObject()
+                && "PRD_READY".equals(output.path("kind").asText())
+                && output.path("prd").isObject()) {
+            return output.path("prd").deepCopy();
+        }
+        return output;
+    }
+
+    private void attachRequirementBaseline(ObjectNode input, WorkflowNodeRun target) {
+        if (requirementBaselineService == null) {
+            return;
+        }
+        Map<String, Object> baseline = requirementBaselineService.inputForRun(
+                target.getWorkflowRunId()
+        );
+        if (!baseline.isEmpty()) {
+            input.set("requirement_baseline", objectMapper.valueToTree(baseline));
+        }
     }
 
     private void copyIfPresent(ObjectNode target, String field, ObjectNode input) {

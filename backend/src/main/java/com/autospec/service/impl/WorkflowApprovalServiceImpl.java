@@ -15,6 +15,7 @@ import com.autospec.mapper.WorkflowRunMapper;
 import com.autospec.mapper.WorkflowTransitionMapper;
 import com.autospec.service.WorkflowApprovalService;
 import com.autospec.service.ArtifactApprovalOutboxService;
+import com.autospec.service.RequirementBaselineService;
 import com.autospec.workflow.runtime.CompiledWorkflow;
 import com.autospec.workflow.runtime.DagCompiler;
 import com.autospec.workflow.runtime.WorkflowNodeStatus;
@@ -70,6 +71,7 @@ public class WorkflowApprovalServiceImpl implements WorkflowApprovalService {
     private final WorkflowArtifactProjector artifactProjector;
     private final ArtifactApprovalOutboxService approvalOutboxService;
     private final ObjectMapper objectMapper;
+    private final RequirementBaselineService requirementBaselineService;
 
     @Autowired
     public WorkflowApprovalServiceImpl(
@@ -84,7 +86,8 @@ public class WorkflowApprovalServiceImpl implements WorkflowApprovalService {
             ArtifactApprovalOutboxService approvalOutboxService,
             @Lazy WorkflowRunReconciliationTrigger reconciliationTrigger,
             WorkflowClarificationMapper clarificationMapper,
-            ObjectMapper objectMapper
+            ObjectMapper objectMapper,
+            RequirementBaselineService requirementBaselineService
     ) {
         this.approvalMapper = approvalMapper;
         this.runMapper = runMapper;
@@ -98,6 +101,7 @@ public class WorkflowApprovalServiceImpl implements WorkflowApprovalService {
         this.reconciliationTrigger = reconciliationTrigger;
         this.clarificationMapper = clarificationMapper;
         this.objectMapper = objectMapper;
+        this.requirementBaselineService = requirementBaselineService;
     }
 
     public WorkflowApprovalServiceImpl(
@@ -124,7 +128,8 @@ public class WorkflowApprovalServiceImpl implements WorkflowApprovalService {
                 approvalOutboxService,
                 reconciliationTrigger,
                 null,
-                new ObjectMapper()
+                new ObjectMapper(),
+                null
         );
     }
 
@@ -461,12 +466,12 @@ public class WorkflowApprovalServiceImpl implements WorkflowApprovalService {
             return getById(approvalId);
         }
         switch (action) {
-            case "APPROVE" -> approveNode(approval, nodeRun, null, now);
+            case "APPROVE" -> approveNode(approval, nodeRun, null, now, command.userId());
             case "EDIT_AND_APPROVE" -> {
                 Artifact revised = reviseCandidate(run, approval, nodeRun, command.editedContent());
                 approval.setRevisedArtifactId(revised.getId());
                 approvalMapper.updateById(approval);
-                approveNode(approval, nodeRun, revised.getContent(), now);
+                approveNode(approval, nodeRun, revised.getContent(), now, command.userId());
                 approvalOutboxService.enqueue(revised);
             }
             case "REJECT" -> reject(run, nodeRun, command.reason(), now);
@@ -678,7 +683,8 @@ public class WorkflowApprovalServiceImpl implements WorkflowApprovalService {
             WorkflowApproval approval,
             WorkflowNodeRun nodeRun,
             String editedOutput,
-            LocalDateTime now
+            LocalDateTime now,
+            long userId
     ) {
         String targetStatus = "BEFORE_NODE".equals(approval.getMode())
                 ? WorkflowNodeStatus.PENDING.name()
@@ -709,6 +715,20 @@ public class WorkflowApprovalServiceImpl implements WorkflowApprovalService {
             }
             Artifact candidate = artifactMapper.selectById(approval.getCandidateArtifactId());
             approvalOutboxService.enqueue(candidate);
+        }
+        if ("AFTER_NODE".equals(approval.getMode())
+                && "product_manager".equals(nodeRun.getNodeId())
+                && requirementBaselineService != null) {
+            Long artifactId = approval.getRevisedArtifactId() != null
+                    ? approval.getRevisedArtifactId()
+                    : approval.getCandidateArtifactId();
+            Artifact approvedPrd = artifactId == null ? null : artifactMapper.selectById(artifactId);
+            requirementBaselineService.freeze(
+                    requireRun(nodeRun.getWorkflowRunId()),
+                    nodeRun,
+                    approvedPrd,
+                    userId
+            );
         }
         transition(nodeRun, "WAITING_APPROVAL", targetStatus, "APPROVAL_ACCEPTED", now);
         reconciliationTrigger.reconcile(nodeRun.getWorkflowRunId());

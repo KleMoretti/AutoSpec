@@ -44,6 +44,7 @@ public class DeliveryGateService {
     private final WorkflowApprovalMapper workflowApprovalMapper;
     private final ReviewIssueMapper reviewIssueMapper;
     private final CodeGenerationJobMapper codeGenerationJobMapper;
+    private final RequirementBaselineService requirementBaselineService;
 
     @Autowired
     public DeliveryGateService(
@@ -53,7 +54,8 @@ public class DeliveryGateService {
             ObjectMapper objectMapper,
             WorkflowApprovalMapper workflowApprovalMapper,
             ReviewIssueMapper reviewIssueMapper,
-            CodeGenerationJobMapper codeGenerationJobMapper
+            CodeGenerationJobMapper codeGenerationJobMapper,
+            RequirementBaselineService requirementBaselineService
     ) {
         this.workflowRunService = workflowRunService;
         this.artifactService = artifactService;
@@ -62,6 +64,28 @@ public class DeliveryGateService {
         this.workflowApprovalMapper = workflowApprovalMapper;
         this.reviewIssueMapper = reviewIssueMapper;
         this.codeGenerationJobMapper = codeGenerationJobMapper;
+        this.requirementBaselineService = requirementBaselineService;
+    }
+
+    public DeliveryGateService(
+            WorkflowRunService workflowRunService,
+            ArtifactService artifactService,
+            WorkflowNodeRunMapper workflowNodeRunMapper,
+            ObjectMapper objectMapper,
+            WorkflowApprovalMapper workflowApprovalMapper,
+            ReviewIssueMapper reviewIssueMapper,
+            CodeGenerationJobMapper codeGenerationJobMapper
+    ) {
+        this(
+                workflowRunService,
+                artifactService,
+                workflowNodeRunMapper,
+                objectMapper,
+                workflowApprovalMapper,
+                reviewIssueMapper,
+                codeGenerationJobMapper,
+                null
+        );
     }
 
     public DeliveryGateService(
@@ -75,6 +99,7 @@ public class DeliveryGateService {
                 artifactService,
                 workflowNodeRunMapper,
                 objectMapper,
+                null,
                 null,
                 null,
                 null
@@ -140,6 +165,14 @@ public class DeliveryGateService {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
                     "The latest workflow run is not completed"
+            );
+        }
+        if (requiresRequirementBaseline(latestV5Run)
+                && (requirementBaselineService == null
+                || requirementBaselineService.findForRun(latestV5Run.getId()) == null)) {
+            throw new ResponseStatusException(
+                    HttpStatus.UNPROCESSABLE_ENTITY,
+                    "A user-confirmed requirement baseline is required before delivery"
             );
         }
         requireNoPendingApprovals(latestV5Run.getId());
@@ -333,6 +366,27 @@ public class DeliveryGateService {
                 .stream()
                 .findFirst()
                 .orElse(null);
+    }
+
+    private boolean requiresRequirementBaseline(WorkflowRun run) {
+        if (run.getWorkflowSnapshotJson() == null || run.getWorkflowSnapshotJson().isBlank()) {
+            return false;
+        }
+        try {
+            JsonNode nodes = objectMapper.readTree(run.getWorkflowSnapshotJson()).path("nodes");
+            if (!nodes.isArray()) {
+                return false;
+            }
+            for (JsonNode node : nodes) {
+                if ("product_manager".equals(node.path("node_id").asText())
+                        && "ProductManagerResult".equals(node.path("output_schema").asText())) {
+                    return true;
+                }
+            }
+            return false;
+        } catch (Exception exception) {
+            return false;
+        }
     }
 
     private void requireNoPendingApprovals(Long workflowRunId) {

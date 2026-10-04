@@ -6,6 +6,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from schemas.agent_loop import LoopPolicy, validate_loop_budget
+from schemas.clarification import ClarificationPolicy
 
 
 class StructuredOutputRepairPolicy(BaseModel):
@@ -288,6 +289,7 @@ class WorkflowNodeSpec(BaseModel):
     tool_policy: ToolPolicy = Field(default_factory=ToolPolicy)
     agent_loop_policy: LoopPolicy = Field(default_factory=LoopPolicy)
     retrieval_policy: RetrievalPolicySpec | None = None
+    clarification_policy: ClarificationPolicy | None = None
     verification_policy: VerificationPolicy = Field(default_factory=VerificationPolicy)
     requires_human_approval: bool = False
     depends_on: list[str] = Field(default_factory=list)

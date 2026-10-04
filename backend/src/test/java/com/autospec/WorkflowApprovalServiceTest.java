@@ -4,6 +4,7 @@ import com.autospec.entity.Artifact;
 import com.autospec.entity.Project;
 import com.autospec.entity.WorkflowApproval;
 import com.autospec.entity.WorkflowClarification;
+import com.autospec.entity.RequirementBaseline;
 import com.autospec.entity.WorkflowNodeRun;
 import com.autospec.entity.WorkflowOutbox;
 import com.autospec.entity.WorkflowRun;
@@ -12,11 +13,13 @@ import com.autospec.mapper.ArtifactMapper;
 import com.autospec.mapper.ProcessedWorkflowEventMapper;
 import com.autospec.mapper.WorkflowApprovalMapper;
 import com.autospec.mapper.WorkflowClarificationMapper;
+import com.autospec.mapper.RequirementBaselineMapper;
 import com.autospec.mapper.WorkflowNodeRunMapper;
 import com.autospec.mapper.WorkflowOutboxMapper;
 import com.autospec.mapper.WorkflowRunMapper;
 import com.autospec.service.ProjectService;
 import com.autospec.service.WorkflowApprovalService;
+import com.autospec.service.RequirementBaselineService;
 import com.autospec.workflow.runtime.WorkflowApprovalCoordinator;
 import com.autospec.workflow.runtime.WorkflowFailureDecisionService;
 import com.autospec.workflow.runtime.WorkflowRunReconciliationService;
@@ -59,6 +62,9 @@ class WorkflowApprovalServiceTest {
     private WorkflowClarificationMapper clarificationMapper;
 
     @Autowired
+    private RequirementBaselineMapper requirementBaselineMapper;
+
+    @Autowired
     private WorkflowOutboxMapper outboxMapper;
 
     @Autowired
@@ -75,6 +81,9 @@ class WorkflowApprovalServiceTest {
 
     @Autowired
     private WorkflowApprovalCoordinator approvalCoordinator;
+
+    @Autowired
+    private RequirementBaselineService requirementBaselineService;
 
     @Autowired
     private ObjectMapper objectMapper;
@@ -258,6 +267,49 @@ class WorkflowApprovalServiceTest {
                 .eq(WorkflowNodeRun::getNodeId, "product_manager")))
                 .extracting(WorkflowNodeRun::getRevision, WorkflowNodeRun::getStatus)
                 .contains(Tuple.tuple(2, "QUEUED"));
+    }
+
+    @Test
+    void approvedPrdFreezesAppendOnlyRequirementBaseline() {
+        Project project = new Project();
+        project.setUserId(1L);
+        project.setName("baseline-" + UUID.randomUUID());
+        project.setOriginalRequirement("Build an operator tool");
+        project.setStatus("GENERATING");
+        projectService.save(project);
+
+        WorkflowRun run = new WorkflowRun();
+        run.setProjectId(project.getId());
+        run.setOperation("GENERATE_V5");
+        run.setIdempotencyKey(UUID.randomUUID().toString());
+        run.setStatus("RUNNING");
+        run.setStartedAt(LocalDateTime.now());
+        runMapper.insert(run);
+
+        WorkflowNodeRun node = nodeRun(run, "product_manager", "WAITING_APPROVAL");
+        node.setInputJson("{\"requirement\":\"Build an operator tool\"}");
+        nodeRunMapper.updateById(node);
+        Artifact prd = new Artifact();
+        prd.setProjectId(project.getId());
+        prd.setType("PRD");
+        prd.setTitle("Product requirements");
+        prd.setContent("{\"project_name\":\"Operator tool\",\"core_features\":[]}");
+        prd.setFormat("JSON");
+        prd.setContentHash("a".repeat(64));
+        prd.setVersion(1);
+        prd.setStatus("APPROVED");
+        prd.setWorkflowNodeRunId(node.getId());
+        artifactMapper.insert(prd);
+
+        RequirementBaseline first = requirementBaselineService.freeze(run, node, prd, 1L);
+        RequirementBaseline second = requirementBaselineService.freeze(run, node, prd, 1L);
+        assertThat(second.getId()).isEqualTo(first.getId());
+        assertThat(first.getBaselineId()).isEqualTo("RB-" + run.getId() + "-1");
+        assertThat(first.getContentHash()).hasSize(64);
+        assertThat(requirementBaselineMapper.selectCount(
+                new LambdaQueryWrapper<RequirementBaseline>()
+                        .eq(RequirementBaseline::getWorkflowRunId, run.getId())
+        )).isEqualTo(1);
     }
 
     @Test

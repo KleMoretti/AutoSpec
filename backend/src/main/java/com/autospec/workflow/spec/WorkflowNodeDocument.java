@@ -26,7 +26,8 @@ public record WorkflowNodeDocument(
         JsonNode agentLoopPolicy,
         int timeoutMs,
         JsonNode retrievalPolicy,
-        JsonNode verificationPolicy
+        JsonNode verificationPolicy,
+        JsonNode clarificationPolicy
 ) {
     public WorkflowNodeDocument {
         dependsOn = dependsOn == null ? List.of() : List.copyOf(dependsOn);
@@ -39,6 +40,7 @@ public record WorkflowNodeDocument(
         agentLoopPolicy = objectOrEmpty(agentLoopPolicy, "agent_loop_policy");
         retrievalPolicy = objectOrEmpty(retrievalPolicy, "retrieval_policy");
         verificationPolicy = objectOrEmpty(verificationPolicy, "verification_policy");
+        clarificationPolicy = objectOrEmpty(clarificationPolicy, "clarification_policy");
     }
 
     public WorkflowNodeDocument(
@@ -69,6 +71,7 @@ public record WorkflowNodeDocument(
                 null,
                 null,
                 timeoutMs,
+                null,
                 null,
                 null
         );
