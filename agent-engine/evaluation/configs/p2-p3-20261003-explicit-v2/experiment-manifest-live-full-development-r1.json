@@ -1,0 +1,93 @@
+{
+  "manifest_version": "autospec-experiment-manifest-v1",
+  "experiment_id": "autospec-p2-p3-live-full-20261003-explicit-development-r1",
+  "workflow_key": "autospec-v5",
+  "dataset_version": "autospec-interview-eval-v2",
+  "dataset_split": "development",
+  "random_seed": 20261003,
+  "budget": {
+    "repetitions": 3,
+    "run_max_cost": 2.0,
+    "total_max_cost": 384.0,
+    "max_runs": 192,
+    "run_max_tokens": 250000,
+    "run_max_model_calls": 16
+  },
+  "groups": [
+    {
+      "group": "A",
+      "name": "single-shot",
+      "workflow_version_id": 4,
+      "contract_path": "autospec-spec-sandbox-explicit-v2-ablation-a-20261003-r1.workflow.json",
+      "contract_hash": "19925c1681daf4bbfda3979807eae2c19c475cde2394f64d7058b3697c27cdb0",
+      "prompt_schema_versions": {
+        "product_manager": "product_manager_schema:v1:86e9680fe28afcd4f0c884c90ad8a52b8da54be00d0edbdcaf2ebb1a7329dd53",
+        "architect": "architect_schema:v1:62b1d1d44432e80f5ee1863837efc45c426635bd5618e20b53c8ed1fc3f4c729",
+        "backend_engineer": "backend_engineer_explicit:v1:78dc9dd355e8b7c3e405b82018e5e87318cebc9618a476aa2383432ba7bf34a5",
+        "frontend_engineer": "frontend_explicit:v1:d819f064ba4eefbe56e8b1be8931f7008d4935a39d06d7dcd82cb04ab5ed9fd9",
+        "reviewer": "reviewer_schema_v2:v1:620549ea2a9afda11a3b07ddc10a8158770e65619690cc1193f2cb4241c90824",
+        "evaluator": "evaluator:v1:105c4913d48de2f875f8eafd17adc0870e1abb58d89eae44aeebfe0905ee9cf3"
+      }
+    },
+    {
+      "group": "B",
+      "name": "loop-no-tools",
+      "workflow_version_id": 5,
+      "contract_path": "autospec-spec-sandbox-explicit-v2-ablation-b-20261003-r1.workflow.json",
+      "contract_hash": "e1613b1d32ab27afc328aeaf982d8c578e0a5fc19386dfc816c200507dc38460",
+      "prompt_schema_versions": {
+        "product_manager": "product_manager_schema:v1:86e9680fe28afcd4f0c884c90ad8a52b8da54be00d0edbdcaf2ebb1a7329dd53",
+        "architect": "architect_schema:v1:62b1d1d44432e80f5ee1863837efc45c426635bd5618e20b53c8ed1fc3f4c729",
+        "backend_engineer": "backend_engineer_explicit:v1:78dc9dd355e8b7c3e405b82018e5e87318cebc9618a476aa2383432ba7bf34a5",
+        "frontend_engineer": "frontend_explicit:v1:d819f064ba4eefbe56e8b1be8931f7008d4935a39d06d7dcd82cb04ab5ed9fd9",
+        "reviewer": "reviewer_schema_v2:v1:620549ea2a9afda11a3b07ddc10a8158770e65619690cc1193f2cb4241c90824",
+        "evaluator": "evaluator:v1:105c4913d48de2f875f8eafd17adc0870e1abb58d89eae44aeebfe0905ee9cf3"
+      }
+    },
+    {
+      "group": "C",
+      "name": "loop-with-tools",
+      "workflow_version_id": 6,
+      "contract_path": "autospec-spec-sandbox-explicit-v2-ablation-c-20261003-r1.workflow.json",
+      "contract_hash": "450a4a74b81bf0ed5d4738654fb03d1131f1c23921f39b619f52ef12086476fa",
+      "prompt_schema_versions": {
+        "product_manager": "product_manager_schema:v1:86e9680fe28afcd4f0c884c90ad8a52b8da54be00d0edbdcaf2ebb1a7329dd53",
+        "architect": "architect_schema:v1:62b1d1d44432e80f5ee1863837efc45c426635bd5618e20b53c8ed1fc3f4c729",
+        "backend_engineer": "backend_engineer_explicit:v1:78dc9dd355e8b7c3e405b82018e5e87318cebc9618a476aa2383432ba7bf34a5",
+        "frontend_engineer": "frontend_explicit:v1:d819f064ba4eefbe56e8b1be8931f7008d4935a39d06d7dcd82cb04ab5ed9fd9",
+        "reviewer": "reviewer_schema_v2:v1:620549ea2a9afda11a3b07ddc10a8158770e65619690cc1193f2cb4241c90824",
+        "evaluator": "evaluator:v1:105c4913d48de2f875f8eafd17adc0870e1abb58d89eae44aeebfe0905ee9cf3"
+      }
+    },
+    {
+      "group": "D",
+      "name": "loop-tools-verify",
+      "workflow_version_id": 7,
+      "contract_path": "autospec-spec-sandbox-explicit-v2-ablation-d-20261003-r1.workflow.json",
+      "contract_hash": "1aaa85d03daa02b0ed80a2696c34626113c601df8c7600cd3ce078224820c9ef",
+      "prompt_schema_versions": {
+        "product_manager": "product_manager_schema:v1:86e9680fe28afcd4f0c884c90ad8a52b8da54be00d0edbdcaf2ebb1a7329dd53",
+        "architect": "architect_schema:v1:62b1d1d44432e80f5ee1863837efc45c426635bd5618e20b53c8ed1fc3f4c729",
+        "backend_engineer": "backend_engineer_explicit:v1:78dc9dd355e8b7c3e405b82018e5e87318cebc9618a476aa2383432ba7bf34a5",
+        "frontend_engineer": "frontend_explicit:v1:d819f064ba4eefbe56e8b1be8931f7008d4935a39d06d7dcd82cb04ab5ed9fd9",
+        "reviewer": "reviewer_schema_v2:v1:620549ea2a9afda11a3b07ddc10a8158770e65619690cc1193f2cb4241c90824",
+        "evaluator": "evaluator:v1:105c4913d48de2f875f8eafd17adc0870e1abb58d89eae44aeebfe0905ee9cf3"
+      }
+    }
+  ],
+  "pricing_snapshot": {
+    "source": "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/",
+    "observed_at": "2026-10-01",
+    "currency": "CNY",
+    "cost_status": "EXTERNAL_BILLED",
+    "version": "deepseek-v4.1-flash-peak-20261001",
+    "models": {
+      "deepseek:deepseek-flash": {
+        "input_per_million": 2.0,
+        "cached_input_per_million": 0.04,
+        "output_per_million": 8.0
+      }
+    },
+    "mode": "DEEPSEEK_FLASH_PEAK"
+  }
+}
