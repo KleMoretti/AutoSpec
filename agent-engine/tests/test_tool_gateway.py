@@ -185,8 +185,12 @@ async def test_in_memory_gateway_serializes_concurrent_duplicate_idempotency_key
 
 @pytest.mark.asyncio
 async def test_http_tool_hash_includes_defaults_matching_control_plane_normalization() -> None:
-    spec = json.loads((Path(__file__).resolve().parents[1] / "contracts" / "archive" /
-                       "autospec-v5-agent-execution-v3-c.workflow.json").read_text())
+    contract_path = Path(__file__).resolve().parents[1] / "contracts" / "archive" / \
+        "autospec-v5-agent-execution-v3-c.workflow.json"
+    if not contract_path.exists():
+        contract_path = Path(__file__).resolve().parents[1] / "contracts" / \
+            "autospec-v5-agent-execution-v3-c.workflow.json"
+    spec = json.loads(contract_path.read_text())
     node = next(node for node in spec["nodes"] if node["node_id"] == "backend_engineer")
     raw_policy = node["tool_policy"]
     typed_policy = ToolPolicy.model_validate(raw_policy)
