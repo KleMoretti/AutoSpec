@@ -55,6 +55,7 @@ PROMPT_FILES = {
     "FrontendEngineerAgent_v7": "frontend_explicit_v4_v1.md",
     "FrontendEngineerAgent_v8": "frontend_explicit_v5_v1.md",
     "FrontendEngineerAgent_v9": "frontend_explicit_v6_v1.md",
+    "FrontendEngineerAgent_v10": "frontend_explicit_v7_v1.md",
     "ReviewerAgent_v1": "reviewer_v1.md",
     "ReviewerAgent_v2": "reviewer_shared_v1.md",
     "ReviewerAgent_v4": "reviewer_schema_v1.md",
