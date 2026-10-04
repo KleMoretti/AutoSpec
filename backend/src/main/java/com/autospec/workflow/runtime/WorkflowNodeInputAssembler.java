@@ -150,8 +150,6 @@ public class WorkflowNodeInputAssembler {
         }
         Long projectId = longMetadata(input, "_autospec_project_id");
         if (projectId == null) {
-            input.set("project_memory", objectMapper.createArrayNode());
-            input.set("context_conflicts", objectMapper.createArrayNode());
             return;
         }
         String query = input.path("requirement").asText("")

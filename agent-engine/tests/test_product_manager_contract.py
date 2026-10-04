@@ -17,7 +17,10 @@ ENGINE = Path(__file__).resolve().parents[1]
 
 
 def frozen_command() -> NodeCommand:
-    document = json.loads((ENGINE / "contracts/archive/autospec-v5-agent-execution-v6-d.workflow.json").read_text())
+    contract_path = ENGINE / "contracts/archive/autospec-v5-agent-execution-v6-d.workflow.json"
+    if not contract_path.exists():
+        contract_path = ENGINE / "contracts/autospec-v5-agent-execution-v6-d.workflow.json"
+    document = json.loads(contract_path.read_text())
     node = next(item for item in document["nodes"] if item["node_id"] == "product_manager")
     policy, context = node["model_policy"], node["context_policy"]
     calls = policy["max_calls"]
