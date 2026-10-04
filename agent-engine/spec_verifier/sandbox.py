@@ -178,6 +178,7 @@ def _verify_mysql(
     }
     connection = None
     schema_created = False
+    executing_schema_statement = False
     issues: list[VerificationIssue] = []
     try:
         connection = pymysql.connect(**connection_kwargs)
@@ -201,12 +202,18 @@ def _verify_mysql(
                     if remaining <= 0:
                         raise _VerifierDeadlineExceeded
                     _set_socket_timeout(connection, remaining)
+                    executing_schema_statement = True
                     cursor.execute(statement)
+                    executing_schema_statement = False
     except _VerifierDeadlineExceeded:
         issues.append(VerificationIssue(code="L2_DEADLINE_EXCEEDED", severity="HIGH", message="Verification deadline elapsed during MySQL schema verification.", path="generated:schema.sql"))
     except Exception as exc:  # the sidecar converts all database failures to evidence
         issues.append(VerificationIssue(
-            code=_database_issue_code(exc, connection),
+            code=(
+                "L2_DATABASE_SCHEMA_FAILED"
+                if executing_schema_statement
+                else _database_issue_code(exc, connection)
+            ),
             severity="HIGH",
             message=str(exc)[:1000],
             path="generated:schema.sql",
