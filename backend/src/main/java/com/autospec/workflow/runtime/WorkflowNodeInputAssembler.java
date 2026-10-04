@@ -187,6 +187,8 @@ public class WorkflowNodeInputAssembler {
         snapshot.put("version", "node-retrieval-snapshot-v1");
         snapshot.put("node_id", target.getNodeId());
         snapshot.put("query_hash", ContentHash.sha256(query));
+        snapshot.put("query_template", policy.path("query_template")
+                .asText("node-aware-v1"));
         snapshot.put("policy_hash", ContentHash.sha256(policy.toString()));
         snapshot.put("project_id", projectId);
         snapshot.put("corpus_epoch", corpusEpoch);
@@ -200,6 +202,12 @@ public class WorkflowNodeInputAssembler {
         String actorScopeHash = knowledgeIndexService.actorScopeHash(projectId, actorUserId);
         if (actorScopeHash != null) {
             snapshot.put("actor_scope_hash", actorScopeHash);
+        }
+        JsonNode directive = input.path("rework_directive");
+        if (directive.isObject()) {
+            snapshot.put("rework_directive_hash", ContentHash.sha256(directive.toString()));
+            snapshot.set("issue_ids", directive.path("issue_ids").deepCopy());
+            snapshot.set("evidence_paths", directive.path("evidence_paths").deepCopy());
         }
     }
 
@@ -287,14 +295,23 @@ public class WorkflowNodeInputAssembler {
     }
 
     private String retrievalQuery(ObjectNode input, String nodeId) {
-        ObjectNode query = input.deepCopy();
-        query.remove("_autospec_project_id");
-        query.remove("_autospec_actor_user_id");
-        query.remove("retrieval_policy");
-        query.remove("retrieved_sources");
-        query.remove("retrieval_snapshot");
+        ObjectNode query = objectMapper.createObjectNode();
         query.put("node_id", nodeId);
+        copyIfPresent(query, "requirement", input);
+        copyIfPresent(query, "prd", input);
+        copyIfPresent(query, "architecture_design", input);
+        copyIfPresent(query, "backend_design", input);
+        copyIfPresent(query, "frontend_skeleton", input);
+        copyIfPresent(query, "rework_directive", input);
+        query.put("retrieval_task", nodeId + ":current-input");
         return query.toString();
+    }
+
+    private void copyIfPresent(ObjectNode target, String field, ObjectNode input) {
+        JsonNode value = input.get(field);
+        if (value != null && !value.isNull()) {
+            target.set(field, value.deepCopy());
+        }
     }
 
     private Long longMetadata(ObjectNode input, String field) {
