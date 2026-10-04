@@ -90,6 +90,29 @@ def test_fixture_clarification_does_not_auto_accept_assumption() -> None:
 
 
 @pytest.mark.asyncio
+async def test_clarification_result_emits_input_required_instead_of_success() -> None:
+    command = NodeCommand(
+        event_id="clarification-event",
+        workflow_run_id=7,
+        node_run_id=11,
+        node_id="product_manager",
+        revision=1,
+        attempt=1,
+        execution_id="7:product_manager:1:1",
+        handler_key="ProductManagerAgent",
+        handler_version="v3",
+        input_payload={
+            "requirement": "[[clarification-required]] Build a tool",
+            "clarification_protocol": "clarification-v1",
+        },
+    )
+    event = await NodeExecutor(build_production_registry()).execute(command)
+    assert event.event_type == "NODE_INPUT_REQUIRED"
+    assert event.is_terminal
+    assert event.output_payload["kind"] == "CLARIFICATION_REQUIRED"
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("reply", ["valid", "root_criteria", "truncated"])
 async def test_frozen_product_manager_preserves_failure_category_and_paid_usage(reply: str) -> None:
     requests = []

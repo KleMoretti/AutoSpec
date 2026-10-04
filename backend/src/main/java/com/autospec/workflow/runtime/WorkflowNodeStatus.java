@@ -31,7 +31,7 @@ public enum WorkflowNodeStatus {
                     WAITING_APPROVAL, CANCELLED, ORPHANED);
             case RETRY_WAIT -> EnumSet.of(READY, CANCELLED);
             case FALLBACK_READY -> EnumSet.of(QUEUED, CANCELLED);
-            case WAITING_APPROVAL -> EnumSet.of(SUCCEEDED, PENDING, CANCELLED);
+            case WAITING_APPROVAL -> EnumSet.of(SUCCEEDED, PENDING, STALE, CANCELLED);
             case SUCCEEDED -> EnumSet.of(STALE);
             case STALE -> EnumSet.of(PENDING, CANCELLED);
             case ORPHANED -> EnumSet.of(RETRY_WAIT, FAILED, CANCELLED);

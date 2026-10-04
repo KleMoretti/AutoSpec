@@ -332,6 +332,23 @@ public class WorkflowEventConsumer {
                     .set("heartbeat_at", now)
                     .set("updated_at", now));
         }
+        if ("NODE_INPUT_REQUIRED".equals(event.eventType())) {
+            WorkflowNodeRun currentNodeRun = nodeRunMapper.selectById(event.nodeRunId());
+            if (approvalCoordinator == null || currentNodeRun == null) {
+                return 0;
+            }
+            Integer paused = approvalCoordinator.pauseForInputRequired(
+                    currentNodeRun,
+                    event.executionId(),
+                    event.outputPayload() == null ? null : event.outputPayload().toString(),
+                    now
+            );
+            if (paused != null) {
+                persistTiming(event, now, currentNodeRun);
+                return paused;
+            }
+            return 0;
+        }
         if ("NODE_SUCCEEDED".equals(event.eventType())) {
             WorkflowNodeRun currentNodeRun = nodeRunMapper.selectById(event.nodeRunId());
             if (approvalCoordinator != null) {
@@ -452,7 +469,12 @@ public class WorkflowEventConsumer {
                     payloadJson,
                     WorkflowExecutionEvent.class
             );
-            if (!java.util.Set.of("NODE_HEARTBEAT", "NODE_SUCCEEDED", "NODE_FAILED")
+            if (!java.util.Set.of(
+                    "NODE_HEARTBEAT",
+                    "NODE_SUCCEEDED",
+                    "NODE_INPUT_REQUIRED",
+                    "NODE_FAILED"
+            )
                     .contains(event.eventType())) {
                 throw new InvalidWorkflowEventException(
                         "Unsupported workflow event type: " + event.eventType()

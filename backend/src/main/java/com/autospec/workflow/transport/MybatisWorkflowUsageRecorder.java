@@ -270,7 +270,13 @@ public class MybatisWorkflowUsageRecorder implements WorkflowUsageRecorder {
         invocation.setRouteKey(event.routeKey());
         invocation.setRouteReason(event.routeReason());
         invocation.setFallbackUsed(Boolean.TRUE.equals(event.fallbackUsed()));
-        invocation.setStatus("NODE_SUCCEEDED".equals(event.eventType()) ? "SUCCEEDED" : "FAILED");
+        invocation.setStatus(
+                "NODE_SUCCEEDED".equals(event.eventType())
+                        ? "SUCCEEDED"
+                        : "NODE_INPUT_REQUIRED".equals(event.eventType())
+                        ? "WAITING_INPUT"
+                        : "FAILED"
+        );
         invocation.setDurationMs(event.durationMs() == null ? 0 : event.durationMs());
         invocation.setInputTokens(safe(event.inputTokens()));
         invocation.setOutputTokens(safe(event.outputTokens()));

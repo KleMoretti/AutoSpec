@@ -3,6 +3,7 @@ package com.autospec;
 import com.autospec.entity.Artifact;
 import com.autospec.entity.Project;
 import com.autospec.entity.WorkflowApproval;
+import com.autospec.entity.WorkflowClarification;
 import com.autospec.entity.WorkflowNodeRun;
 import com.autospec.entity.WorkflowOutbox;
 import com.autospec.entity.WorkflowRun;
@@ -10,6 +11,7 @@ import com.autospec.exception.OptimisticLockConflictException;
 import com.autospec.mapper.ArtifactMapper;
 import com.autospec.mapper.ProcessedWorkflowEventMapper;
 import com.autospec.mapper.WorkflowApprovalMapper;
+import com.autospec.mapper.WorkflowClarificationMapper;
 import com.autospec.mapper.WorkflowNodeRunMapper;
 import com.autospec.mapper.WorkflowOutboxMapper;
 import com.autospec.mapper.WorkflowRunMapper;
@@ -52,6 +54,9 @@ class WorkflowApprovalServiceTest {
 
     @Autowired
     private WorkflowApprovalMapper approvalMapper;
+
+    @Autowired
+    private WorkflowClarificationMapper clarificationMapper;
 
     @Autowired
     private WorkflowOutboxMapper outboxMapper;
@@ -182,6 +187,77 @@ class WorkflowApprovalServiceTest {
                             .contains("\"artifact_id\":" + revised.getId())
                             .contains("structured-text-900-120-v1");
                 });
+    }
+
+    @Test
+    void inputRequiredPersistsClarificationAndResumesProductManagerRevision() {
+        Project project = new Project();
+        project.setUserId(1L);
+        project.setName("clarification-" + UUID.randomUUID());
+        project.setOriginalRequirement("Build a tool");
+        project.setStatus("GENERATING");
+        projectService.save(project);
+
+        WorkflowRun run = new WorkflowRun();
+        run.setProjectId(project.getId());
+        run.setOperation("GENERATE_V5");
+        run.setIdempotencyKey(UUID.randomUUID().toString());
+        run.setWorkflowSnapshotJson("""
+                {
+                  "workflow_key":"clarification-test",
+                  "version":"v1",
+                  "runtime":{"max_parallel_nodes":1},
+                  "nodes":[{"node_id":"product_manager","depends_on":[]}],
+                  "edges":[]
+                }
+                """);
+        run.setStatus("RUNNING");
+        run.setStartedAt(LocalDateTime.now());
+        runMapper.insert(run);
+
+        WorkflowNodeRun node = nodeRun(run, "product_manager", "RUNNING");
+        node.setInputJson("{\"requirement\":\"Build a tool\"}");
+        nodeRunMapper.updateById(node);
+        String output = """
+                {"kind":"CLARIFICATION_REQUIRED","clarification_request":{
+                  "version":"clarification-v1","request_id":"req-1","lock_version":0,
+                  "round":1,"original_requirement_ref":"Build a tool",
+                  "questions":[{"question_id":"q-1","category":"SCOPE",
+                    "question":"Who uses it?","reason":"Role is missing","blocking":true}],
+                  "assumptions":[],"context_conflicts":[],"summary":"Need a role"
+                }}
+                """;
+
+        assertThat(approvalCoordinator.pauseForInputRequired(
+                node, node.getExecutionId(), output, LocalDateTime.now()
+        )).isEqualTo(1);
+        WorkflowClarification clarification = clarificationMapper.selectOne(
+                new LambdaQueryWrapper<WorkflowClarification>()
+                        .eq(WorkflowClarification::getWorkflowRunId, run.getId())
+        );
+        assertThat(clarification.getStatus()).isEqualTo("PENDING");
+        assertThat(nodeRunMapper.selectById(node.getId()).getStatus())
+                .isEqualTo("WAITING_APPROVAL");
+
+        WorkflowClarification answered = approvalService.respondToClarification(
+                run.getId(),
+                clarification.getId(),
+                0,
+                new WorkflowApprovalService.ClarificationResponseDecision(
+                        "answer-1",
+                        "[{\"question_id\":\"q-1\",\"value\":\"operator\"}]",
+                        "[]",
+                        "[]",
+                        1L
+                )
+        );
+        assertThat(answered.getStatus()).isEqualTo("ANSWERED");
+        assertThat(nodeRunMapper.selectById(node.getId()).getStatus()).isEqualTo("STALE");
+        assertThat(nodeRunMapper.selectList(new LambdaQueryWrapper<WorkflowNodeRun>()
+                .eq(WorkflowNodeRun::getWorkflowRunId, run.getId())
+                .eq(WorkflowNodeRun::getNodeId, "product_manager")))
+                .extracting(WorkflowNodeRun::getRevision, WorkflowNodeRun::getStatus)
+                .contains(Tuple.tuple(2, "QUEUED"));
     }
 
     @Test
