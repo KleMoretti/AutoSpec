@@ -47,6 +47,7 @@ def test_registry_contains_all_builtin_v5_handlers() -> None:
     assert registry.resolve("FrontendEngineerAgent", "v8")
     assert registry.resolve("FrontendEngineerAgent", "v9")
     assert registry.resolve("FrontendEngineerAgent", "v10")
+    assert registry.resolve("ArchitectAgent", "v4")
     assert registry.resolve("ReviewerAgent", "v4")
     assert registry.resolve("ReviewerAgent", "v5")
     assert registry.resolve("EvaluatorAgent", "v4")
