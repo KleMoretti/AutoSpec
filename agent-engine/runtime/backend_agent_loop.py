@@ -32,6 +32,7 @@ from schemas.agent_loop import (
     StepStatus,
     StopReason,
     ToolCallTurn,
+    ToolObservation,
     parse_agent_turn,
     stable_hash,
     agent_turn_schema,
@@ -198,6 +199,7 @@ async def run_backend_agent_loop(
                     plan_hash=_plan_hash(state),
                     model_call_ref=model_call_ref,
                     tool_call_ref=tool_ref,
+                    tool_call_reason=turn.reason,
                 )
                 return _result(state, StopReason.PATH_OSCILLATION)
             _append_step(
@@ -208,6 +210,7 @@ async def run_backend_agent_loop(
                 plan_hash=_plan_hash(state),
                 model_call_ref=model_call_ref,
                 tool_call_ref=tool_ref,
+                tool_call_reason=turn.reason,
             )
             started = time.perf_counter()
             try:
@@ -242,9 +245,19 @@ async def run_backend_agent_loop(
                     duration_ms=_elapsed(started),
                 )
                 return _result(state, StopReason.VALIDATION_FAILED)
-            state.observation = _observation(result.result)
-            state.observations.append({"tool": turn.name, "version": turn.version,
-                                       "arguments": turn.arguments, "result": state.observation})
+            observation = ToolObservation(
+                tool=turn.name,
+                version=turn.version,
+                request_id=tool_ref,
+                provider_call_id=turn.provider_call_id,
+                status="SUCCEEDED",
+                result_hash=stable_hash(result.result),
+                source_refs=_source_refs(result.result),
+                result=result.result,
+            ).model_dump(mode="json")
+            observation["arguments"] = turn.arguments
+            state.observation = observation
+            state.observations.append(observation)
             _append_step(
                 state,
                 StepPhase.OBSERVATION,
@@ -621,6 +634,7 @@ def _append_step(
     validation_issue_codes: list[str] | None = None,
     model_call_ref: str | None = None,
     tool_call_ref: str | None = None,
+    tool_call_reason: str | None = None,
     duration_ms: int = 0,
 ) -> None:
     now = int(time.time() * 1000)
@@ -637,6 +651,7 @@ def _append_step(
             validation_issue_codes=list(dict.fromkeys(validation_issue_codes or [])),
             model_call_ref=model_call_ref,
             tool_call_ref=tool_call_ref,
+            tool_call_reason=tool_call_reason,
             started_at_epoch_ms=max(0, now - duration_ms),
             finished_at_epoch_ms=now,
             duration_ms=max(0, duration_ms),
@@ -680,6 +695,21 @@ def _observation(value: Any) -> dict[str, Any]:
     if isinstance(value, dict):
         return value
     return {"value": value}
+
+
+def _source_refs(value: Any) -> list[str]:
+    refs: list[str] = []
+    if isinstance(value, dict):
+        for key in ("citation_id", "source_ref", "source_id", "artifact_content_hash", "chunk_content_hash"):
+            item = value.get(key)
+            if isinstance(item, str) and item and item not in refs:
+                refs.append(item)
+        for child in value.values():
+            refs.extend(ref for ref in _source_refs(child) if ref not in refs)
+    elif isinstance(value, list):
+        for child in value:
+            refs.extend(ref for ref in _source_refs(child) if ref not in refs)
+    return refs[:64]
 
 
 def _verification_policy() -> dict[str, Any]:

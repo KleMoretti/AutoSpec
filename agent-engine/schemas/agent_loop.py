@@ -60,6 +60,23 @@ class ToolCallTurn(BaseModel):
     provider_call_id: str | None = Field(default=None, min_length=1, max_length=255)
 
 
+class ToolObservation(BaseModel):
+    """Bounded, traceable observation returned by one governed tool call."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    tool: str = Field(min_length=1)
+    version: str = Field(min_length=1)
+    request_id: str = Field(min_length=1)
+    provider_call_id: str | None = Field(default=None, min_length=1, max_length=255)
+    status: Literal["SUCCEEDED", "FAILED"]
+    result_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    source_refs: list[str] = Field(default_factory=list, max_length=64)
+    result: dict[str, Any] | list[Any] | str | int | float | bool | None = None
+    error_code: str | None = Field(default=None, min_length=1)
+    error_message: str | None = Field(default=None, max_length=1000)
+
+
 class FinalCandidateTurn(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -155,6 +172,7 @@ class AgentStepRecord(BaseModel):
     validation_issue_codes: list[str] = Field(default_factory=list, max_length=32)
     model_call_ref: str | None = Field(default=None, min_length=1)
     tool_call_ref: str | None = Field(default=None, min_length=1)
+    tool_call_reason: str | None = Field(default=None, min_length=1, max_length=1000)
     started_at_epoch_ms: int = Field(ge=0)
     finished_at_epoch_ms: int = Field(ge=0)
     duration_ms: int = Field(ge=0)
