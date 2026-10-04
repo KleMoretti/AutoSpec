@@ -1,0 +1,45 @@
+{
+  "manifest_version": "autospec-experiment-manifest-v1",
+  "experiment_id": "autospec-live-smoke-20261004-v11",
+  "workflow_key": "autospec-v5",
+  "dataset_version": "autospec-interview-eval-v2",
+  "dataset_split": "development",
+  "random_seed": 20261003,
+  "groups": [
+    {
+      "group": "D",
+      "name": "loop-tools-verify-v5",
+      "workflow_version_id": 13,
+      "contract_path": "autospec-spec-sandbox-explicit-v2-live-loop-v11.workflow.json",
+      "contract_hash": "053ad0bac665315c0542c80eb9046540cb63384aaf4f9ca47d7f404876733547",
+      "prompt_schema_versions": {
+        "architect": "architect_schema_v3:v1:c371e55629a49e7066ba2e1d10bcc64a3b8869703ec9aff39d3ea24b7311ab21",
+        "backend_engineer": "backend_engineer_explicit_loop_v3:v1:51b6a172c533103dc83781c01dfab0ac2cc9418bd33eb259206321e260058b35",
+        "frontend_engineer": "frontend_explicit_v7:v1:a57bce8bf401253d1930e33bf523cdba1b19f06095ec10fd8160a41e4de31c26"
+      }
+    }
+  ],
+  "budget": {
+    "repetitions": 1,
+    "run_max_cost": 5.0,
+    "total_max_cost": 5.0,
+    "max_runs": 1,
+    "run_max_tokens": 500000,
+    "run_max_model_calls": 16
+  },
+  "pricing_snapshot": {
+    "source": "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/",
+    "observed_at": "2026-10-01",
+    "currency": "CNY",
+    "cost_status": "EXTERNAL_BILLED",
+    "version": "deepseek-v4.1-flash-peak-20261001",
+    "models": {
+      "deepseek:deepseek-flash": {
+        "input_per_million": 2.0,
+        "cached_input_per_million": 0.04,
+        "output_per_million": 8.0
+      }
+    },
+    "mode": "DEEPSEEK_FLASH_PEAK"
+  }
+}
