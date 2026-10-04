@@ -14,8 +14,8 @@
 - 使用 DeepSeek Flash 真实调用，未使用 fixture 回退。
 - 多次显式 v2 smoke 均被 fail-closed：
   - 首次实际成本 `0.156308 CNY`，Backend 预算预占失败、Frontend 触发 `MODEL_OUTPUT_LIMIT`；
-  - 后续版本暴露 live Backend loop 的非 JSON/validation 问题，以及 Frontend explicit type/source 输出不符合 Schema；
-  - 最后一次 live run 实际成本 `0.212290 CNY`，仍以真实结构化输出错误终止。
+- 后续版本暴露 live Backend loop 的非 JSON/validation/tool-budget 问题，以及 Frontend explicit type/source/length 输出不符合 Schema；
+- 最后一次 v7 smoke run 实际成本 `0.312389 CNY`，Backend 以 `TOOL_BUDGET_EXHAUSTED` 终止，Frontend 以 string type 缺 `length` 的 `VALIDATION_ERROR` 终止。
 - 没有把失败样本标成自我修复成功，也没有继续盲目重试扩大费用。
 
 ## P2 explicit v2 冻结
