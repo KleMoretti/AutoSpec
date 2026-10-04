@@ -390,17 +390,24 @@ public class DeliveryGateService {
             return false;
         }
         try {
-            Set<Long> manifestArtifactIds = new java.util.HashSet<>();
+            Map<Long, String> manifestArtifacts = new java.util.HashMap<>();
             for (JsonNode value : objectMapper.readTree(job.getManifest()).path("artifacts")) {
                 if (value.path("artifact_id").canConvertToLong()) {
-                    manifestArtifactIds.add(value.path("artifact_id").asLong());
+                    String contentHash = value.path("content_hash").asText("");
+                    if (!contentHash.matches("[0-9a-f]{64}")) {
+                        return false;
+                    }
+                    manifestArtifacts.put(value.path("artifact_id").asLong(), contentHash);
                 }
             }
-            Set<Long> selectedArtifactIds = artifacts.stream()
-                    .map(Artifact::getId)
-                    .filter(Objects::nonNull)
-                    .collect(java.util.stream.Collectors.toSet());
-            return !selectedArtifactIds.isEmpty() && manifestArtifactIds.equals(selectedArtifactIds);
+            Map<Long, String> selectedArtifacts = artifacts.stream()
+                    .filter(artifact -> artifact.getId() != null && artifact.getContentHash() != null)
+                    .collect(java.util.stream.Collectors.toMap(
+                            Artifact::getId,
+                            Artifact::getContentHash,
+                            (left, right) -> right
+                    ));
+            return !selectedArtifacts.isEmpty() && manifestArtifacts.equals(selectedArtifacts);
         } catch (Exception ignored) {
             return false;
         }

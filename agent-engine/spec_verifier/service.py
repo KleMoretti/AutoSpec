@@ -57,6 +57,7 @@ def verify_payload(payload: VerifyRequest) -> VerificationReport:
             code="L2_COMPILER_FAILED",
             severity="CRITICAL",
             message=str(exc)[:1000],
+            path="generated:manifest.json",
         ))
         return report
     return run_l2(

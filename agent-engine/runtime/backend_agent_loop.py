@@ -879,6 +879,7 @@ def _verification_stop_reason(error_code: str) -> StopReason:
         "L2_DATABASE_DSN_INVALID",
         "L2_DATABASE_SCHEMA_NAME_INVALID",
         "L2_DATABASE_CLEANUP_FAILED",
+        "L2_DATABASE_ERROR",
         "L2_TYPESCRIPT_UNAVAILABLE",
         "L2_TYPESCRIPT_TIMEOUT",
         "L2_TYPESCRIPT_FAILED",

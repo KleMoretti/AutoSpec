@@ -37,7 +37,7 @@ from schemas.frontend_skeleton import (
 )
 from schemas.prd import PrdArtifact
 from schemas.rework import ReworkDirective
-from schemas.review import ReviewIssue, ReviewReport, ReviewReportV2, ReworkRoute
+from schemas.review import ReviewDecision, ReviewIssue, ReviewReport, ReviewReportV2, ReworkRoute
 from schemas.tool import ToolCallRequest
 from schemas.verification import VerificationFact, VerificationReport
 from spec_verifier.compiler import compile_spec
@@ -274,7 +274,7 @@ def _register_agent_node(
         compacted_input, quality_profile = compact_input(input_payload)
         if prompt_key.endswith("_shared") or (
             handler_key == "ArchitectAgent"
-            and handler_version in {"v3", "v4", "v5"}
+            and output_model is ArchitectureDesignArtifactV2
         ) or (
             handler_key == "FrontendEngineerAgent"
             and handler_version == "v3"
@@ -385,6 +385,10 @@ def _register_agent_node(
             verifier_payload.get("verification_fact")
         )
         if report.gate_status != "PASSED" or trusted_fact.status != "PASSED":
+            if report.status == "FAILED" and report.issues:
+                return _verification_rework_report(report, trusted_fact)
+            # Environment/transport failures are not model-repairable. Keep
+            # the existing fail-closed behavior and do not spend a rework turn.
             raise RuntimeError("spec.verify blocked the candidate")
         with model_routing_request(quality_profile, node_name):
             record = await asyncio.to_thread(
@@ -534,6 +538,56 @@ def _explicit_contract_required(verification_policy: dict[str, Any]) -> bool:
     # boundary so adding explicit artifact fields does not change old handler
     # input/output hashes or make old WorkflowSpecs fail validation.
     return verification_policy.get("verifier_version") == "spec-verifier-v2"
+
+
+def _verification_rework_report(
+    report: VerificationReport,
+    fact: VerificationFact,
+) -> dict[str, Any]:
+    """Turn deterministic spec failures into issue-scoped Reviewer routes.
+
+    This is deliberately deterministic: verifier failures never ask the
+    semantic model to invent an owner. Environment failures are handled by the
+    caller and remain terminal.
+    """
+    grouped: dict[str, list[ReviewIssue]] = {}
+    for issue in report.issues:
+        digest = hashlib.sha256(
+            f"{issue.code}\n{issue.path}\n{issue.message}".encode("utf-8")
+        ).hexdigest()[:12].upper()
+        review_issue = ReviewIssue(
+            severity=issue.severity,
+            issue_type=issue.code,
+            description=issue.message,
+            suggestion=f"Repair the contract at {issue.path}: {issue.message}",
+            issue_id=f"ISS-VERIFY-{digest}",
+            artifact_path=issue.path,
+            evidence=[issue.path],
+        )
+        path = issue.path.lower()
+        target = (
+            "frontend_engineer" if "binding" in path else
+            "backend_engineer" if any(token in path for token in ("table", "api", "ddl", "typescript")) else
+            "architect"
+        )
+        grouped.setdefault(target, []).append(review_issue)
+    issues = [issue for values in grouped.values() for issue in values]
+    routes = [
+        ReworkRoute(
+            target_node=target,
+            issue_ids=[issue.issue_id or "ISS-VERIFY" for issue in target_issues],
+            required_changes=[issue.suggestion for issue in target_issues],
+            invalidate_downstream=True,
+        )
+        for target, target_issues in grouped.items()
+    ]
+    return ReviewReportV2(
+        score=0,
+        issues=issues,
+        decision=ReviewDecision.REWORK,
+        routes=routes,
+        verification_fact=fact.model_dump(mode="json"),
+    ).model_dump(mode="json")
 
 
 def _compile_context(

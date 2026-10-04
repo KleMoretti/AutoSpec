@@ -22,6 +22,17 @@ _SPEC_FAILURE_CODES = {
     "L2_TYPESCRIPT_FAILED",
     "L2_DATABASE_SCHEMA_FAILED",
 }
+_ENVIRONMENT_FAILURE_CODES = {
+    "L2_DATABASE_UNAVAILABLE",
+    "L2_DATABASE_DRIVER_UNAVAILABLE",
+    "L2_DATABASE_DSN_INVALID",
+    "L2_DATABASE_SCHEMA_NAME_INVALID",
+    "L2_DATABASE_CLEANUP_FAILED",
+    "L2_DATABASE_ERROR",
+    "L2_TYPESCRIPT_UNAVAILABLE",
+    "L2_TYPESCRIPT_TIMEOUT",
+    "L2_DEADLINE_EXCEEDED",
+}
 _DATABASE_ENVIRONMENT_ERRNOS = {
     1044, 1045, 1049, 1142, 1205, 1213, 2003, 2006, 2013, 2055,
 }
@@ -73,16 +84,16 @@ def run_l2(
             )
             stdout, stderr = process.communicate(timeout=remaining)
         except FileNotFoundError:
-            issues.append(VerificationIssue(code="L2_TYPESCRIPT_UNAVAILABLE", severity="HIGH", message="TypeScript compiler is not available in the verifier sandbox."))
+            issues.append(VerificationIssue(code="L2_TYPESCRIPT_UNAVAILABLE", severity="HIGH", message="TypeScript compiler is not available in the verifier sandbox.", path="generated:bindings.ts"))
         except subprocess.TimeoutExpired:
             if process is not None:
                 _terminate_process_group(process)
-            issues.append(VerificationIssue(code="L2_TYPESCRIPT_TIMEOUT", severity="HIGH", message="TypeScript verification exceeded its deadline."))
+            issues.append(VerificationIssue(code="L2_TYPESCRIPT_TIMEOUT", severity="HIGH", message="TypeScript verification exceeded its deadline.", path="generated:bindings.ts"))
         except _VerifierDeadlineExceeded:
-            issues.append(VerificationIssue(code="L2_DEADLINE_EXCEEDED", severity="HIGH", message="Verification deadline elapsed before TypeScript verification."))
+            issues.append(VerificationIssue(code="L2_DEADLINE_EXCEEDED", severity="HIGH", message="Verification deadline elapsed before TypeScript verification.", path="generated:bindings.ts"))
         else:
             if process is not None and process.returncode != 0:
-                issues.append(VerificationIssue(code="L2_TYPESCRIPT_FAILED", severity="HIGH", message=(stderr or stdout or "tsc failed")[:1000]))
+                issues.append(VerificationIssue(code="L2_TYPESCRIPT_FAILED", severity="HIGH", message=(stderr or stdout or "tsc failed")[:1000], path="generated:bindings.ts"))
         typescript_issue_codes = [issue.code for issue in issues]
         typescript_status = (
             "PASSED"
@@ -140,20 +151,20 @@ def _verify_mysql(
     try:
         import pymysql  # type: ignore[import-not-found]
     except ImportError:
-        return [VerificationIssue(code="L2_DATABASE_DRIVER_UNAVAILABLE", severity="HIGH", message="PyMySQL is not installed in the verifier sidecar.")]
+        return [VerificationIssue(code="L2_DATABASE_DRIVER_UNAVAILABLE", severity="HIGH", message="PyMySQL is not installed in the verifier sidecar.", path="generated:schema.sql")]
     parsed = urlparse(dsn)
     bootstrap_database = unquote(parsed.path.strip("/"))
     if parsed.scheme != "mysql" or not parsed.hostname or not bootstrap_database:
-        return [VerificationIssue(code="L2_DATABASE_DSN_INVALID", severity="CRITICAL", message="verification MySQL DSN is invalid.")]
+        return [VerificationIssue(code="L2_DATABASE_DSN_INVALID", severity="CRITICAL", message="verification MySQL DSN is invalid.", path="generated:schema.sql")]
 
     schema_name = f"{_VERIFY_SCHEMA_PREFIX}{secrets.token_hex(12)}"
     if _VERIFY_SCHEMA_PATTERN.fullmatch(schema_name) is None:
-        return [VerificationIssue(code="L2_DATABASE_SCHEMA_NAME_INVALID", severity="CRITICAL", message="generated verification schema name failed its safety check.")]
+        return [VerificationIssue(code="L2_DATABASE_SCHEMA_NAME_INVALID", severity="CRITICAL", message="generated verification schema name failed its safety check.", path="generated:schema.sql")]
 
     deadline = deadline_monotonic or time.monotonic() + max(1.0, timeout_seconds)
     initial_remaining = _remaining_seconds(deadline)
     if initial_remaining <= 0:
-        return [VerificationIssue(code="L2_DEADLINE_EXCEEDED", severity="HIGH", message="Verification deadline elapsed before MySQL verification.")]
+        return [VerificationIssue(code="L2_DEADLINE_EXCEEDED", severity="HIGH", message="Verification deadline elapsed before MySQL verification.", path="generated:schema.sql")]
     connection_kwargs = {
         "host": parsed.hostname,
         "port": parsed.port or 3306,
@@ -192,12 +203,13 @@ def _verify_mysql(
                     _set_socket_timeout(connection, remaining)
                     cursor.execute(statement)
     except _VerifierDeadlineExceeded:
-        issues.append(VerificationIssue(code="L2_DEADLINE_EXCEEDED", severity="HIGH", message="Verification deadline elapsed during MySQL schema verification."))
+        issues.append(VerificationIssue(code="L2_DEADLINE_EXCEEDED", severity="HIGH", message="Verification deadline elapsed during MySQL schema verification.", path="generated:schema.sql"))
     except Exception as exc:  # the sidecar converts all database failures to evidence
         issues.append(VerificationIssue(
             code=_database_issue_code(exc, connection),
             severity="HIGH",
             message=str(exc)[:1000],
+            path="generated:schema.sql",
         ))
     finally:
         if schema_created:
@@ -219,6 +231,7 @@ def _verify_mysql(
                     code="L2_DATABASE_CLEANUP_FAILED",
                     severity="CRITICAL",
                     message=f"verification schema cleanup failed for {schema_name}: {str(exc)[:900]}",
+                    path="generated:schema.sql",
                 ))
             finally:
                 if cleanup_connection is not None:
@@ -265,7 +278,7 @@ def _database_issue_code(exc: Exception, connection: object | None) -> str:
         return "L2_DATABASE_SCHEMA_FAILED"
     if raw_errno in {1005, 1064, 1118, 1215, 1216, 1217}:
         return "L2_DATABASE_SCHEMA_FAILED"
-    return "L2_DATABASE_SCHEMA_FAILED"
+    return "L2_DATABASE_ERROR"
 
 
 def _sql_statements(sql: str) -> list[str]:
@@ -300,9 +313,13 @@ def compiled_report(
     scope: str = "FULL",
 ) -> VerificationReport:
     blocked = bool(issues)
+    # Environment failures have priority over candidate/spec failures. A
+    # broken verifier must never be presented as a repairable model defect.
     status = (
         "PASSED"
         if not issues
+        else "ERROR"
+        if any(issue.code in _ENVIRONMENT_FAILURE_CODES for issue in issues)
         else "FAILED"
         if any(issue.code in _SPEC_FAILURE_CODES for issue in issues)
         else "ERROR"

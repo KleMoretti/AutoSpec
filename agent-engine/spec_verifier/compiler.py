@@ -45,6 +45,7 @@ def compile_spec(spec: SpecContract | dict[str, Any]) -> CompiledSpec:
         "compiler_version": COMPILER_VERSION_V2 if explicit else COMPILER_VERSION,
         "contract_id": contract.contract_id,
         "source_digest": source_digest,
+        "source_map": _source_map(contract),
         "files": {
             name: hashlib.sha256(content.encode("utf-8")).hexdigest()
             for name, content in sorted(files.items())
@@ -52,6 +53,27 @@ def compile_spec(spec: SpecContract | dict[str, Any]) -> CompiledSpec:
     }
     files = {**files, "manifest.json": _canonical(manifest)}
     return CompiledSpec(files=files, source_digest=source_digest, manifest=manifest)
+
+
+def _source_map(spec: SpecContract) -> dict[str, dict[str, dict[str, str]]]:
+    """Map generated documents back to stable artifact identifiers."""
+    return {
+        "schema.sql": {
+            table.name: {"artifact_id": table.table_id, "path": f"tables.{table.table_id}"}
+            for table in spec.tables
+        },
+        "openapi.json": {
+            api.api_id: {"artifact_id": api.api_id, "path": f"apis.{api.api_id}"}
+            for api in spec.apis
+        },
+        "bindings.ts": {
+            binding.binding_id: {
+                "artifact_id": binding.binding_id,
+                "path": f"bindings.{binding.binding_id}",
+            }
+            for binding in spec.frontend_bindings
+        },
+    }
 
 
 def _openapi(spec: SpecContract) -> str:

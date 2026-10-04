@@ -174,7 +174,10 @@ async def test_architect_schema_handler_selects_shared_contract_output() -> None
 
 
 @pytest.mark.asyncio
-async def test_architect_schema_v5_handler_selects_shared_contract_output() -> None:
+@pytest.mark.parametrize("handler_version", ["v5", "v6"])
+async def test_architect_schema_v2_handlers_select_shared_contract_output(
+    handler_version: str,
+) -> None:
     executor = NodeExecutor(build_production_registry())
     product = await executor.execute(
         command(
@@ -188,7 +191,7 @@ async def test_architect_schema_v5_handler_selects_shared_contract_output() -> N
             "ArchitectAgent",
             {"requirement": "Build an inventory workspace", "prd": product.output_payload},
             node_id="architect",
-        ).model_copy(update={"handler_version": "v5"})
+        ).model_copy(update={"handler_version": handler_version})
     )
 
     assert architect.event_type == "NODE_SUCCEEDED"
