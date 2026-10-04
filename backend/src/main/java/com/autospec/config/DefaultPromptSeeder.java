@@ -148,6 +148,7 @@ public class DefaultPromptSeeder implements ApplicationRunner {
             new DefaultPrompt("frontend_explicit", "v1", readPrompt("frontend_explicit_v1.md")),
             new DefaultPrompt("frontend_explicit_v2", "v1", readPrompt("frontend_explicit_v2_v1.md")),
             new DefaultPrompt("frontend_explicit_v3", "v1", readPrompt("frontend_explicit_v3_v1.md")),
+            new DefaultPrompt("frontend_explicit_v4", "v1", readPrompt("frontend_explicit_v4_v1.md")),
             new DefaultPrompt("reviewer_shared", "v1", readPrompt("reviewer_shared_v1.md")),
             new DefaultPrompt("reviewer_schema", "v1", readPrompt("reviewer_schema_v1.md")),
             new DefaultPrompt("reviewer_schema_v2", "v1", readPrompt("reviewer_schema_v2_v1.md"))
