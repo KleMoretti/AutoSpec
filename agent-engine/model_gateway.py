@@ -39,6 +39,7 @@ PROMPT_FILES = {
     "ArchitectAgent_v3": "architect_schema_v1.md",
     "ArchitectAgent_v4": "architect_schema_v2_v1.md",
     "ArchitectAgent_v5": "architect_schema_v3_v1.md",
+    "ArchitectAgent_v6": "architect_schema_v4_v1.md",
     "BackendEngineerAgent_v1": "backend_engineer_v1.md",
     "BackendEngineerAgent_v2": "backend_engineer_loop_v1.md",
     "BackendEngineerAgent_v3": "backend_engineer_shared_v1.md",
