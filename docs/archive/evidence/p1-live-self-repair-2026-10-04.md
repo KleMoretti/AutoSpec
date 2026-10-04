@@ -31,3 +31,9 @@
 - explicit v2 A/B/C/D development/holdout manifest 的 validate-only 已通过（development 16 cases、holdout 8 cases）。
 - 完整批次保守上限仍为 `384 + 192 = 576 CNY`；本轮只执行了单组单用例诊断，没有启动矩阵，也没有填写质量收益、置信区间或 PROMOTE 结论。
 - P2-E 继续 `blocked/NOT_EVALUATED`；默认 active、历史 WorkflowSpec、数据库基线和已发布 v12 均未切换或改写。
+
+## 后续修复与当前阻塞
+
+- 本地修复 `7d87d537` 修正 Architect v5 对 `shared_contract_required` 的接线，24 个定向测试和 Agent Engine 全量 `264 passed` 通过；远端分支尚未包含该提交。
+- v11b 真实运行（run 17）实际成本 `0.070289 CNY`，失败路径为 Architect API 使用旧 `roles/parameters/request_body/response` 字段；没有进入下游节点。
+- v12 已完成本地契约同步、manifest validate-only 和本地回归，但尚未进行真实外呼。安全执行层要求对新的 v12 外部付费调用和包含后续提交的 push 进行明确授权。
