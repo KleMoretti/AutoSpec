@@ -81,9 +81,12 @@ def generate_structured_output(
                 "attempt": attempt + 1,
                 "candidate": _bounded_candidate(last_candidate),
                 "issues": last_issues[:8],
-                "instruction": (
-                    "Return only a JSON object that satisfies the frozen output schema. "
-                    "Emit business fields only; never copy JSON Schema metadata such as "
+                    "instruction": (
+                        "Return only a JSON object that satisfies the frozen output schema. "
+                        "Fix every reported path: explicit string type objects require a "
+                        "positive integer length, and decimal type objects require integer "
+                        "precision and scale. "
+                        "Emit business fields only; never copy JSON Schema metadata such as "
                     "minLength, maxLength, pattern, title, or description into a field "
                     "object. For explicit frontend bindings, use only source prefixes "
                     "props, state, event, route, or context and keep every structured "
