@@ -510,7 +510,7 @@ async def _next_turn(
             else BackendDesignArtifact.model_json_schema()
         ),
         "allowed_turn_types": _allowed_turns(phase),
-        "tools": current_tool_harness().describe_allowed() if current_tool_harness() else [],
+        "tools": _model_visible_tools(),
         "remaining_steps": policy.max_steps - state.iterations,
     }
     if model_client is None:
@@ -652,8 +652,8 @@ def _next_phase(state: _LoopState, policy: LoopPolicy) -> str:
         return "REPLAN"
     if (
         policy.enabled
-        and not _verification_required()
         and _tool_policy().get("enabled", False)
+        and bool(_model_visible_tools())
         and (
             not state.observation
             or state.observation.get("error_code") == "TOOL_INPUT_INVALID"
@@ -892,6 +892,19 @@ def _verification_stop_reason(error_code: str) -> StopReason:
 def _tool_policy() -> dict[str, Any]:
     contract = current_model_execution_contract()
     return dict(contract.tool_policy) if contract is not None else {}
+
+
+def _model_visible_tools() -> list[dict[str, Any]]:
+    harness = current_tool_harness()
+    if harness is None:
+        return []
+    tools = harness.describe_allowed()
+    if not _verification_required():
+        return tools
+    # spec.verify is a mandatory program-owned check. It remains in the
+    # frozen allowlist for the runtime verification call, but the model cannot
+    # claim it as an optional ACTION tool or spend the required budget early.
+    return [tool for tool in tools if tool.get("name") != "spec.verify"]
 
 
 def _tool_idempotency_key(turn: ToolCallTurn) -> str:

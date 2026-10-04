@@ -138,7 +138,9 @@ class ToolPolicy(BaseModel):
     version: str = Field(default="tools-v1", min_length=1)
     enabled: bool = False
     allowed_tools: list[ToolRef] = Field(default_factory=list)
+    required_tools: list[ToolRef] = Field(default_factory=list)
     max_calls: int = Field(default=0, ge=0, le=32)
+    optional_max_calls: int = Field(default=32, ge=0, le=32)
     per_call_timeout_ms: int = Field(default=5_000, ge=100, le=600_000)
     total_timeout_ms: int = Field(default=30_000, ge=100, le=900_000)
     max_result_bytes: int = Field(default=32_000, ge=256, le=1_000_000)
@@ -153,6 +155,13 @@ class ToolPolicy(BaseModel):
         keys = [(tool.name, tool.version) for tool in self.allowed_tools]
         if len(keys) != len(set(keys)):
             raise ValueError("allowed_tools must not contain duplicate name/version pairs")
+        required_keys = [(tool.name, tool.version) for tool in self.required_tools]
+        if len(required_keys) != len(set(required_keys)):
+            raise ValueError("required_tools must not contain duplicate name/version pairs")
+        if not set(required_keys).issubset(set(keys)):
+            raise ValueError("required_tools must be included in allowed_tools")
+        if self.required_tools and self.optional_max_calls > self.max_calls - len(self.required_tools):
+            raise ValueError("optional_max_calls must leave room for required tools")
         if self.enabled and (not self.allowed_tools or self.max_calls < 1):
             raise ValueError("enabled tool policy requires an allowlist and max_calls")
         if self.total_timeout_ms < self.per_call_timeout_ms:
@@ -162,6 +171,15 @@ class ToolPolicy(BaseModel):
         ):
             raise ValueError("unsupported tool side effect level")
         return self
+
+    def model_dump(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        """Keep legacy policy hashes stable when optional budget fields are unused."""
+        result = super().model_dump(*args, **kwargs)
+        if not self.required_tools:
+            result.pop("required_tools", None)
+        if self.optional_max_calls == 32:
+            result.pop("optional_max_calls", None)
+        return result
 
 
 class RetrievalPolicySpec(BaseModel):
