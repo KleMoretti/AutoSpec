@@ -52,6 +52,101 @@ export async function decideWorkflowApproval(
   });
 }
 
+export interface ClarificationQuestion {
+  question_id: string;
+  category: string;
+  question: string;
+  reason: string;
+  blocking: boolean;
+  options: string[];
+  related_requirement_refs: string[];
+}
+
+export interface RequirementAssumption {
+  assumption_id: string;
+  statement: string;
+  impact: string;
+  origin: string;
+  acceptance_status: 'PENDING' | 'ACCEPTED' | 'REJECTED' | string;
+}
+
+export interface ClarificationConflict {
+  conflict_id: string;
+  fact_type: string;
+  fact_key: string;
+  value?: unknown;
+  source_ref?: string;
+  version?: number | string;
+  blocking: boolean;
+  reason: string;
+  status: string;
+}
+
+export interface ClarificationRequest {
+  version: string;
+  request_id: string;
+  lock_version: number;
+  round: number;
+  original_requirement_ref: string;
+  questions: ClarificationQuestion[];
+  assumptions: RequirementAssumption[];
+  context_conflicts: ClarificationConflict[];
+  summary: string;
+}
+
+export interface WorkflowClarificationResponse {
+  id: number;
+  workflowRunId: number;
+  nodeRunId: number;
+  revision: number;
+  round: number;
+  requestId: string;
+  request: ClarificationRequest;
+  response?: {
+    request_id: string;
+    expected_lock_version: number;
+    idempotency_key: string;
+    answers: Array<{ question_id: string; value: string | string[]; note?: string }>;
+    accepted_assumption_ids: string[];
+    conflict_resolutions: Array<{ conflict_id: string; resolution: string; value?: unknown; note?: string }>;
+    actor_user_id?: number;
+  };
+  status: 'PENDING' | 'ANSWERED' | 'EXPIRED' | string;
+  approvalId: number;
+  lockVersion: number;
+  idempotencyKey?: string;
+  createdAt?: string;
+  answeredAt?: string;
+  expiredAt?: string;
+  updatedAt?: string;
+}
+
+export interface ClarificationResponsePayload {
+  expected_lock_version: number;
+  idempotency_key: string;
+  answers: Array<{ question_id: string; value: string | string[]; note?: string }>;
+  accepted_assumption_ids: string[];
+  conflict_resolutions: Array<{ conflict_id: string; resolution: string; value?: unknown; note?: string }>;
+}
+
+export async function getWorkflowClarifications(
+  workflowRunId: number
+): Promise<WorkflowClarificationResponse[]> {
+  return request(`/api/workflow-runs/${workflowRunId}/clarifications`);
+}
+
+export async function respondToWorkflowClarification(
+  workflowRunId: number,
+  clarificationId: number,
+  payload: ClarificationResponsePayload
+): Promise<WorkflowClarificationResponse> {
+  return request(`/api/workflow-runs/${workflowRunId}/clarifications/${clarificationId}/respond`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+}
+
 export interface WorkflowRunResponse {
   id: number;
   projectId: number;

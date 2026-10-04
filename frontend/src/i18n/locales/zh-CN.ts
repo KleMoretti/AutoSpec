@@ -340,7 +340,26 @@ const zhCN = {
     cancelDescription: '已排队和等待中的节点将不再被调度。',
     cancelConfirm: '取消工作流',
     confirmCancellation: '确认取消',
-    submit: '提交决策'
+    submit: '提交决策',
+    approvePrdStartDesign: '批准 PRD并开始设计'
+  },
+  clarification: {
+    title: '需求澄清',
+    loadFailed: '无法加载需求澄清',
+    submitted: '回答已提交，Product Manager 将继续分析',
+    submitFailed: '回答提交失败',
+    resolved: '澄清已处理',
+    resolvedDescription: '当前运行没有等待用户回答的澄清请求。',
+    round: '第 {{round}} 轮',
+    originalRequirement: '原始需求',
+    questions: '需要确认的问题',
+    required: '必须回答',
+    assumptions: '可接受的假设',
+    conflicts: '上下文冲突',
+    missingRequired: '请先完成所有必须回答的问题。',
+    submitAndContinue: '提交回答并继续分析',
+    cancelRun: '取消运行',
+    readOnly: '当前身份为只读，不能提交回答。'
   },
   review: {
     assigned: '问题已领取并标记为处理中',

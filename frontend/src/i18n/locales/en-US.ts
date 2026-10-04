@@ -340,7 +340,26 @@ const enUS = {
     cancelDescription: 'Queued and pending nodes will no longer be scheduled.',
     cancelConfirm: 'Cancel workflow',
     confirmCancellation: 'Confirm cancellation',
-    submit: 'Submit decision'
+    submit: 'Submit decision',
+    approvePrdStartDesign: 'Approve PRD and start design'
+  },
+  clarification: {
+    title: 'Requirement clarification',
+    loadFailed: 'Clarification could not be loaded',
+    submitted: 'Answers submitted; Product Manager will continue analysis',
+    submitFailed: 'Answers could not be submitted',
+    resolved: 'Clarification resolved',
+    resolvedDescription: 'This run has no clarification request waiting for input.',
+    round: 'Round {{round}}',
+    originalRequirement: 'Original requirement',
+    questions: 'Questions to confirm',
+    required: 'Required',
+    assumptions: 'Assumptions you may accept',
+    conflicts: 'Context conflicts',
+    missingRequired: 'Complete every required question before continuing.',
+    submitAndContinue: 'Submit answers and continue analysis',
+    cancelRun: 'Cancel run',
+    readOnly: 'This view is read-only; answers cannot be submitted.'
   },
   review: {
     assigned: 'Issue assigned and marked in progress',
