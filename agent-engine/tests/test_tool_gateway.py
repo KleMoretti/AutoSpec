@@ -12,7 +12,7 @@ from runtime.tool_gateway import (
     InMemoryToolGateway,
     register_controlled_gateway_tools,
 )
-from runtime.tool_harness import ToolHarness, ToolRegistry
+from runtime.tool_harness import ToolHarness, ToolRegistry, ToolRateLimitError
 from runtime.tool_harness import ToolRuntimeContext, bind_tool_runtime_context, execute_current_tool
 from runtime.execution_context import ModelExecutionContract, bind_model_execution_contract
 from schemas.tool_gateway import ToolGatewayRequest
@@ -185,8 +185,12 @@ async def test_in_memory_gateway_serializes_concurrent_duplicate_idempotency_key
 
 @pytest.mark.asyncio
 async def test_http_tool_hash_includes_defaults_matching_control_plane_normalization() -> None:
-    spec = json.loads((Path(__file__).resolve().parents[1] / "contracts" /
-                       "autospec-v5-agent-execution-v3-c.workflow.json").read_text())
+    contract_path = Path(__file__).resolve().parents[1] / "contracts" / "archive" / \
+        "autospec-v5-agent-execution-v3-c.workflow.json"
+    if not contract_path.exists():
+        contract_path = Path(__file__).resolve().parents[1] / "contracts" / \
+            "autospec-v5-agent-execution-v3-c.workflow.json"
+    spec = json.loads(contract_path.read_text())
     node = next(node for node in spec["nodes"] if node["node_id"] == "backend_engineer")
     raw_policy = node["tool_policy"]
     typed_policy = ToolPolicy.model_validate(raw_policy)
@@ -215,3 +219,56 @@ async def test_http_tool_hash_includes_defaults_matching_control_plane_normaliza
                                              "arguments": {"node_id": "backend_engineer"}, "idempotency_key": "lookup"})
     assert result.status == "SUCCEEDED"
     assert len(calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_optional_tool_budget_leaves_room_for_required_verification() -> None:
+    class ContractInput(BaseModel):
+        node_id: str
+
+    class ContractOutput(BaseModel):
+        node_id: str
+
+    registry = ToolRegistry()
+    registry.register("knowledge.search", "v1", Input, Output,
+                      lambda value: Output(answer=value.query))
+    registry.register("contract.lookup", "v1", ContractInput, ContractOutput,
+                      lambda value: ContractOutput(node_id=value.node_id))
+    frozen = ToolPolicy(
+        enabled=True,
+        allowed_tools=[
+            ToolRef(name="knowledge.search", version="v1"),
+            ToolRef(name="contract.lookup", version="v1"),
+        ],
+        required_tools=[ToolRef(name="contract.lookup", version="v1")],
+        max_calls=3,
+        optional_max_calls=1,
+    )
+    harness = ToolHarness(registry)
+    context = ToolRuntimeContext(
+        execution_id="budget-separation",
+        node_id="backend_engineer",
+        attempt=1,
+        policy=frozen,
+        deadline_epoch_ms=9_999_999_999_999,
+        contract_hash="a" * 64,
+        schema_version="ExplicitBackendDesignArtifact",
+        harness=harness,
+    )
+    with bind_tool_runtime_context(context):
+        first = await execute_current_tool({
+            "name": "knowledge.search", "version": "v1",
+            "arguments": {"query": "contract"}, "idempotency_key": "optional-1",
+        })
+        with pytest.raises(ToolRateLimitError, match="optional tool call budget"):
+            await execute_current_tool({
+                "name": "knowledge.search", "version": "v1",
+                "arguments": {"query": "second"}, "idempotency_key": "optional-2",
+            })
+        required = await execute_current_tool({
+            "name": "contract.lookup", "version": "v1",
+            "arguments": {"node_id": "backend_engineer"}, "idempotency_key": "required-1",
+        })
+
+    assert first.status == "SUCCEEDED"
+    assert required.status == "SUCCEEDED"

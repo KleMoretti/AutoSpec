@@ -1,13 +1,177 @@
 ---
 plan_id: autospec-spec-sandbox
-version: 1.1
+version: 1.3
 status: in_progress
 created_at: 2026-09-29
-updated_at: 2026-10-02
+updated_at: 2026-10-04
 product_baseline: autospec-v5:pm-schema-repair-v12
 database_baseline: V1
 predecessor: docs/archive/agent-execution-plan.md
+current_focus: implementation-1-2-3
+testing_priority: deferred-by-user
 ---
+
+# AutoSpec 当前实现总计划：可修复、会取证、能澄清的 Agent 工作流
+
+> 2026-10-02 用户调整优先级：当前只推进三项实现——① Spec Sandbox 自我修复闭环；② 按需工具、知识与项目记忆；③ 需求澄清、用户确认与需求基线。测试建设、大规模评测、消融和指标报告暂不安排；不以补齐这些工作作为当前实现的前置条件。保留原有运行时校验、权限、预算和交付门禁，它们属于产品实现。
+>
+> 本文定义范围与顺序。[P0/P1 手册](p0-p1-execution-plan.md)负责 SB-01～SB-04；[P2–P4 手册](p2-p4-execution-plan.md)负责 KB-01～KB-04、CL-01～CL-04。文件名沿用用户指定路径，当前任务编号优先于旧阶段编号。文末折叠区原文为历史记录，不再作为当前待办。
+
+<!-- CURRENT_IMPLEMENTATION_PLAN_BEGIN -->
+
+## 2026-10-04 复核结论与边界
+
+本次依据用户提供的只读静态复核更新计划；复核没有运行测试、容器或模型，
+其代码缺口不能写成已复现的运行结果。对照 SB/KB/CL 共 12 项任务，当前完成了
+Sandbox 的前半：SB-01 完成，SB-02 基本实现但仍有偏差，SB-03 仅本节点修复可用，
+SB-04 已有校验零件但尚未绑定当前产物。KB 四项已有公共模块而未接入显式候选，
+CL 四项尚未开始。完整六节点 live 仍未通过。
+
+`spec-sandbox-explicit-v2-live-loop-v12` 的 Architect v6 仍漏接
+`shared_contract_required`，修复及必要行为回归完成前不启动该候选的付费 live。
+它与产品默认 `pm-schema-repair-v12` 是两个不同版本标识。
+
+## 当前目标
+
+做成一个能澄清用户意图、按需查阅项目知识、通过可执行规格检查发现问题并受控修复的软件需求平台。六个 Agent 的职责、控制面/Worker 分工和正式入口保持一致；主要工作是把现有能力接成一条完整产品流程。
+
+产品主流程：
+
+```text
+POST /api/workflow-runs
+  → Product Manager：发现歧义 → 请求用户回答/确认假设 → 生成 PRD
+  → 用户批准 PRD，同时冻结需求基线
+  → Architect：共享契约
+  → Backend ∥ Frontend：使用可信项目上下文生成显式规格
+       Backend 按需查知识/读 Artifact/查契约
+       Backend 调用 Sandbox → 本节点错误定向修复 → 再验证
+  → Reviewer：汇合检查 FULL/L2，跨节点错误交回责任节点
+  → Evaluator：需求覆盖与可信验证事实
+  → 版本化交付
+```
+
+图示是产品行为说明，实际节点顺序、依赖和合法返工目标仍必须来自冻结 WorkflowSpec。需求澄清是 Product Manager 内部阶段，不新增第七个 Agent；用户等待不占住 Worker、模型调用或数据库事务。
+
+## 当前代码基线与复用边界
+
+以用户提供的 10-04 静态复核为当前增量状态；[bc00b0d6 复核](archive/evidence/spec-sandbox-reassessment-bc00b0d6-2026-10-02.md)仅保留起点背景：
+
+- 六节点编排、Redis Worker、Outbox、审批、返工、预算、可靠性与可观测已有实现，继续复用。
+- SB-01 的显式 v2 Schema、适配、候选与 Java/Python 注册已接通；后续 live-loop v12 的 Architect v6 注册存在，但执行分支仍按写死版本集合选择旧输出模型。按输出模型判定共享契约，并补行为回归后才复验。
+- Sandbox 已有先鉴权、流式限长、30s 上限、共享 deadline、进程组回收、随机 schema 清理及 Java 剩余超时联动。SB-02 仍需修正混合错误的 ERROR 优先、未知数据库异常归 ERROR，以及 DDL/TS 诊断到源 Artifact 的映射。
+- Backend 本节点修复与停止策略已有；Reviewer FULL 验证失败仍直接抛异常，fixture 注入 routes 只证明协调器可执行。真实 issue 的责任/来源、RepairDirective、Reviewer FAILED→routes 和 Backend→Architect 返工事件/合法边尚未接通。
+- 验证事实已绑定 execution、fencing、policy、digest、scope、版本和有效期；SB-04 尚未绑定当前 Artifact id/version/hash。DeliveryGate 从冻结 policy 读取 source_digest 的条件不足以证明当前产物一致，必须按实际来源集合重算并失效旧报告。
+- native tool-call 适配、`knowledge.search`、`artifact.get`、`contract.lookup`、上传语料与批准记忆已有实现。当前候选主要只开放 `spec.verify`，尚未把按需取证、节点查询和相关记忆连成主路径。
+- 项目级初始检索已经存在；缺节点 `retrieval_policy` 不能简单等同于“没有 RAG”。当前目标是节点根据问题和最新上游输入取证，而非再建一套检索系统。
+- PR #13 合并后的 master CI 已成功，包含 verifier probe。它是既有事实，本轮不重复把“取一个绿色 CI”列为功能任务。
+- 当前新库种子仍是 `pm-schema-repair-v12`；现有迁移为 V1、V2、V5，下一新增迁移从 V6 起，实施前再核对实际最大版本。不恢复旧 V104～V117，不改已应用迁移。
+
+## 范围与不做项
+
+| 当前实现 | 暂不推进 |
+| --- | --- |
+| 显式规格、L1/L2 错误分流、局部/跨节点修复、可信交付 | 新测试集、全量回归专项、故障注入专项、消融、质量/性能数字与报告 |
+| 受控只读工具、节点知识查询、批准记忆、冲突提示、native 调用接入 | MCP/A2A、新向量数据库、新 Agent 框架、让六个节点全部启用循环 |
+| PM 澄清、持久化等待、用户回答/接受假设、需求基线冻结 | 需求变更影响分析与组件级增量重生成（此前建议第 4 项） |
+| 为三项功能所必需的表单、状态和已有 Trace 展示 | 独立动态 DAG 项目、评测看板扩建、截图/GIF、面经卡片重写（此前建议第 5 项） |
+
+暂缓测试不等于删除已有测试，也不等于绕过编译、Schema、授权、幂等、预算或运行时检查。新计划只用代码接线、状态/数据流和产品行为定义完成条件，不提前声称可靠性或质量收益已经实测。
+
+## 三项能力及边界
+
+### ① Spec Sandbox 自我修复
+
+最终结果：实际所选候选产出显式规格；验证问题带来源和责任节点；可修复问题得到受限重试，环境错误终止；交付只接受当前产物的可信 FULL/L2 事实。
+
+- 显式 Schema、Handler、Prompt、context policy、compiler/verifier 与候选一起冻结。不能只把 `verifier_version` 改成 v2 而让上游继续输出旧结构。
+- Backend 只校验自身和上游契约，不等待并行 Frontend；Reviewer 汇合后检查前后端消费一致性。
+- `FAILED` 表示模型可以修复的规格缺陷；`ERROR` 表示连接/鉴权/超时/清理等运行问题。未知失败默认 ERROR，禁止瞎重试。
+- 修复指令携带 issue code、Artifact 路径、稳定 ID、责任节点、允许修改范围、必须保留的契约和候选 hash。
+- 若根因属于 Architect，Backend 不擅自改 Shared Contract。通过冻结规格允许的返工控制边交给原有 rework coordinator；没有合法路由就明确阻断。
+- 控制面校验版本、来源、scope、要求层级、有效期及可信台账。模型不得声明自己已经通过验证。
+
+### ② 工具、知识与项目记忆
+
+最终结果：Agent 可以说明当前缺少什么信息，选择被允许的工具取得证据，再据此生成或修复；检索和记忆有来源、版本、权限与预算。
+
+- Backend 先开放 `knowledge.search`、`artifact.get`、`contract.lookup`，保留强制执行的 `spec.verify`。不为凑工具数量增加新目录。
+- native 与 JSON 协议通过冻结策略选择，复用已有适配器；不得静默回退，不能因 provider 不支持就放开白名单。
+- 节点初始检索围绕当前任务与上游；修复时围绕 issue 构造查询。初始检索和工具搜索使用同一服务、ACL、索引版本与引用格式。
+- 记忆先按批准状态/替代链/有效期筛选，再做任务相关性排序和 token 截断；排序首版复用检索或确定性评分，不引入新模型服务。
+- 用户本次明确确认的需求与历史记忆有冲突时生成 `ContextConflict`，记录来源和冲突原因。已批准旧记忆不是永远优先，检索文档也不能自动覆盖本次需求。
+
+### ③ 需求澄清、确认和冻结
+
+最终结果：模糊输入不再直接变成一套默认业务假设；用户能回答关键问题或明确接受假设，后续节点统一使用冻结需求基线。
+
+- PM 输出结构化缺失信息、冲突、假设和问题；只询问影响角色权限、主业务流程、数据边界或交付范围的问题。信息充分时直接进入 PRD。
+- 一轮最多 5 个问题、默认最多 2 轮自动澄清，具体数值写入新候选策略。达到轮次上限仍有必答问题就停在待用户处理，不捏造回答。
+- 复用审批基础设施，以明确的澄清类型区分“提交回答后重跑 PM”和“批准 PRD 后放行 Architect”。两种操作不得混用。
+- `WAITING_APPROVAL` 承载等待，记录 `CLARIFICATION` 或 PRD 审批类型；实现版本化的输入请求事件、状态分支和恢复输入，不把问题列表当成功 PRD。
+- 最终用户批准 PRD 时，原输入、有效问答、接受的假设、已解决冲突、约束与范围形成不可变 RequirementBaseline。后续每个 Artifact 和报告关联 baseline ID/version/hash。
+- 基线冻结后要改需求，首版创建新的运行/基线；不实现组件级增量生成，不篡改已在运行的基线。
+
+## 当前执行顺序与状态
+
+以下状态只描述本轮增量。`planned` 不否定已存在的公共模块；必须完成本轮接线后才更新。
+
+| 顺序 | 任务 | 主交付物 | 依赖 | 状态 |
+| --- | --- | --- | --- | --- |
+| 1 | SB-01 | 新显式规格候选与真实 Handler/Prompt/Schema 接线 | 当前基线 | done（当前显式候选，旧版本兼容保留） |
+| 2 | SB-02 | L2 失败分类、限流读取、共享 deadline/取消清理 | SB-01 | in_progress（基本实现；错误优先级、未知异常和源映射待补） |
+| 3 | SB-03 | 有界局部修复与跨节点责任返工 | SB-01、SB-02 | in_progress（本节点修复已有；真实责任路由未接通） |
+| 4 | SB-04 | 可信验证事实、版本化交付和候选收口 | SB-03 | in_progress（已有事实/门禁零件；当前 Artifact 绑定与基线预留未接通） |
+| 5 | KB-01 | 现有只读工具进入候选，native 决策受预算治理 | SB-04 | done（未激活 `spec-sandbox-kb-v1` 候选；工具白名单、强制验证预算和可选 ACTION 已接通，未执行 live） |
+| 6 | KB-02 | 当前任务/问题驱动的节点 RAG 与统一引用 | KB-01 | done（候选策略、节点/issue query 和统一 retrieval snapshot 已接通；未宣称质量收益） |
+| 7 | KB-03 | 相关批准记忆、冲突对象和消解规则 | KB-02 | done（批准事实保护、相关性 bounded recall 和 conflict context 已接通） |
+| 8 | KB-04 | 工具观察进入后续决策和现有 Trace | KB-03 | done（ToolObservation、source refs/result hash 和 ToolCall reason 已进入 loop/Trace，保持旧字段兼容） |
+| 9 | CL-01 | PM 澄清协议、字段和策略 | KB-04 | done（`clarification-v1`、互斥 PM 结果封套、PM v3 Handler/Prompt 已接通；定向 15 passed） |
+| 10 | CL-02 | 控制面持久化等待、回答和恢复 PM | CL-01 | done（V6 澄清表、`NODE_INPUT_REQUIRED`、WAITING_APPROVAL、锁版本/幂等恢复新 PM revision；Java 定向回归通过） |
+| 11 | CL-03 | 用户澄清表单、假设确认与 PRD 审批 | CL-02 | done（工作台澄清面板、选项/自由文本、假设/冲突展示、只读态和取消操作已接通；Vitest 29 passed，构建通过） |
+| 12 | CL-04 | 冻结需求基线、下游统一消费与最终候选 | CL-03 | done（V7 append-only 基线、PRD 审批冻结、下游输入/provenance/Delivery Gate绑定和未激活 `spec-sandbox-kb-cl-v1` 已接通；定向 Java/合同校验通过） |
+
+当前实现目标已收口：**SB/KB/CL 当前代码链路完成，候选仍未激活**。修复只补必要行为与高风险边界回归，
+不新增测试集/消融专项。完整 live、576 CNY 批量评测均不作为本地实现的前置。
+任务细节按两份手册的“当前实现”章节执行，三份当前状态表同步更新。
+
+## 版本、发布与资料治理
+
+- 创建新的未激活候选，不改写 v12、已发布 spec-sandbox 或旧消融快照。既有候选状态/hash先查代码和数据库事实；发布版本与 Flyway 版本分开。
+- 执行三项功能需要的新增字段、事件、审批模式和 Schema 必须同步 Java/Python/TypeScript/OpenAPI 与新迁移。旧运行仍按旧协议解析。
+- 本计划是代码实现授权范围说明，不包含付费批量调用、默认切换、commit 或 push 授权。
+- 真实 Key 只保存在本地秘密配置；provider 不可用时明确报告配置问题，不假称 live 完成。
+- 前端新增澄清卡片和已有 Trace 字段展示属于本轮交付；新 DAG 看板和独立评测产品不属于本轮。
+- JSON 已收敛：当前契约保留唯一副本，历史契约/实验位于各自 `archive/`；见 [收敛说明](archive/json-consolidation.md)。旧全量副本问题已做目录治理，但不表示业务缺口已修复。共享 `structured_output.py` 的 explicit-v2 专用修复措辞仍需按协议/Schema 版本分派，避免改变历史行为。
+- 用户复核中“3 个提交未推送”和根 `package*.json` 用途属于当时仓库状态，执行前重新核对；本文更新不授权 push、删除文件或外部付费调用。
+
+## 当前完成定义与面试主题
+
+| 能力 | 实现完成条件 | 可解释的面试主题 |
+| --- | --- | --- |
+| Sandbox 修复 | 候选显式输入→L1/L2→责任路由/有限修复→可信交付的数据与控制链路接通 | ReAct、环境反馈、自我修正、幻觉控制、多 Agent 协作、停止策略 |
+| 工具与知识 | 模型按需选择允许工具；节点检索/批准记忆影响生成；引用和冲突可追溯 | Function Calling、RAG、上下文工程、记忆、工具治理与注入隔离 |
+| 需求澄清 | 信息不足→持久化等待→用户输入→恢复 PM→批准冻结→下游同一基线 | Human-in-the-loop、不确定性处理、工作流恢复、需求分析 |
+
+不以“所有面经关键词都有模块”定义完整，也不从代码接通直接推出质量提升数字。本轮结束可以描述实际架构与产品行为；质量收益、规模和可靠性数字继续以单独证据为准。
+
+## 实施交接规则
+
+每完成一个编号，更新此表和对应手册，写清：实际修改入口、调用链变化、状态/数据变化、未完成内容、下一编号。只记录实际完成内容。测试/评测暂缓状态保留，不擅自将旧 P2 付费计划恢复为当前任务。
+
+## 2026-10-04 外部验收状态
+
+- 真实 `.env` 冷启动、远端五项 Sandbox CI 和 fixture 注入的 Reviewer→Backend 返工样本已记录；证据见 [`p1-live-self-repair-2026-10-04.md`](archive/evidence/p1-live-self-repair-2026-10-04.md)。fixture 样本证明协调器执行，不能关闭真实 verifier issue 的 SB-03 责任路由缺口。
+- DeepSeek Flash live 已完成真实小额诊断，Backend 有界自我修复路径已在真实运行中完成 Replan/验证，但完整六节点 live 仍被结构化输出或 Evaluator 质量门禁阻断，不能标记为完整 live 通过。
+- P2 完整矩阵未启动、结果仍为 `NOT_EVALUATED`；按 10-02 调整，576 CNY 批量评测、消融和指标报告是当前范围外的暂缓项，不能列为 SB/KB/CL 完成的阻塞。默认版本、历史运行和数据库基线保持不变。
+
+<!-- CURRENT_IMPLEMENTATION_PLAN_END -->
+
+## 历史计划与执行记录（保留原文，不作为当前任务）
+
+以下内容记录本次调整前的计划和执行状态，包括已有未提交修改。其测试、评测、预算和旧优先级只作历史参考；有冲突时以文件上方 CURRENT_IMPLEMENTATION_PLAN 段为准。
+
+<details>
+<summary>展开原阶段计划与执行记录</summary>
 
 # AutoSpec 面试就绪与特色功能计划（Spec Sandbox）
 
@@ -41,13 +205,13 @@ AutoSpec 的六节点编排、可靠性、审批、成本与可观测底座已�
 | S1 | 源码 / 记录 | 新增 [spec-sandbox](../agent-engine/contracts/autospec-spec-sandbox.workflow.json) 候选，Backend `BACKEND/L2`、Reviewer `FULL/L2`；独立 project 已完成三领域重复/并发 L2，正式 run 2 通过六节点/L2/导出，run 4 又完成故意缺陷→Replan→修复 Trace | SIG-P1-04 |
 | S2 | 记录 / 部分完成 | `a1b2187` 改为每次随机 `autospec_verify_<hex>` schema 并在 `finally` 执行 `DROP DATABASE`；`66d410a` 独立 project 三领域各两次、三次并发均通过且无残留，`9b3d282` 增加运行期清理/网络/请求上限探针。真实 `.env` 冷启动和主动资源故障注入仍待验收 | SIG-P1-03 |
 | S3 | 记录 / 部分完成 | `tests/test_spec_verifier.py` 和 service 回归覆盖随机 schema、部分失败清理、清理异常、请求/响应/超时边界；真实 6 次重复、3 条并发及残留查询、隔离探针均有记录。远端 Sandbox CI 尚待实际运行 | SIG-P1-03 |
-| S4 | 源码 / 记录 | `cb4355b` 已将显式适配器接入 Backend/Reviewer 生产路径，候选输入声明 PK、FK、受限类型、参数位置和来源；旧推断适配仅保留给兼容版本。`1023024` 与候选测试覆盖缺字段拒绝和非命名事实不推断 | SIG-P1-00 |
-| S5 | 源码 / 记录 | `1023024` 已补独立前端请求/响应映射、path/query/body client 与消费桩，绑定参数/响应语义进入 L1；真实 verifier 中的 tsc 增量检出和跨 Artifact 样本仍待 P1-E/CI | SIG-P1-01 |
+| S4 | 记录 / 正式验收 | `d1e98b2` 新增未激活 `spec-sandbox-explicit-v2`；run 9/run 10 真实选择 Backend v7、Frontend v4、Reviewer v5、Evaluator v4，显式 PK/FK/类型/参数位置/独立消费映射保真；旧推断适配仅保留兼容版本 | SIG-P1-00 |
+| S5 | 记录 / 正式验收 | `1023024` 的 v2 client/消费桩经真实 v2 FULL/L2 `tsc --noEmit` 通过；run 6 暴露并由 `d79f65b` 修复 `Json` 导入缺陷，跨 Artifact explicit context 经 `34295ec` 修复 | SIG-P1-01 |
 | S6 | 源码 / 记录 | `1023024` 已补 OpenAPI/DDL 结构解析、参数/响应绑定语义和稳定 issue code；保留 9 个最小缺陷并继续补分层变异、误报与耗时证据 | SIG-P1-02 |
 | S7 | 源码 / 记录 | `1efbfc8` 已将 verifier/verify-mysql 纳入默认 Compose 依赖并补专用 Token 与 `VERIFY_MYSQL_*` 配置；真实 `.env` 缺 3 个新变量，使用 `.env.example` 的独立 project 已可启动并通过认证 L2，真实 `.env` 冷启动到 Backend 仍待复现 | SIG-P0-03 / P1-03 |
-| S8 | 源码 / 记录 | `1efbfc8` 已落地 internal network、non-root、read-only、cap drop、no-new-privileges、pids/tmpfs、CPU/内存限制，`a1b2187` 提供随机 schema；`9b3d282` 的实际容器探针证明资源/网络/清理/请求边界，真实 `.env` 冷启动和主动资源故障注入仍待覆盖 | SIG-P1-03 |
+| S8 | 记录 / 部分完成 | `1efbfc8` 已落地 internal network、non-root、read-only、cap drop、no-new-privileges、pids/tmpfs、CPU/内存限制，`a1b2187` 提供随机 schema；`9b3d282` 探针、`4ed8585`/`c47716d`/`8dbd878` deadline、`d9801a9` 主动 timeout/PID、临时 memory cgroup 和 `c6667f4` lock wait 均有证据；最新 head `8003ba4` 的远端 Sandbox CI run `37130433346` 全部 success，真实 `.env` 冷启动仍待覆盖 | SIG-P1-03 |
 | S9 | 源码 / 记录 | `1b5f2ff` 已将规格 FAILED 与环境 ERROR/BLOCKED/NOT_RUN 分流；旧容器无密码 DSN 的失败保留为环境错误，不进入 Replan | SIG-P1-03 / 04 |
-| S10 | 记录 | `eeec0d59` 已将候选/fact 引用贯通持久化 Trace；run 2 证明成功 L2/门禁/导出，run 4 证明正式规格失败→Replan→修复，run 3/5 分别保留预算不足与 `REPLAN_LIMIT` 终止负例；`b60401a` 至 `d03541b` 补正式 Artifact/fact 导出拒绝，`c6144ee` 补三端全量回归。完整 live A/B/C/D、远端 Sandbox job 和真实 `.env` 冷启动仍待验收 | SIG-P1-04 / P2-02 / 03 |
+| S10 | 记录 / 正式验收 | `eeec0d59` 已将候选/fact 引用贯通持久化 Trace；run 9/run 10 证明显式 v2 FULL/L2、Evaluator/DeliveryGate/导出，run 10 Backend trace 含 `SPEC_VERIFY_PASSED` fact ref；`b60401a` 至 `d03541b` 补正式 Artifact/fact 导出拒绝，`c6144ee` 补三端回归。完整 live A/B/C/D、远端 Sandbox job、真实 `.env` 冷启动和主动资源故障仍待验收 | SIG-P1-04 / P2-02 / 03 |
 
 ### 2.2 基础 Agent 与展示
 
@@ -157,18 +321,18 @@ SIG-P1-00 必须沿真实 `Agent→Artifact→adapter→SpecContract` 链路实�
 
 | ID | 状态 | 剩余工作与验收 |
 | --- | --- | --- |
-| SIG-P1-00 | done（L1/生产接线） | `cb4355b` 已接入显式适配器、Prompt/Schema、Backend v7 / Frontend v4 及 Reviewer/Backend 两条 v2 路径；缺字段拒绝，真实显式 PK/FK/位置不推断。候选冻结与正式 FULL/L2 仍属 SIG-P1-04 |
-| SIG-P1-01 | in_progress | `1023024` 已补 path/query/body 客户端、独立消费桩和逐字节确定性；run 2/run 4 与 sandbox probe 已实际执行 `tsc --noEmit`，增量变异检出/误报/耗时报告仍待补 |
+| SIG-P1-00 | done（正式 v2 smoke 范围） | `d1e98b2` 新候选经治理 API 发布；run 9/run 10 真实 Handler/Prompt/Schema/explicit adapter 全链路通过，默认 active/v12 未改写。增量变异和 live 仍不属于本范围 |
+| SIG-P1-01 | in_progress | v2 path/query/body client、独立消费桩和 `Json` 导入已由 `d79f65b` 修复并在正式 run 9/run 10 的 L2 tsc 中通过；分层变异检出/误报/耗时报告仍待补 |
 | SIG-P1-02 | in_progress | `1023024` 已补 OpenAPI/DDL 结构解析和绑定参数/响应语义；独立 L2 与正式 FULL/L2 已实际应用 MySQL DDL，分层变异检出/误报/耗时报告仍待 P1-E/CI |
-| SIG-P1-03 | in_progress | 随机 schema / 可靠清理、隔离硬限、真实 MySQL 三领域重复并发和残留查询、运行期资源/网络探针已记录；真实 `.env` 冷启动、主动资源故障注入和远端 L2 CI 仍待覆盖 |
-| SIG-P1-04 | in_progress | `66d410a` 已冻结候选并通过独立 L2；run 2 通过 fixture API/Worker、FULL/L2、可信来源、Evaluator/DeliveryGate 和导出，run 4 补齐失败→Replan→修复，run 3/5 补齐预算与 `REPLAN_LIMIT` 终止 Trace；正式 fact 导出负例仍待验收 |
+| SIG-P1-03 | in_progress | 随机 schema / 可靠清理、隔离硬限、真实 MySQL 三领域重复并发、残留查询、运行期探针、共享 deadline 和主动 timeout/PID 已记录；主动内存/锁等待故障、真实 `.env` 冷启动和远端 L2 CI 仍待覆盖 |
+| SIG-P1-04 | in_progress | `d1e98b2` 候选已正式发布；run 9/run 10 完成 explicit FULL/L2、Evaluator/DeliveryGate/导出，run 10 Backend v7 loop trace 已保存；R3 deadline/资源、R5 增量样本、live 自我修复和远端 Sandbox 仍待验收 |
 
 ### P2：证据与对照
 
 | ID | 状态 | 剩余工作与验收 |
 | --- | --- | --- |
-| SIG-P2-01 | done（限定候选） | `p2-p3-20261002-r1` 已绑定 spec-sandbox A/B/C/D、全部输入/工具反馈策略、L2 verifier/编译器 hash、数据/价格/预算；版本 2–5 显式发布，旧版本未改写 |
-| SIG-P2-02 | blocked（仅 live） | 新采集器已完成 development `192/192` 与 holdout `96/96` fixture；四组完整 fixture 均 `SUCCEEDED` 但 `NOT_EVALUATED`。完整 live 未启动，保守上限 `576 CNY` 被安全执行层拒绝，缺样本不能晋级 |
+| SIG-P2-01 | done（explicit v2 冻结） | `46810a13` 新冻 explicit v2 A/B/C/D：治理版本 4–7、contract hash、Backend/Frontend/Reviewer/Evaluator prompt/schema、L2 compiler/verifier、数据/价格/预算 manifest 均 validate-only 通过；旧版本未改写 |
+| SIG-P2-02 | blocked（仅 live） | explicit v2 development/holdout manifest 和 fixture config 已 validate-only；真实 key/冷启动及最小 live smoke 已执行并 fail-closed，完整批次保守上限 `576 CNY` 未取得本批次预算/启动授权，未创建 P2 live 矩阵；fixture 不替代 live 结论 |
 | SIG-P2-03 | done（限定环境） | 既有正式 Replan/预算/`REPLAN_LIMIT` Trace 加本轮冻结候选的 192/96 完整 fixture 矩阵已有来源关联；短样本与 fixture 不泛化为生产 SLA 或 live 收益 |
 
 ### P3：基础 Agent 补证据与可选扩展
@@ -286,10 +450,10 @@ L1 开发线可以独立演示“规格静态检查”，不能以此关闭 Sand
 | 验收项 | 当前状态 / 关闭条件 |
 | --- | --- |
 | 正式六节点 live + 门禁 + 导出 | 已有 run 38 的指定配置样本；保留为 smoke，不代表 L2 或自我修复 |
-| 真实生产显式事实 + 独立前端消费 | 部分完成：`cb4355b` / `1023024` 覆盖两个生产调用点、显式事实和独立消费；真实 tsc/L2 与正式 FULL/L2 已有 run 2/run 4 记录，增量负例和远端 CI 仍待补 |
-| L2 可重复、并发隔离与安全硬限 | 部分完成：真实重复/并发/失败清理、网络与资源探针均有记录；主动资源故障注入、真实 `.env` 冷启动和远端 L2 CI 仍待验收 |
-| 正式 FULL/L2 门禁 | 部分完成：新候选正式 run 2/run 4 已绑定最终来源并通过 Reviewer/Evaluator/DeliveryGate；Artifact 变更、缺失/过期/低层级/错 scope/伪造 fact 的正式导出负例已补，来源/policy digest 单变体和 live 仍待补 |
-| 正式 verifier 失败→Replan→修复，以及终止 Trace | 部分完成：fixture run 4 已满足失败→一次 Replan→修复，run 3/5 已记录预算不足与 `REPLAN_LIMIT`；live 自我修复仍未关闭 |
+| 真实生产显式事实 + 独立前端消费 | 部分完成：`d1e98b2`/`34295ec`/`948162f` 与 run 9/run 10 已证明显式 Handler、消费、FULL/L2 和 trace；增量负例、远端 CI 与 live 仍待补 |
+| L2 可重复、并发隔离与安全硬限 | 部分完成：真实重复/并发/失败清理、网络/资源探针和共享 deadline 均有记录；主动资源/锁等待故障注入、真实 `.env` 冷启动和远端 L2 CI 仍待验收 |
+| 正式 FULL/L2 门禁 | 部分完成：显式 v2 run 9/run 10 已绑定 v2 fact 并通过 Reviewer/Evaluator/DeliveryGate，ZIP/Markdown 成功；Artifact 变更、缺失/过期/低层级/错 scope/伪造 fact 负例保留，来源/policy 单变体和 live 仍待补 |
+| 正式 verifier 失败→Replan→修复，以及终止 Trace | 部分完成：run 6 记录真实 L2 TS 失败、run 10 记录显式 Backend L2 PASS loop；既有 fixture run 4/5 保留 Replan/终止证据，真实 L2 FAILED→Replan→修复专门样本和 live 自我修复仍未关闭 |
 | 验证器增量、检出/误报/耗时 | 未完成：分层样本、独立真值、历史产物复扫；明确样本量/依赖/局限 |
 | 完整 live A/B/C/D 与置信区间 | blocked：先修复、重冻并满足启动条件；负面结论可接受，缺样本不能关闭 |
 | CI | 普通 master CI 已满足；Sandbox 扩展 CI 已加入 verifier 构建/探针 job，但远端实际运行结果尚未取得 |
@@ -307,3 +471,6 @@ L1 开发线可以独立演示“规格静态检查”，不能以此关闭 Sand
 - [知乎：小红书二面——Agent 框架选型与评价指标](https://zhuanlan.zhihu.com/p/2017373001881002562)
 - [阿里云开发者社区：65 题 AI Agent 面试宝典](https://developer.aliyun.com/article/1739618)
 - [GitHub：ai-agent-interview-guide](https://github.com/bcefghj/ai-agent-interview-guide)
+
+
+</details>

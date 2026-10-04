@@ -1,0 +1,51 @@
+{
+  "experiment_id": "autospec-live-smoke-20261004-v9",
+  "version_ids": {
+    "D": 11
+  },
+  "code_version": "bf7c074",
+  "environment": {
+    "name": "autospec-live-smoke-v9-20261004",
+    "model_mode": "live",
+    "embedding_mode": "fixture",
+    "execution_mode": "LIVE_CONTROL_PLANE"
+  },
+  "fixture_approval_policy": "MANUAL",
+  "fixture_approval_reason": null,
+  "dataset_split": "development",
+  "random_seed": 20261003,
+  "case_ids": [
+    "dev_asset_register"
+  ],
+  "contract_family": "v6",
+  "manifest_path": "experiment-manifest-live-smoke-v9-20261004.json",
+  "manifest_hash": "1bd30de9c73113c054353dc28afe587467ca3a7058d718db79022bd71e5af9bb",
+  "groups": [
+    "D"
+  ],
+  "collection_scope": "WORKFLOW",
+  "budget_authorization_id": "autospec-live-smoke-20261004-v9-cny5",
+  "repetitions": 1,
+  "run_max_cost": 5.0,
+  "total_max_cost": 5.0,
+  "max_runs": 1,
+  "run_max_tokens": 500000,
+  "run_max_model_calls": 16,
+  "run_timeout_seconds": 900,
+  "poll_seconds": 2.0,
+  "pricing_snapshot": {
+    "source": "https://api-docs.deepseek.com/zh-cn/quick_start/pricing/",
+    "observed_at": "2026-10-01",
+    "currency": "CNY",
+    "cost_status": "EXTERNAL_BILLED",
+    "version": "deepseek-v4.1-flash-peak-20261001",
+    "models": {
+      "deepseek:deepseek-flash": {
+        "input_per_million": 2.0,
+        "cached_input_per_million": 0.04,
+        "output_per_million": 8.0
+      }
+    },
+    "mode": "DEEPSEEK_FLASH_PEAK"
+  }
+}

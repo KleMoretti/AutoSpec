@@ -192,6 +192,7 @@ class ToolRuntimeContext:
     correlation_id: str | None = None
     traceparent: str | None = None
     tracestate: str | None = None
+    optional_calls_used: int = 0
 
 
 _TOOL_CONTEXT: ContextVar[ToolRuntimeContext | None] = ContextVar(
@@ -315,11 +316,21 @@ class ToolHarness:
             return cached
 
         if context is not None:
+            required_tools = {
+                (item.name, item.version) for item in frozen_policy.required_tools
+            }
+            is_required = (registration.name, registration.version) in required_tools
+            if not is_required and context.optional_calls_used >= frozen_policy.optional_max_calls:
+                error = ToolRateLimitError("optional tool call budget was exhausted")
+                self._record_error(context, registration, call, error, 0)
+                raise error
             context.calls_used += 1
             if context.calls_used > frozen_policy.max_calls:
                 error = ToolRateLimitError("frozen tool call limit was exhausted")
                 self._record_error(context, registration, call, error, 0)
                 raise error
+            if not is_required:
+                context.optional_calls_used += 1
 
         try:
             await self._check_circuit(registration)

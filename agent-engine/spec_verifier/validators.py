@@ -122,7 +122,7 @@ def _check_tables(contract: SpecContract, issues: list[VerificationIssue]) -> No
     for table in contract.tables:
         primary_keys = [field for field in table.fields if field.primary_key]
         if len(primary_keys) != 1:
-            issues.append(VerificationIssue(code="TABLE_PRIMARY_KEY_INVALID", severity="HIGH", message=f"table {table.name} must have exactly one primary key"))
+            issues.append(VerificationIssue(code="TABLE_PRIMARY_KEY_INVALID", severity="HIGH", message=f"table {table.name} must have exactly one primary key", path=f"artifact.tables.{table.table_id}"))
         fields = {field.name: field for field in table.fields}
         for field in table.fields:
             ref = field.foreign_key
@@ -130,27 +130,27 @@ def _check_tables(contract: SpecContract, issues: list[VerificationIssue]) -> No
                 continue
             target = tables.get(ref.table)
             if target is None or not any(item.name == ref.field for item in target.fields):
-                issues.append(VerificationIssue(code="TABLE_FOREIGN_KEY_UNKNOWN", severity="HIGH", message=f"foreign key {table.name}.{field.name} references missing {ref.table}.{ref.field}"))
+                issues.append(VerificationIssue(code="TABLE_FOREIGN_KEY_UNKNOWN", severity="HIGH", message=f"foreign key {table.name}.{field.name} references missing {ref.table}.{ref.field}", path=f"artifact.tables.{table.table_id}.fields.{field.field_id}"))
                 continue
             target_field = next(item for item in target.fields if item.name == ref.field)
             if target_field.type.kind != field.type.kind:
-                issues.append(VerificationIssue(code="TABLE_FOREIGN_KEY_TYPE_MISMATCH", severity="HIGH", message=f"foreign key {table.name}.{field.name} has an incompatible type"))
+                issues.append(VerificationIssue(code="TABLE_FOREIGN_KEY_TYPE_MISMATCH", severity="HIGH", message=f"foreign key {table.name}.{field.name} has an incompatible type", path=f"artifact.tables.{table.table_id}.fields.{field.field_id}"))
             elif target_field.type.model_dump(mode="json") != field.type.model_dump(mode="json"):
-                issues.append(VerificationIssue(code="TABLE_FOREIGN_KEY_SHAPE_MISMATCH", severity="HIGH", message=f"foreign key {table.name}.{field.name} has incompatible MySQL type parameters"))
+                issues.append(VerificationIssue(code="TABLE_FOREIGN_KEY_SHAPE_MISMATCH", severity="HIGH", message=f"foreign key {table.name}.{field.name} has incompatible MySQL type parameters", path=f"artifact.tables.{table.table_id}.fields.{field.field_id}"))
 
 
 def _check_apis(contract: SpecContract, issues: list[VerificationIssue]) -> None:
     operations: set[tuple[str, str]] = set()
     for api in contract.apis:
         if (api.method, api.path) in operations:
-            issues.append(VerificationIssue(code="API_DUPLICATE_OPERATION", severity="HIGH", message=f"duplicate API operation: {api.method} {api.path}"))
+            issues.append(VerificationIssue(code="API_DUPLICATE_OPERATION", severity="HIGH", message=f"duplicate API operation: {api.method} {api.path}", path=f"artifact.apis.{api.api_id}"))
         operations.add((api.method, api.path))
         if api.auth_required and not api.roles:
-            issues.append(VerificationIssue(code="API_AUTH_ROLE_MISSING", severity="HIGH", message=f"authenticated API has no role: {api.api_id}"))
+            issues.append(VerificationIssue(code="API_AUTH_ROLE_MISSING", severity="HIGH", message=f"authenticated API has no role: {api.api_id}", path=f"artifact.apis.{api.api_id}"))
         path_names = set(re.findall(r"\{([A-Za-z][A-Za-z0-9_]*)\}", api.path))
         declared = {item.name for item in api.parameters if item.location == "path"}
         if path_names != declared:
-            issues.append(VerificationIssue(code="API_PATH_PARAM_MISMATCH", severity="HIGH", message=f"path parameters do not match: {api.api_id}"))
+            issues.append(VerificationIssue(code="API_PATH_PARAM_MISMATCH", severity="HIGH", message=f"path parameters do not match: {api.api_id}", path=f"artifact.apis.{api.api_id}"))
         if isinstance(contract, SpecContractV2):
             for parameter in api.parameters:
                 if parameter.location == "path" and not parameter.required:

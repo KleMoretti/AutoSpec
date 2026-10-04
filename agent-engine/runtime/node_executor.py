@@ -258,7 +258,12 @@ class NodeCommand(TraceContextEnvelope):
 class NodeExecutionEvent(TraceContextEnvelope):
     event_id: str
     source_event_id: str
-    event_type: Literal["NODE_HEARTBEAT", "NODE_SUCCEEDED", "NODE_FAILED"]
+    event_type: Literal[
+        "NODE_HEARTBEAT",
+        "NODE_SUCCEEDED",
+        "NODE_INPUT_REQUIRED",
+        "NODE_FAILED",
+    ]
     workflow_run_id: int
     node_run_id: int
     node_id: str
@@ -340,7 +345,11 @@ class NodeExecutionEvent(TraceContextEnvelope):
 
     @property
     def is_terminal(self) -> bool:
-        return self.event_type in {"NODE_SUCCEEDED", "NODE_FAILED"}
+        return self.event_type in {
+            "NODE_SUCCEEDED",
+            "NODE_INPUT_REQUIRED",
+            "NODE_FAILED",
+        }
 
 
 class NodeExecutor:
@@ -485,10 +494,17 @@ class NodeExecutor:
                 usage,
             )
 
+        event_type = (
+            "NODE_INPUT_REQUIRED"
+            if command.node_id == "product_manager"
+            and getattr(validated_output, "kind", None) == "CLARIFICATION_REQUIRED"
+            else "NODE_SUCCEEDED"
+        )
+        suffix = "input-required" if event_type == "NODE_INPUT_REQUIRED" else "succeeded"
         return NodeExecutionEvent(
-            event_id=f"{command.execution_id}:succeeded",
+            event_id=f"{command.execution_id}:{suffix}",
             source_event_id=command.event_id,
-            event_type="NODE_SUCCEEDED",
+            event_type=event_type,
             workflow_run_id=command.workflow_run_id,
             node_run_id=command.node_run_id,
             node_id=command.node_id,

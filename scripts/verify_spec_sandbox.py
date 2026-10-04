@@ -77,6 +77,9 @@ _IN_CONTAINER_PROBE = r'''
 import glob
 import json
 import os
+import subprocess
+import sys
+import time
 import urllib.error
 import urllib.request
 from urllib.parse import unquote, urlparse
@@ -130,6 +133,50 @@ timeout_status, _ = request(
     TOKEN,
 )
 require("timeout_bound", timeout_status == 422, str(timeout_status))
+
+# Active process-timeout probe: inject a test-only sleeper command for the
+# child tsc process. The verifier must terminate that process group, preserve
+# an ERROR report, and still clean its temporary directory/schema.
+from spec_verifier.compiler import compile_spec
+from spec_verifier.fixtures import spec_fixture
+from spec_verifier.sandbox import run_l2
+
+timeout_started = time.monotonic()
+timeout_report = run_l2(
+    compile_spec(spec_fixture("campus_marketplace")),
+    execution_id="sandbox-probe-active-timeout",
+    timeout_ms=1_000,
+    scope="FULL",
+    tsc_command=[sys.executable, "-c", "import time; time.sleep(5)"],
+)
+timeout_elapsed = time.monotonic() - timeout_started
+timeout_codes = {issue.code for issue in timeout_report.issues}
+require("active_timeout_status", timeout_report.status == "ERROR", str(timeout_report.status))
+require("active_timeout_issue", "L2_TYPESCRIPT_TIMEOUT" in timeout_codes, str(timeout_codes))
+require("active_timeout_bound", timeout_elapsed < 4, str(timeout_elapsed))
+
+# Active PID-limit probe: start a bounded number of tiny children until the
+# container cgroup refuses one, then terminate and reap every child.
+children = []
+pid_limit_hit = False
+try:
+    for _ in range(256):
+        try:
+            children.append(subprocess.Popen(
+                [sys.executable, "-c", "import time; time.sleep(30)"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            ))
+        except OSError:
+            pid_limit_hit = True
+            break
+finally:
+    for child in children:
+        if child.poll() is None:
+            child.kill()
+    for child in children:
+        child.wait(timeout=2)
+require("active_pid_limit", pid_limit_hit, f"started={len(children)}")
 
 from spec_verifier.fixtures import spec_fixture
 
@@ -185,6 +232,10 @@ print(json.dumps({
     "unauthorized_status": unauthorized_status,
     "oversized_request_status": oversized_status,
     "timeout_bound_status": timeout_status,
+    "active_timeout_status": timeout_report.status,
+    "active_timeout_issue": "L2_TYPESCRIPT_TIMEOUT" in timeout_codes,
+    "active_timeout_elapsed_seconds": round(timeout_elapsed, 3),
+    "active_pid_limit": pid_limit_hit,
     "l2_status": report["status"],
     "l2_level": report["level"],
     "temporary_directory_cleanup": True,

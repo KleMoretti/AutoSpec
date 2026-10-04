@@ -99,6 +99,7 @@ public class WorkflowSnapshotParser {
                                 "tool_policy",
                                 "agent_loop_policy",
                                 "retrieval_policy",
+                                "clarification_policy",
                                 "verification_policy",
                                 "timeout_ms",
                                 "requires_human_approval",
@@ -133,7 +134,8 @@ public class WorkflowSnapshotParser {
                     optionalObject(node, "agent_loop_policy"),
                     timeoutMs,
                     optionalObject(node, "retrieval_policy"),
-                    optionalObject(node, "verification_policy")
+                    optionalObject(node, "verification_policy"),
+                    optionalObject(node, "clarification_policy")
             ));
         });
         return result;

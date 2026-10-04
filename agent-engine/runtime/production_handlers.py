@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +23,13 @@ from runtime.tool_harness import execute_current_tool
 from schemas.architecture_design import ArchitectureDesignArtifact, ArchitectureDesignArtifactV2
 from schemas.agent_loop import LoopPolicy
 from schemas.backend_design import BackendDesignArtifact, ExplicitBackendDesignArtifact
+from schemas.clarification import (
+    ClarificationConflict,
+    ClarificationPolicy,
+    ClarificationRequest,
+    ClarificationResponse,
+    ProductManagerResult,
+)
 from schemas.evaluation import (
     EvaluationInput,
     EvaluationInputV2,
@@ -36,13 +44,16 @@ from schemas.frontend_skeleton import (
 )
 from schemas.prd import PrdArtifact
 from schemas.rework import ReworkDirective
-from schemas.review import ReviewReport, ReviewReportV2
+from schemas.review import ReviewDecision, ReviewIssue, ReviewReport, ReviewReportV2, ReworkRoute
 from schemas.tool import ToolCallRequest
 from schemas.verification import VerificationFact, VerificationReport
 from spec_verifier.compiler import compile_spec
 from spec_verifier.artifact_adapter import explicit_spec_contract_from_artifacts
 from spec_verifier.fixtures import spec_contract_from_artifacts
-from review.shared_contract import validate_backend_contract
+from review.shared_contract import (
+    validate_backend_contract,
+    validate_explicit_backend_contract,
+)
 
 
 class ProductManagerInput(BaseModel):
@@ -50,6 +61,15 @@ class ProductManagerInput(BaseModel):
 
     requirement: str = Field(min_length=1)
     retrieved_sources: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class ProductManagerClarificationInput(ProductManagerInput):
+    clarification_protocol: str = "clarification-v1"
+    clarification_policy: ClarificationPolicy = Field(default_factory=ClarificationPolicy)
+    clarification_context: dict[str, Any] = Field(default_factory=dict)
+    clarification_request: ClarificationRequest | None = None
+    clarification_responses: list[ClarificationResponse] = Field(default_factory=list)
+    context_conflicts: list[ClarificationConflict] = Field(default_factory=list)
 
 
 class PrdNodeInput(ProductManagerInput):
@@ -86,6 +106,9 @@ class ReviewerNodeInputV2(FrontendNodeInputV2):
 
 class QualityGateBlockedError(RuntimeError):
     error_code = "QUALITY_GATE_BLOCKED"
+
+
+FIXTURE_CROSS_NODE_REWORK_MARKER = "[[fixture-cross-node-rework]]"
 
 
 def build_production_registry(model_client: ModelClient | None = None) -> HandlerRegistry:
@@ -153,14 +176,26 @@ def build_production_registry(model_client: ModelClient | None = None) -> Handle
     for handler_key, version, node_name, input_model, output_model, input_name, output_name, prompt_key in (
         ("ArchitectAgent", "v2", "architect", PrdNodeInput, ArchitectureDesignArtifactV2, "ArchitectureInput", "ArchitectureDesignArtifactV2", "architect_shared"),
         ("ArchitectAgent", "v3", "architect", PrdNodeInput, ArchitectureDesignArtifactV2, "ArchitectureInput", "ArchitectureDesignArtifactV2", "architect_schema"),
+        ("ArchitectAgent", "v4", "architect", PrdNodeInput, ArchitectureDesignArtifactV2, "ArchitectureInput", "ArchitectureDesignArtifactV2", "architect_schema_v2"),
+        ("ArchitectAgent", "v5", "architect", PrdNodeInput, ArchitectureDesignArtifactV2, "ArchitectureInput", "ArchitectureDesignArtifactV2", "architect_schema_v3"),
+        ("ArchitectAgent", "v6", "architect", PrdNodeInput, ArchitectureDesignArtifactV2, "ArchitectureInput", "ArchitectureDesignArtifactV2", "architect_schema_v4"),
         ("BackendEngineerAgent", "v3", "backend_engineer", BackendDesignInput, BackendDesignArtifact, "BackendDesignInput", "BackendDesignArtifact", "backend_engineer_shared"),
         ("BackendEngineerAgent", "v4", "backend_engineer", BackendDesignInput, BackendDesignArtifact, "BackendDesignInput", "BackendDesignArtifact", "backend_engineer_loop"),
          ("BackendEngineerAgent", "v5", "backend_engineer", BackendDesignInput, BackendDesignArtifact, "BackendDesignInput", "BackendDesignArtifact", "backend_engineer_loop_v2"),
          ("BackendEngineerAgent", "v6", "backend_engineer", BackendDesignInput, BackendDesignArtifact, "BackendDesignInput", "BackendDesignArtifact", "backend_engineer_loop_v3"),
          ("BackendEngineerAgent", "v7", "backend_engineer", BackendDesignInput, ExplicitBackendDesignArtifact, "BackendDesignInput", "ExplicitBackendDesignArtifact", "backend_engineer_explicit"),
+         ("BackendEngineerAgent", "v8", "backend_engineer", BackendDesignInput, ExplicitBackendDesignArtifact, "BackendDesignInput", "ExplicitBackendDesignArtifact", "backend_engineer_explicit_loop"),
+         ("BackendEngineerAgent", "v9", "backend_engineer", BackendDesignInput, ExplicitBackendDesignArtifact, "BackendDesignInput", "ExplicitBackendDesignArtifact", "backend_engineer_explicit_loop_v2"),
+         ("BackendEngineerAgent", "v10", "backend_engineer", BackendDesignInput, ExplicitBackendDesignArtifact, "BackendDesignInput", "ExplicitBackendDesignArtifact", "backend_engineer_explicit_loop_v3"),
          ("FrontendEngineerAgent", "v2", "frontend_engineer", FrontendNodeInputV2, FrontendSkeletonArtifact, "FrontendSkeletonInputV2", "FrontendSkeletonArtifact", "frontend_engineer_shared"),
          ("FrontendEngineerAgent", "v3", "frontend_engineer", FrontendNodeInputV2, FrontendSkeletonArtifact, "FrontendSkeletonInputV2", "FrontendSkeletonArtifact", "frontend_schema"),
          ("FrontendEngineerAgent", "v4", "frontend_engineer", FrontendNodeInputV2, ExplicitFrontendSkeletonArtifact, "FrontendSkeletonInputV2", "ExplicitFrontendSkeletonArtifact", "frontend_explicit"),
+         ("FrontendEngineerAgent", "v5", "frontend_engineer", FrontendNodeInputV2, ExplicitFrontendSkeletonArtifact, "FrontendSkeletonInputV2", "ExplicitFrontendSkeletonArtifact", "frontend_explicit_v2"),
+         ("FrontendEngineerAgent", "v6", "frontend_engineer", FrontendNodeInputV2, ExplicitFrontendSkeletonArtifact, "FrontendSkeletonInputV2", "ExplicitFrontendSkeletonArtifact", "frontend_explicit_v3"),
+         ("FrontendEngineerAgent", "v7", "frontend_engineer", FrontendNodeInputV2, ExplicitFrontendSkeletonArtifact, "FrontendSkeletonInputV2", "ExplicitFrontendSkeletonArtifact", "frontend_explicit_v4"),
+         ("FrontendEngineerAgent", "v8", "frontend_engineer", FrontendNodeInputV2, ExplicitFrontendSkeletonArtifact, "FrontendSkeletonInputV2", "ExplicitFrontendSkeletonArtifact", "frontend_explicit_v5"),
+         ("FrontendEngineerAgent", "v9", "frontend_engineer", FrontendNodeInputV2, ExplicitFrontendSkeletonArtifact, "FrontendSkeletonInputV2", "ExplicitFrontendSkeletonArtifact", "frontend_explicit_v6"),
+         ("FrontendEngineerAgent", "v10", "frontend_engineer", FrontendNodeInputV2, ExplicitFrontendSkeletonArtifact, "FrontendSkeletonInputV2", "ExplicitFrontendSkeletonArtifact", "frontend_explicit_v7"),
         ("ReviewerAgent", "v2", "reviewer", ReviewerNodeInputV2, ReviewReport, "ReviewInputV2", "ReviewReport", "reviewer_shared"),
         ("ReviewerAgent", "v4", "reviewer", ReviewerNodeInputV2, ReviewReportV2, "ReviewInputV4", "ReviewReportV2", "reviewer_schema"),
         ("ReviewerAgent", "v5", "reviewer", ReviewerNodeInputV2, ReviewReportV2, "ReviewInputV4", "ReviewReportV2", "reviewer_schema_v2"),
@@ -188,6 +223,12 @@ def build_production_registry(model_client: ModelClient | None = None) -> Handle
         registry, "ProductManagerAgent", "v2", "product_manager",
         ProductManagerInput, PrdArtifact, "GenerateRequest",
         "PrdArtifact", "product_manager_schema", model_client,
+    )
+    _register_agent_node(
+        registry, "ProductManagerAgent", "v3", "product_manager",
+        ProductManagerClarificationInput, ProductManagerResult,
+        "ClarificationInput", "ProductManagerResult",
+        "product_manager_clarification", model_client,
     )
     registry.register(
         "EvaluatorAgent",
@@ -254,7 +295,10 @@ def _register_agent_node(
     def execute_single_shot(input_payload: BaseModel) -> dict[str, Any]:
         compacted_input, quality_profile = compact_input(input_payload)
         if prompt_key.endswith("_shared") or (
-            handler_key in {"ArchitectAgent", "FrontendEngineerAgent"}
+            handler_key == "ArchitectAgent"
+            and output_model is ArchitectureDesignArtifactV2
+        ) or (
+            handler_key == "FrontendEngineerAgent"
             and handler_version == "v3"
         ) or (
             handler_key == "BackendEngineerAgent"
@@ -363,6 +407,10 @@ def _register_agent_node(
             verifier_payload.get("verification_fact")
         )
         if report.gate_status != "PASSED" or trusted_fact.status != "PASSED":
+            if report.status == "FAILED" and report.issues:
+                return _verification_rework_report(report, trusted_fact)
+            # Environment/transport failures are not model-repairable. Keep
+            # the existing fail-closed behavior and do not spend a rework turn.
             raise RuntimeError("spec.verify blocked the candidate")
         with model_routing_request(quality_profile, node_name):
             record = await asyncio.to_thread(
@@ -374,6 +422,34 @@ def _register_agent_node(
             )
         if record.status != "SUCCEEDED" or record.output_payload is None:
             raise RuntimeError(record.error_message or f"{node_name} execution failed")
+        output_payload = record.output_payload
+        if (
+            model_client is None
+            and FIXTURE_CROSS_NODE_REWORK_MARKER in str(compacted_input.get("requirement", ""))
+            and frozen is not None
+            and ":reviewer:1:" in frozen.execution_id
+        ):
+            report = ReviewReportV2.model_validate(output_payload)
+            injected_issue = ReviewIssue(
+                severity="HIGH",
+                issue_type="FIXTURE_CROSS_NODE_REWORK",
+                description="Fixture-only first review requires a bounded Backend responsibility handoff.",
+                suggestion="Re-run backend_engineer against the frozen Shared Contract without changing stable API ids.",
+                issue_id="ISS-FIXTURE-CROSS-NODE",
+            )
+            output_payload = ReviewReportV2(
+                score=min(report.score, 80),
+                issues=[*report.issues, injected_issue],
+                decision="REWORK",
+                routes=[ReworkRoute(
+                    target_node="backend_engineer",
+                    issue_ids=[injected_issue.issue_id],
+                    required_changes=[injected_issue.suggestion],
+                    invalidate_downstream=True,
+                )],
+                verification_fact=report.verification_fact,
+            ).model_dump(mode="json")
+            record = replace(record, output_payload=output_payload)
         _record_fixture_invocation(
             model_client=model_client,
             record=record,
@@ -385,8 +461,10 @@ def _register_agent_node(
 
     async def execute_backend(input_payload: BaseModel) -> dict[str, Any]:
         compacted_input, quality_profile = compact_input(input_payload)
-        if handler_version in {"v3", "v4", "v5", "v6"}:
+        if handler_version in {"v3", "v4", "v5", "v6", "v7", "v8"}:
             compacted_input["shared_contract_required"] = True
+        if output_model is ExplicitBackendDesignArtifact:
+            compacted_input["explicit_contract_required"] = True
         contract = current_model_execution_contract()
         policy = LoopPolicy.model_validate(
             contract.agent_loop_policy if contract is not None else {}
@@ -410,14 +488,19 @@ def _register_agent_node(
                 f"Backend Engineer loop stopped with {result.stop_reason.value}",
                 result.stop_reason.value,
             )
-        if prompt_key.endswith("_shared"):
+        if output_model is ExplicitBackendDesignArtifact:
+            validate_explicit_backend_contract(
+                ArchitectureDesignArtifactV2.model_validate(compacted_input["architecture_design"]),
+                ExplicitBackendDesignArtifact.model_validate(result.candidate),
+            )
+        elif prompt_key.endswith("_shared"):
             validate_backend_contract(
                 ArchitectureDesignArtifactV2.model_validate(compacted_input["architecture_design"]),
                 BackendDesignArtifact.model_validate(result.candidate),
             )
         return result.candidate
 
-    if node_name == "backend_engineer" and output_model is not ExplicitBackendDesignArtifact:
+    if node_name == "backend_engineer":
         execute = execute_backend
     elif handler_key == "ReviewerAgent" and handler_version in {"v3", "v4", "v5"}:
         execute = execute_reviewer
@@ -479,6 +562,56 @@ def _explicit_contract_required(verification_policy: dict[str, Any]) -> bool:
     return verification_policy.get("verifier_version") == "spec-verifier-v2"
 
 
+def _verification_rework_report(
+    report: VerificationReport,
+    fact: VerificationFact,
+) -> dict[str, Any]:
+    """Turn deterministic spec failures into issue-scoped Reviewer routes.
+
+    This is deliberately deterministic: verifier failures never ask the
+    semantic model to invent an owner. Environment failures are handled by the
+    caller and remain terminal.
+    """
+    grouped: dict[str, list[ReviewIssue]] = {}
+    for issue in report.issues:
+        digest = hashlib.sha256(
+            f"{issue.code}\n{issue.path}\n{issue.message}".encode("utf-8")
+        ).hexdigest()[:12].upper()
+        review_issue = ReviewIssue(
+            severity=issue.severity,
+            issue_type=issue.code,
+            description=issue.message,
+            suggestion=f"Repair the contract at {issue.path}: {issue.message}",
+            issue_id=f"ISS-VERIFY-{digest}",
+            artifact_path=issue.path,
+            evidence=[issue.path],
+        )
+        path = issue.path.lower()
+        target = (
+            "frontend_engineer" if "binding" in path else
+            "backend_engineer" if any(token in path for token in ("table", "api", "ddl", "typescript")) else
+            "architect"
+        )
+        grouped.setdefault(target, []).append(review_issue)
+    issues = [issue for values in grouped.values() for issue in values]
+    routes = [
+        ReworkRoute(
+            target_node=target,
+            issue_ids=[issue.issue_id or "ISS-VERIFY" for issue in target_issues],
+            required_changes=[issue.suggestion for issue in target_issues],
+            invalidate_downstream=True,
+        )
+        for target, target_issues in grouped.items()
+    ]
+    return ReviewReportV2(
+        score=0,
+        issues=issues,
+        decision=ReviewDecision.REWORK,
+        routes=routes,
+        verification_fact=fact.model_dump(mode="json"),
+    ).model_dump(mode="json")
+
+
 def _compile_context(
     node_name: str,
     serialized_input: dict[str, Any],
@@ -500,7 +633,14 @@ def _compile_context(
     compacted_input.pop("context_manifest", None)
     try:
         _validate_artifact_context(compacted_input)
-        validated = input_model.model_validate(compacted_input).model_dump(mode="json")
+        validation_input = dict(compacted_input)
+        # The baseline is trusted control-plane provenance. Historical
+        # evaluator schemas remain hash-compatible; the candidate evaluator
+        # carries this field in the envelope but does not widen the frozen v3
+        # model contract.
+        if input_model is EvaluationInputV3:
+            validation_input.pop("requirement_baseline", None)
+        validated = input_model.model_validate(validation_input).model_dump(mode="json")
     except ValidationError as exception:
         raise ContextPolicyError(
             "Compacted context failed the frozen node input schema"
@@ -512,7 +652,12 @@ def _compile_context(
 
 def _validate_artifact_context(payload: dict[str, Any]) -> None:
     execution = current_model_execution_contract()
-    verification_policy = dict(execution.verification_policy) if execution else {}
+    input_policy = payload.get("verification_policy")
+    verification_policy = (
+        dict(input_policy)
+        if isinstance(input_policy, dict)
+        else dict(execution.verification_policy) if execution else {}
+    )
     explicit_contract = _explicit_contract_required(verification_policy)
     if explicit_contract:
         from schemas.backend_design import ExplicitBackendDesignArtifact

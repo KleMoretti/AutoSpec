@@ -14,6 +14,19 @@ public interface WorkflowApprovalCoordinator {
             LocalDateTime completedAt
     );
 
+    /**
+     * Persist a model-produced user-input request without treating it as a
+     * successful artifact-producing node event.
+     */
+    default Integer pauseForInputRequired(
+            WorkflowNodeRun nodeRun,
+            String executionId,
+            String outputJson,
+            LocalDateTime completedAt
+    ) {
+        return null;
+    }
+
     static WorkflowApprovalCoordinator none() {
         return new WorkflowApprovalCoordinator() {
             @Override

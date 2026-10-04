@@ -27,6 +27,7 @@ import {
 import ArtifactTabs from '../components/ArtifactTabs';
 import CodeExportPanel from '../components/CodeExportPanel';
 import ReviewIssueTable from '../components/ReviewIssueTable';
+import RequirementClarificationPanel from '../components/RequirementClarificationPanel';
 import WorkflowApprovalPanel from '../components/WorkflowApprovalPanel';
 import WorkflowReplayPanel from '../components/WorkflowReplayPanel';
 import { useProjectDetailData } from '../hooks/useProjectDetailData';
@@ -289,6 +290,11 @@ function ProjectDetailPage() {
 
       {activeStage === 2 ? (
         <>
+          <RequirementClarificationPanel
+            runId={latestRun?.id}
+            onChanged={loadProject}
+            onCancel={handleCancelRun}
+          />
           <WorkflowApprovalPanel approvals={approvals} artifacts={artifacts} onDecide={handleApprovalDecision} />
           <ReviewIssueTable
             projectId={projectId}

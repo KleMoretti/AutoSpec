@@ -40,8 +40,16 @@ def test_registry_contains_all_builtin_v5_handlers() -> None:
     assert registry.resolve("BackendEngineerAgent", "v5")
     assert registry.resolve("BackendEngineerAgent", "v6")
     assert registry.resolve("BackendEngineerAgent", "v7")
+    assert registry.resolve("BackendEngineerAgent", "v9")
+    assert registry.resolve("BackendEngineerAgent", "v10")
     assert registry.resolve("FrontendEngineerAgent", "v3")
     assert registry.resolve("FrontendEngineerAgent", "v4")
+    assert registry.resolve("FrontendEngineerAgent", "v8")
+    assert registry.resolve("FrontendEngineerAgent", "v9")
+    assert registry.resolve("FrontendEngineerAgent", "v10")
+    assert registry.resolve("ArchitectAgent", "v4")
+    assert registry.resolve("ArchitectAgent", "v5")
+    assert registry.resolve("ArchitectAgent", "v6")
     assert registry.resolve("ReviewerAgent", "v4")
     assert registry.resolve("ReviewerAgent", "v5")
     assert registry.resolve("EvaluatorAgent", "v4")
@@ -159,6 +167,31 @@ async def test_architect_schema_handler_selects_shared_contract_output() -> None
             {"requirement": "Build an inventory workspace", "prd": product.output_payload},
             node_id="architect",
         ).model_copy(update={"handler_version": "v3"})
+    )
+
+    assert architect.event_type == "NODE_SUCCEEDED"
+    assert "shared_contract" in architect.output_payload
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("handler_version", ["v5", "v6"])
+async def test_architect_schema_v2_handlers_select_shared_contract_output(
+    handler_version: str,
+) -> None:
+    executor = NodeExecutor(build_production_registry())
+    product = await executor.execute(
+        command(
+            "ProductManagerAgent",
+            {"requirement": "Build an inventory workspace"},
+            node_id="product_manager",
+        )
+    )
+    architect = await executor.execute(
+        command(
+            "ArchitectAgent",
+            {"requirement": "Build an inventory workspace", "prd": product.output_payload},
+            node_id="architect",
+        ).model_copy(update={"handler_version": handler_version})
     )
 
     assert architect.event_type == "NODE_SUCCEEDED"

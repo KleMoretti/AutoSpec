@@ -100,4 +100,43 @@ class ProjectMemoryServiceTest {
                 "REQUIREMENT", "DECISION", "CONSTRAINT", "ENTITY", "API", "ARTIFACT"
         ));
     }
+
+    @Test
+    void unapprovedArtifactDoesNotSupersedeApprovedMemory() {
+        ProjectMemoryFactMapper mapper = mock(ProjectMemoryFactMapper.class);
+        ProjectMemoryFact approved = new ProjectMemoryFact();
+        approved.setId(9L);
+        approved.setProjectId(7L);
+        approved.setFactType("REQUIREMENT");
+        approved.setFactKey("REQ-1");
+        approved.setContentHash("a".repeat(64));
+        approved.setVersion(1);
+        approved.setTrustStatus("APPROVED");
+        approved.setConflictStatus("ACTIVE");
+        when(mapper.selectList(any())).thenReturn(List.of());
+        when(mapper.selectOne(any())).thenReturn(approved);
+        when(mapper.insert(any(ProjectMemoryFact.class))).thenReturn(1);
+        ProjectMemoryService service = new ProjectMemoryService(mapper, new ObjectMapper());
+
+        Artifact artifact = new Artifact();
+        artifact.setId(42L);
+        artifact.setProjectId(7L);
+        artifact.setType("PRD");
+        artifact.setVersion(2);
+        artifact.setStatus("PENDING_REVIEW");
+        artifact.setContentHash("b".repeat(64));
+        artifact.setContent("""
+                {"core_features":[{"requirement_id":"REQ-1","statement":"changed"}]}
+                """);
+
+        service.projectArtifact(artifact, null, 12L);
+
+        ArgumentCaptor<ProjectMemoryFact> captor = ArgumentCaptor.forClass(ProjectMemoryFact.class);
+        verify(mapper, times(2)).insert(captor.capture());
+        assertThat(captor.getAllValues())
+                .anySatisfy(fact -> {
+                    assertThat(fact.getConflictStatus()).isEqualTo("CONFLICT");
+                    assertThat(fact.getTrustStatus()).isEqualTo("UNTRUSTED");
+                });
+    }
 }

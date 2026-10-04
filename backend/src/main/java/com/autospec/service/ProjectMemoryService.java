@@ -1,6 +1,7 @@
 package com.autospec.service;
 
 import com.autospec.dto.ProjectMemoryFactResponse;
+import com.autospec.dto.ContextConflictResponse;
 import com.autospec.entity.Artifact;
 import com.autospec.entity.ProjectMemoryFact;
 import com.autospec.entity.WorkflowNodeRun;
@@ -23,6 +24,9 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.Comparator;
+import java.util.Locale;
+import java.util.regex.Pattern;
 
 @Service
 public class ProjectMemoryService {
@@ -74,6 +78,64 @@ public class ProjectMemoryService {
 
     public List<ProjectMemoryFactResponse> recallTrustedForNode(Long projectId, String nodeId) {
         return recallTrusted(projectId, factTypesForNode(nodeId));
+    }
+
+    public List<ProjectMemoryFactResponse> recallTrustedForNode(
+            Long projectId,
+            String nodeId,
+            String query,
+            int topK,
+            int tokenBudget
+    ) {
+        List<ProjectMemoryFactResponse> facts = recallTrustedForNode(projectId, nodeId);
+        Set<String> terms = terms(query);
+        List<ProjectMemoryFactResponse> ranked = facts.stream()
+                .sorted(Comparator
+                        .comparingInt((ProjectMemoryFactResponse fact) -> relevance(fact, terms))
+                        .reversed()
+                        .thenComparing(ProjectMemoryFactResponse::factType)
+                        .thenComparing(ProjectMemoryFactResponse::factKey))
+                .toList();
+        List<ProjectMemoryFactResponse> selected = new ArrayList<>();
+        int used = 0;
+        for (ProjectMemoryFactResponse fact : ranked) {
+            if (selected.size() >= Math.max(1, topK)) {
+                break;
+            }
+            int estimate = Math.max(1, fact.value().toString().length() / 4);
+            if (tokenBudget > 0 && used + estimate > tokenBudget) {
+                continue;
+            }
+            selected.add(fact);
+            used += estimate;
+        }
+        return List.copyOf(selected);
+    }
+
+    public List<ContextConflictResponse> conflictsForProject(Long projectId, Set<String> factTypes) {
+        LambdaQueryWrapper<ProjectMemoryFact> query = new LambdaQueryWrapper<ProjectMemoryFact>()
+                .eq(ProjectMemoryFact::getProjectId, projectId)
+                .eq(ProjectMemoryFact::getConflictStatus, "CONFLICT")
+                .orderByAsc(ProjectMemoryFact::getFactType)
+                .orderByAsc(ProjectMemoryFact::getFactKey)
+                .orderByDesc(ProjectMemoryFact::getVersion);
+        if (factTypes != null && !factTypes.isEmpty()) {
+            query.in(ProjectMemoryFact::getFactType, factTypes);
+        }
+        return factMapper.selectList(query).stream()
+                .map(fact -> new ContextConflictResponse(
+                        "memory-conflict:" + fact.getId(),
+                        fact.getProjectId(),
+                        fact.getFactType(),
+                        fact.getFactKey(),
+                        json(fact.getValueJson()),
+                        fact.getSourceRef(),
+                        fact.getVersion(),
+                        true,
+                        "unapproved fact conflicts with an approved memory version",
+                        "UNRESOLVED"
+                ))
+                .toList();
     }
 
     public List<ProjectMemoryFactResponse> recallTrusted(Long projectId, Set<String> factTypes) {
@@ -137,7 +199,11 @@ public class ProjectMemoryService {
             return;
         }
         int version = current == null ? nextVersion(artifact.getProjectId(), identity) : current.getVersion() + 1;
-        if (current != null) {
+        boolean approved = "APPROVED".equals(artifact.getStatus());
+        boolean conflict = current != null
+                && "APPROVED".equals(current.getTrustStatus())
+                && !approved;
+        if (current != null && !conflict) {
             close(current, now);
         }
 
@@ -148,7 +214,7 @@ public class ProjectMemoryService {
         fact.setValueJson(canonical);
         fact.setContentHash(hash);
         fact.setVersion(version);
-        fact.setConflictStatus("ACTIVE");
+        fact.setConflictStatus(conflict ? "CONFLICT" : "ACTIVE");
         fact.setTrustStatus("APPROVED".equals(artifact.getStatus()) ? "APPROVED" : "UNTRUSTED");
         fact.setSourceType(sourceType(artifact));
         fact.setSourceRef("artifact:" + artifact.getId() + ":v" + artifact.getVersion());
@@ -297,6 +363,33 @@ public class ProjectMemoryService {
         } catch (JsonProcessingException exception) {
             throw new IllegalArgumentException("Unable to serialize project memory fact", exception);
         }
+    }
+
+    private Set<String> terms(String query) {
+        if (query == null || query.isBlank()) {
+            return Set.of();
+        }
+        Set<String> terms = new LinkedHashSet<>();
+        for (String value : query.toLowerCase(Locale.ROOT).split("[^\\p{L}\\p{Nd}_]+")) {
+            if (value.length() >= 2) {
+                terms.add(value);
+            }
+        }
+        return terms;
+    }
+
+    private int relevance(ProjectMemoryFactResponse fact, Set<String> terms) {
+        if (terms.isEmpty()) {
+            return 0;
+        }
+        String value = fact.value().toString().toLowerCase(Locale.ROOT);
+        int score = 0;
+        for (String term : terms) {
+            if (value.contains(term)) {
+                score++;
+            }
+        }
+        return score;
     }
 
     private JsonNode json(String value) {

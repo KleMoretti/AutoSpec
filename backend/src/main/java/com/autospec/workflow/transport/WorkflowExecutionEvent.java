@@ -293,7 +293,9 @@ public record WorkflowExecutionEvent(
     }
 
     private static boolean isTerminalType(String eventType) {
-        return "NODE_SUCCEEDED".equals(eventType) || "NODE_FAILED".equals(eventType);
+        return "NODE_SUCCEEDED".equals(eventType)
+                || "NODE_INPUT_REQUIRED".equals(eventType)
+                || "NODE_FAILED".equals(eventType);
     }
 
     private static void validateCallRecords(

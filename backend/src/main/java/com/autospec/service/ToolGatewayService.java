@@ -267,7 +267,11 @@ public class ToolGatewayService {
         if (specVerificationClient == null) {
             throw new GatewayFailure("TOOL_GATEWAY_UNAVAILABLE", "sandboxed spec verifier is not configured");
         }
-        return specVerificationClient.verify(request.executionId(), request.arguments());
+        return specVerificationClient.verify(
+                request.executionId(),
+                request.arguments(),
+                request.deadlineEpochMs()
+        );
     }
 
     private JsonNode knowledgeSearch(

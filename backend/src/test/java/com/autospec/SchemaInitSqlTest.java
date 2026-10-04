@@ -16,10 +16,10 @@ class SchemaInitSqlTest {
         source.setURL("jdbc:h2:mem:baseline;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH");
         try (var connection = source.getConnection()) {
             var flyway = Flyway.configure().dataSource(source).locations("classpath:db/migration").load();
-            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(5);
+            assertThat(flyway.migrate().migrationsExecuted).isEqualTo(7);
             flyway.validate();
             assertThat(flyway.migrate().migrationsExecuted).isZero();
-            assertThat(flyway.info().current().getVersion().toString()).isEqualTo("5");
+            assertThat(flyway.info().current().getVersion().toString()).isEqualTo("7");
 
             Set<String> tables = new HashSet<>();
             try (var rows = connection.getMetaData().getTables(null, "public", "%", new String[]{"TABLE"})) {
@@ -29,7 +29,8 @@ class SchemaInitSqlTest {
                     "workflow_execution_bundle", "workflow_tool_call_fact", "workflow_agent_step_fact",
                     "workflow_outbox", "processed_workflow_event", "workflow_event_dead_letter",
                     "artifact", "artifact_component", "artifact_trace_edge", "project_memory_fact",
-                    "model_invocation", "knowledge_document", "knowledge_chunk", "user_session");
+                    "model_invocation", "knowledge_document", "knowledge_chunk", "user_session",
+                    "workflow_clarification", "requirement_baseline");
             assertThat(tables).doesNotContain("agent_task", "agent_event", "external_call_log", "workflow_snapshot");
 
             try (var statement = connection.createStatement()) {

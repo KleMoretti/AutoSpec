@@ -4,7 +4,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from schemas.backend_design import BackendDesignArtifact
+from schemas.backend_design import BackendDesignArtifact, ExplicitBackendDesignArtifact
 from schemas.prd import PrdArtifact
 
 
@@ -21,7 +21,7 @@ class BackendValidationResult(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     valid: bool
-    candidate: BackendDesignArtifact | None = None
+    candidate: BackendDesignArtifact | ExplicitBackendDesignArtifact | None = None
     issues: list[BackendValidationIssue] = Field(default_factory=list)
 
 
@@ -30,6 +30,7 @@ def validate_backend_candidate(
     prd: PrdArtifact,
     *,
     profile: str = "backend-design-v1",
+    explicit_contract_required: bool = False,
 ) -> BackendValidationResult:
     """Run deterministic checks needed before a BackendDesignArtifact can finish."""
 
@@ -44,9 +45,14 @@ def validate_backend_candidate(
             )
         )
 
-    parsed: BackendDesignArtifact | None = None
+    artifact_model = (
+        ExplicitBackendDesignArtifact
+        if explicit_contract_required
+        else BackendDesignArtifact
+    )
+    parsed: BackendDesignArtifact | ExplicitBackendDesignArtifact | None = None
     try:
-        parsed = BackendDesignArtifact.model_validate(candidate)
+        parsed = artifact_model.model_validate(candidate)
     except ValidationError as error:
         message = _compact_validation_error(error)
         code = (
@@ -59,7 +65,7 @@ def validate_backend_candidate(
                 code,
                 "$",
                 message,
-                "Return a BackendDesignArtifact that satisfies its JSON Schema.",
+                "Return the frozen backend artifact that satisfies its JSON Schema.",
             )
         )
 

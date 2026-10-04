@@ -32,12 +32,13 @@ from schemas.agent_loop import (
     StepStatus,
     StopReason,
     ToolCallTurn,
+    ToolObservation,
     parse_agent_turn,
     stable_hash,
     agent_turn_schema,
     validate_loop_budget,
 )
-from schemas.backend_design import BackendDesignArtifact
+from schemas.backend_design import BackendDesignArtifact, ExplicitBackendDesignArtifact
 from schemas.prd import PrdArtifact
 from schemas.tool import ToolCallRequest
 from schemas.verification import VerificationFact, VerificationReport
@@ -97,6 +98,10 @@ async def run_backend_agent_loop(
 
     state = _LoopState(steps=[])
     contract = current_model_execution_contract()
+    explicit_contract_required = bool(
+        contract
+        and contract.verification_policy.get("verifier_version") == "spec-verifier-v2"
+    )
     if contract is not None:
         validate_loop_budget(policy, int(contract.model_policy.get("max_calls", 1)),
                              bool(contract.tool_policy.get("enabled", False)))
@@ -106,6 +111,8 @@ async def run_backend_agent_loop(
         "architecture_design": architecture_design,
         "retrieved_sources": retrieved_sources,
         "context_manifest": context_manifest,
+        "shared_contract_required": True,
+        "explicit_contract_required": explicit_contract_required,
     }
     if rework_directive is not None:
         base_payload["rework_directive"] = rework_directive
@@ -192,6 +199,7 @@ async def run_backend_agent_loop(
                     plan_hash=_plan_hash(state),
                     model_call_ref=model_call_ref,
                     tool_call_ref=tool_ref,
+                    tool_call_reason=turn.reason,
                 )
                 return _result(state, StopReason.PATH_OSCILLATION)
             _append_step(
@@ -202,6 +210,7 @@ async def run_backend_agent_loop(
                 plan_hash=_plan_hash(state),
                 model_call_ref=model_call_ref,
                 tool_call_ref=tool_ref,
+                tool_call_reason=turn.reason,
             )
             started = time.perf_counter()
             try:
@@ -236,9 +245,19 @@ async def run_backend_agent_loop(
                     duration_ms=_elapsed(started),
                 )
                 return _result(state, StopReason.VALIDATION_FAILED)
-            state.observation = _observation(result.result)
-            state.observations.append({"tool": turn.name, "version": turn.version,
-                                       "arguments": turn.arguments, "result": state.observation})
+            observation = ToolObservation(
+                tool=turn.name,
+                version=turn.version,
+                request_id=tool_ref,
+                provider_call_id=turn.provider_call_id,
+                status="SUCCEEDED",
+                result_hash=stable_hash(result.result),
+                source_refs=_source_refs(result.result),
+                result=result.result,
+            ).model_dump(mode="json")
+            observation["arguments"] = turn.arguments
+            state.observation = observation
+            state.observations.append(observation)
             _append_step(
                 state,
                 StepPhase.OBSERVATION,
@@ -298,6 +317,7 @@ async def run_backend_agent_loop(
                 state.candidate,
                 prd,
                 profile=policy.validator_profile,
+                explicit_contract_required=explicit_contract_required,
             )
             state.issues = validation.issues
             codes = [issue.code for issue in validation.issues]
@@ -497,9 +517,13 @@ async def _next_turn(
             issue.model_dump(mode="json") for issue in (state.issues or [])
         ],
         "turn_schema": agent_turn_schema(),
-        "candidate_schema": BackendDesignArtifact.model_json_schema(),
+        "candidate_schema": (
+            ExplicitBackendDesignArtifact.model_json_schema()
+            if base_payload.get("explicit_contract_required")
+            else BackendDesignArtifact.model_json_schema()
+        ),
         "allowed_turn_types": _allowed_turns(phase),
-        "tools": current_tool_harness().describe_allowed() if current_tool_harness() else [],
+        "tools": _model_visible_tools(),
         "remaining_steps": policy.max_steps - state.iterations,
     }
     if model_client is None:
@@ -508,7 +532,21 @@ async def _next_turn(
         return turn, _record_fixture_model_call(payload, turn)
     output = await asyncio.to_thread(
         model_client.generate_json,
-        "BackendEngineerAgent_v2" if policy.version == "agent-loop-v2" else "BackendEngineerAgent_v1",
+        "BackendEngineerAgent_v10"
+        if (
+            current_model_execution_contract()
+            and current_model_execution_contract().prompt_key == "backend_engineer_explicit_loop_v3"
+        )
+        else "BackendEngineerAgent_v9"
+        if (
+            current_model_execution_contract()
+            and current_model_execution_contract().prompt_key == "backend_engineer_explicit_loop_v2"
+        )
+        else "BackendEngineerAgent_v7"
+        if base_payload.get("explicit_contract_required")
+        else "BackendEngineerAgent_v2"
+        if policy.version == "agent-loop-v2"
+        else "BackendEngineerAgent_v1",
         payload,
     )
     turn = parse_agent_turn(output)
@@ -526,6 +564,11 @@ def _fixture_turn(
     rework_directive: dict[str, Any] | None,
     policy: LoopPolicy,
 ) -> AgentTurn:
+    execution = current_model_execution_contract()
+    explicit_contract_required = bool(
+        execution
+        and execution.verification_policy.get("verifier_version") == "spec-verifier-v2"
+    )
     if phase == "PLAN":
         return PlanTurn(
             goal="Produce a traceable backend design.",
@@ -556,6 +599,7 @@ def _fixture_turn(
         retrieved_sources=retrieved_sources,
         context_manifest=context_manifest,
         rework_directive=rework_directive,
+        explicit_contract_required=explicit_contract_required,
     )
     return FinalCandidateTurn(
         candidate=candidate.model_dump(mode="json"),
@@ -590,6 +634,7 @@ def _append_step(
     validation_issue_codes: list[str] | None = None,
     model_call_ref: str | None = None,
     tool_call_ref: str | None = None,
+    tool_call_reason: str | None = None,
     duration_ms: int = 0,
 ) -> None:
     now = int(time.time() * 1000)
@@ -606,6 +651,7 @@ def _append_step(
             validation_issue_codes=list(dict.fromkeys(validation_issue_codes or [])),
             model_call_ref=model_call_ref,
             tool_call_ref=tool_call_ref,
+            tool_call_reason=tool_call_reason,
             started_at_epoch_ms=max(0, now - duration_ms),
             finished_at_epoch_ms=now,
             duration_ms=max(0, duration_ms),
@@ -621,8 +667,8 @@ def _next_phase(state: _LoopState, policy: LoopPolicy) -> str:
         return "REPLAN"
     if (
         policy.enabled
-        and not _verification_required()
         and _tool_policy().get("enabled", False)
+        and bool(_model_visible_tools())
         and (
             not state.observation
             or state.observation.get("error_code") == "TOOL_INPUT_INVALID"
@@ -649,6 +695,21 @@ def _observation(value: Any) -> dict[str, Any]:
     if isinstance(value, dict):
         return value
     return {"value": value}
+
+
+def _source_refs(value: Any) -> list[str]:
+    refs: list[str] = []
+    if isinstance(value, dict):
+        for key in ("citation_id", "source_ref", "source_id", "artifact_content_hash", "chunk_content_hash"):
+            item = value.get(key)
+            if isinstance(item, str) and item and item not in refs:
+                refs.append(item)
+        for child in value.values():
+            refs.extend(ref for ref in _source_refs(child) if ref not in refs)
+    elif isinstance(value, list):
+        for child in value:
+            refs.extend(ref for ref in _source_refs(child) if ref not in refs)
+    return refs[:64]
 
 
 def _verification_policy() -> dict[str, Any]:
@@ -848,6 +909,7 @@ def _verification_stop_reason(error_code: str) -> StopReason:
         "L2_DATABASE_DSN_INVALID",
         "L2_DATABASE_SCHEMA_NAME_INVALID",
         "L2_DATABASE_CLEANUP_FAILED",
+        "L2_DATABASE_ERROR",
         "L2_TYPESCRIPT_UNAVAILABLE",
         "L2_TYPESCRIPT_TIMEOUT",
         "L2_TYPESCRIPT_FAILED",
@@ -860,6 +922,19 @@ def _verification_stop_reason(error_code: str) -> StopReason:
 def _tool_policy() -> dict[str, Any]:
     contract = current_model_execution_contract()
     return dict(contract.tool_policy) if contract is not None else {}
+
+
+def _model_visible_tools() -> list[dict[str, Any]]:
+    harness = current_tool_harness()
+    if harness is None:
+        return []
+    tools = harness.describe_allowed()
+    if not _verification_required():
+        return tools
+    # spec.verify is a mandatory program-owned check. It remains in the
+    # frozen allowlist for the runtime verification call, but the model cannot
+    # claim it as an optional ACTION tool or spend the required budget early.
+    return [tool for tool in tools if tool.get("name") != "spec.verify"]
 
 
 def _tool_idempotency_key(turn: ToolCallTurn) -> str:

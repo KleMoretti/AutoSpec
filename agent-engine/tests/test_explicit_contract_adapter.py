@@ -8,6 +8,8 @@ from fixtures.software_domains import (
     get_fixture,
 )
 from runtime.handler_registry import schema_fingerprint
+from runtime.production_handlers import _validate_artifact_context
+from review.rules import run_current_rule_checks
 from schemas.backend_design import (
     ExplicitBackendDesignArtifact,
     ExplicitForeignKey,
@@ -125,6 +127,32 @@ def test_explicit_adapter_preserves_nonconventional_pk_fk_and_mappings() -> None
     assert compile_spec(contract).files["openapi.json"]
 
 
+def test_explicit_artifacts_use_explicit_shared_contract_validation() -> None:
+    fixture = get_fixture("campus_marketplace")
+    backend = explicit_backend_for_fixture(fixture)
+    frontend = explicit_frontend_for_fixture(fixture, backend)
+    issues = run_current_rule_checks(
+        fixture.prd,
+        fixture.shared_architecture(),
+        backend,
+        frontend,
+        rule_profile="spec-full-v1",
+    )
+
+    assert "SHARED_CONTRACT_BACKEND_DRIFT" not in {issue.issue_type for issue in issues}
+
+    _validate_artifact_context({
+        "prd": fixture.prd.model_dump(mode="json"),
+        "architecture_design": fixture.shared_architecture().model_dump(mode="json"),
+        "backend_design": backend.model_dump(mode="json"),
+        "frontend_skeleton": frontend.model_dump(mode="json"),
+        "verification_policy": {
+            "verifier_version": "spec-verifier-v2",
+            "compiler_version": "spec-compiler-v2",
+        },
+    })
+
+
 def test_explicit_adapter_rejects_legacy_artifacts_instead_of_inferring_facts() -> None:
     fixture = get_fixture("campus_marketplace")
 
@@ -182,6 +210,7 @@ def test_explicit_compiler_generates_typed_request_and_independent_consumer() ->
     assert "URLSearchParams" in client
     assert "JSON.stringify(body)" in client
     assert "from './client'" in bindings
+    assert "type Json" in bindings
     assert "consumeBIND_AUDIT" in bindings
     assert "source.route.productId" in bindings
     assert "response.auditStatus" in bindings

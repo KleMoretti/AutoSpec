@@ -3,11 +3,13 @@ from typing import Any, Mapping
 from agents.base import ModelClient
 from fixtures.software_domains import fixture_for_requirement
 from runtime.structured_output import generate_structured_output
+from schemas.clarification import ProductManagerResult
 from schemas.prd import PrdArtifact
 
 
 class ProductManagerAgent:
     prompt_name = "ProductManagerAgent_v1"
+    clarification_prompt_name = "ProductManagerAgent_v3"
 
     def __init__(self, model_client: ModelClient | None = None):
         self.model_client = model_client
@@ -32,6 +34,40 @@ class ProductManagerAgent:
         # live model client never reaches this branch, so fixture data cannot
         # silently mask a provider or schema failure.
         return fixture_for_requirement(requirement).prd
+
+    def run_clarification(
+        self,
+        requirement: str,
+        *,
+        clarification_context: Mapping[str, Any] | None = None,
+        retrieved_sources: list[dict[str, Any]] | None = None,
+        context_manifest: dict[str, Any] | None = None,
+    ) -> ProductManagerResult:
+        input_payload: Mapping[str, Any] = {
+            "requirement": requirement,
+            "clarification_context": dict(clarification_context or {}),
+            "retrieved_sources": retrieved_sources or [],
+            "context_manifest": context_manifest or {},
+        }
+        if self.model_client is not None:
+            return generate_structured_output(
+                self.model_client,
+                self.clarification_prompt_name,
+                input_payload,
+                ProductManagerResult,
+            )
+
+        context = dict(clarification_context or {})
+        if _clarification_is_satisfied(requirement, context):
+            return ProductManagerResult(
+                kind="PRD_READY",
+                prd=fixture_for_requirement(requirement).prd,
+            )
+
+        return ProductManagerResult(
+            kind="CLARIFICATION_REQUIRED",
+            clarification_request=_fixture_clarification_request(requirement, context),
+        )
 
         return PrdArtifact.model_validate(
             {
@@ -124,3 +160,56 @@ def _infer_project_name(requirement: str) -> str:
     if "marketplace" in lowered or "second-hand" in lowered:
         return "Campus Second-Hand Marketplace"
     return "AutoSpec Generated Project"
+
+
+def _clarification_is_satisfied(
+    requirement: str,
+    context: Mapping[str, Any],
+) -> bool:
+    if context.get("clarification_responses"):
+        return True
+    if context.get("accepted_assumption_ids"):
+        return True
+    if context.get("conflict_resolutions"):
+        return True
+    marker = "[[clarification-required]]"
+    return marker not in requirement.lower() and len(requirement.split()) >= 4
+
+
+def _fixture_clarification_request(
+    requirement: str,
+    context: Mapping[str, Any],
+) -> Any:
+    from schemas.clarification import (
+        ClarificationQuestion,
+        ClarificationRequest,
+        RequirementAssumption,
+    )
+    from schemas.traceability import stable_id
+
+    round_number = int(context.get("round", 1) or 1)
+    return ClarificationRequest(
+        request_id=stable_id("CL", requirement, round_number),
+        lock_version=int(context.get("lock_version", 0) or 0),
+        round=round_number,
+        original_requirement_ref=requirement,
+        questions=[
+            ClarificationQuestion(
+                question_id=stable_id("QUESTION", requirement),
+                category="SCOPE",
+                question="What is the primary user role and the first must-have workflow for this release?",
+                reason="The current requirement does not identify the responsibility boundary needed to produce a safe PRD.",
+                blocking=True,
+                options=["End user completes the main workflow", "Operator/admin manages the workflow"],
+            )
+        ],
+        assumptions=[
+            RequirementAssumption(
+                assumption_id=stable_id("ASSUMPTION", requirement),
+                statement="The first release should cover one primary workflow and its necessary access control.",
+                impact="Choosing a different scope changes the PRD stories, permissions, and downstream contracts.",
+                origin="fixture-clarification-v1",
+            )
+        ],
+        summary="The requirement needs one scope decision before the Product Manager can produce a reviewable PRD.",
+    )

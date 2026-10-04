@@ -122,7 +122,9 @@ function ApprovalCard({ approval, candidateContent, onDecide }: ApprovalCardProp
                 disabled={submitting}
                 onClick={() => setSelectedAction(action)}
               >
-                {translateEnum(t, 'approvalAction', action)}
+                {approval.nodeId === 'product_manager' && action === 'APPROVE'
+                  ? t('approval.approvePrdStartDesign')
+                  : translateEnum(t, 'approvalAction', action)}
               </Button>
             ))}
           </Space>

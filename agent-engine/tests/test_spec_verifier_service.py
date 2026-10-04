@@ -46,6 +46,13 @@ def test_verifier_rejects_request_and_timeout_over_limits() -> None:
     assert oversized_response.json()["detail"] == "verification request is too large"
     assert timeout_response.status_code == 422
 
+    long_timeout_response = client.post(
+        "/verify",
+        json={**_valid_l1_request(), "timeout_ms": verifier_service.MAX_VERIFY_TIMEOUT_MS + 1},
+        headers={"X-AutoSpec-Service-Token": "test-verifier-token"},
+    )
+    assert long_timeout_response.status_code == 422
+
 
 def test_verifier_rejects_oversized_serialized_report(monkeypatch) -> None:
     report = VerificationReport(

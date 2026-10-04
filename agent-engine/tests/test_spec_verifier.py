@@ -5,7 +5,9 @@ import pytest
 from spec_verifier import compile_spec, validate_l1
 from spec_verifier.fixtures import defect_spec_fixtures, normal_spec_fixtures
 from spec_verifier.fixtures import spec_fixture
-from spec_verifier.sandbox import _verify_mysql
+from schemas.verification import VerificationIssue
+from spec_verifier.sandbox import _verify_mysql, compiled_report
+import spec_verifier.sandbox as sandbox_module
 
 
 class _FakeCursor:
@@ -96,6 +98,7 @@ def test_mysql_verification_uses_a_fresh_schema_and_drops_it(monkeypatch, fixtur
 
     create_statements = [statement for statement in fake_mysql.statements if statement.startswith("CREATE DATABASE")]
     drop_statements = [statement for statement in fake_mysql.statements if statement.startswith("DROP DATABASE")]
+    assert any(statement.startswith("SET SESSION innodb_lock_wait_timeout") for statement in fake_mysql.statements)
     assert len(create_statements) == len(drop_statements) == 2
     created_names = {statement.split("`")[1] for statement in create_statements}
     dropped_names = {statement.split("`")[1] for statement in drop_statements}
@@ -124,3 +127,46 @@ def test_mysql_verification_does_not_swallow_cleanup_failure(monkeypatch) -> Non
     issues = _verify_mysql(compiled, "mysql://verify:secret@mysql:3306/autospec_verify", 5.0)
 
     assert "L2_DATABASE_CLEANUP_FAILED" in {issue.code for issue in issues}
+
+
+def test_l2_spec_failures_are_failed_but_environment_failures_are_errors() -> None:
+    compiled = compile_spec(spec_fixture("campus_marketplace"))
+    spec_failure = VerificationIssue(
+        code="L2_TYPESCRIPT_FAILED",
+        severity="HIGH",
+        message="generated consumer does not type-check",
+    )
+    environment_failure = VerificationIssue(
+        code="L2_TYPESCRIPT_TIMEOUT",
+        severity="HIGH",
+        message="compiler deadline elapsed",
+    )
+
+    assert compiled_report(compiled, "spec-failure", [spec_failure], []).status == "FAILED"
+    assert compiled_report(compiled, "environment-failure", [environment_failure], []).status == "ERROR"
+
+
+def test_l2_passes_one_remaining_deadline_to_typescript_process(monkeypatch) -> None:
+    class FakeProcess:
+        pid = 1234
+        returncode = 0
+
+        def communicate(self, timeout=None):
+            self.timeout = timeout
+            return "", ""
+
+        def poll(self):
+            return self.returncode
+
+    process = FakeProcess()
+    monkeypatch.setattr(sandbox_module.subprocess, "Popen", lambda *args, **kwargs: process)
+    monkeypatch.delenv("AUTOSPEC_VERIFY_MYSQL_DSN", raising=False)
+
+    report = sandbox_module.run_l2(
+        compile_spec(spec_fixture("campus_marketplace")),
+        execution_id="deadline-test",
+        timeout_ms=1_000,
+    )
+
+    assert 0 < process.timeout <= 1.0
+    assert "L2_DATABASE_UNAVAILABLE" in {issue.code for issue in report.issues}

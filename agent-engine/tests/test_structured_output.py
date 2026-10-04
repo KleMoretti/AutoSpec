@@ -59,6 +59,7 @@ def test_invalid_output_gets_one_bounded_repair() -> None:
     assert result.project_name == "Fixture"
     assert len(client.payloads) == 2
     assert client.payloads[1]["_structured_output_repair"]["issues"]
+    assert "positive integer length" in client.payloads[1]["_structured_output_repair"]["instruction"]
 
 
 def test_repair_never_exceeds_one_attempt() -> None:

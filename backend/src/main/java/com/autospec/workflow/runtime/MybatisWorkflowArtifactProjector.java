@@ -12,6 +12,7 @@ import com.autospec.mapper.WorkflowNodeRunMapper;
 import com.autospec.mapper.WorkflowRunMapper;
 import com.autospec.service.ArtifactTraceGraphService;
 import com.autospec.service.ProjectMemoryService;
+import com.autospec.service.RequirementBaselineService;
 import com.autospec.workflow.spec.WorkflowNodeDocument;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
@@ -45,6 +46,7 @@ public class MybatisWorkflowArtifactProjector implements WorkflowArtifactProject
     private final ObjectMapper objectMapper;
     private final ArtifactTraceGraphService traceGraphService;
     private final ProjectMemoryService projectMemoryService;
+    private final RequirementBaselineService requirementBaselineService;
 
     public MybatisWorkflowArtifactProjector(
             ArtifactMapper artifactMapper,
@@ -56,7 +58,8 @@ public class MybatisWorkflowArtifactProjector implements WorkflowArtifactProject
             DagCompiler dagCompiler,
             ObjectMapper objectMapper,
             ArtifactTraceGraphService traceGraphService,
-            ProjectMemoryService projectMemoryService
+            ProjectMemoryService projectMemoryService,
+            RequirementBaselineService requirementBaselineService
     ) {
         this.artifactMapper = artifactMapper;
         this.runMapper = runMapper;
@@ -68,6 +71,7 @@ public class MybatisWorkflowArtifactProjector implements WorkflowArtifactProject
         this.objectMapper = objectMapper;
         this.traceGraphService = traceGraphService;
         this.projectMemoryService = projectMemoryService;
+        this.requirementBaselineService = requirementBaselineService;
     }
 
     @Override
@@ -101,7 +105,7 @@ public class MybatisWorkflowArtifactProjector implements WorkflowArtifactProject
         artifact.setProjectId(run.getProjectId());
         artifact.setType(spec.artifactType());
         artifact.setTitle(title(spec.artifactType()));
-        artifact.setContent(outputJson == null ? "{}" : outputJson);
+        artifact.setContent(projectedContent(outputJson, spec.artifactType()));
         artifact.setFormat("JSON");
         artifact.setVersion(latest == null ? 1 : latest.getVersion() + 1);
         artifact.setStatus(status);
@@ -141,6 +145,16 @@ public class MybatisWorkflowArtifactProjector implements WorkflowArtifactProject
         JsonNode input = json(inputJson == null || inputJson.isBlank() ? "{}" : inputJson);
         JsonNode sources = input.path("retrieved_sources");
         return sources.isArray() ? sources.toString() : "[]";
+    }
+
+    private String projectedContent(String outputJson, String artifactType) {
+        JsonNode output = json(outputJson == null ? "{}" : outputJson);
+        if ("PRD".equalsIgnoreCase(artifactType)
+                && "PRD_READY".equals(output.path("kind").asText())
+                && output.path("prd").isObject()) {
+            return output.path("prd").toString();
+        }
+        return output.toString();
     }
 
     private String provenance(
@@ -194,6 +208,12 @@ public class MybatisWorkflowArtifactProjector implements WorkflowArtifactProject
             }
         }
         provenance.put("upstream_artifacts", upstreamArtifacts(run, nodeRun, graph));
+        if (requirementBaselineService != null) {
+            provenance.put(
+                    "requirement_baseline",
+                    requirementBaselineService.inputForRun(run.getId())
+            );
+        }
         try {
             return objectMapper.writeValueAsString(provenance);
         } catch (JsonProcessingException exception) {
