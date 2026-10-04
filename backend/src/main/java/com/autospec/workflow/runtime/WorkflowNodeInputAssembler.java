@@ -124,12 +124,25 @@ public class WorkflowNodeInputAssembler {
         Long projectId = longMetadata(input, "_autospec_project_id");
         if (projectId == null) {
             input.set("project_memory", objectMapper.createArrayNode());
+            input.set("context_conflicts", objectMapper.createArrayNode());
             return;
         }
+        String query = input.path("requirement").asText("")
+                + " " + input.path("rework_directive").toString();
         input.set(
                 "project_memory",
                 objectMapper.valueToTree(
-                        projectMemoryService.recallTrustedForNode(projectId, target.getNodeId())
+                        projectMemoryService.recallTrustedForNode(
+                                projectId, target.getNodeId(), query, 8, 2000
+                        )
+                )
+        );
+        input.set(
+                "context_conflicts",
+                objectMapper.valueToTree(
+                        projectMemoryService.conflictsForProject(
+                                projectId, Set.of("REQUIREMENT", "DECISION", "CONSTRAINT", "ENTITY", "API", "ARTIFACT")
+                        )
                 )
         );
     }
