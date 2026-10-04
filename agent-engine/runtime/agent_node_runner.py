@@ -121,6 +121,13 @@ def _run_node_output(
     explicit_contract_required = bool(payload.get("explicit_contract_required", False))
 
     if node_name == "product_manager":
+        if payload.get("clarification_protocol") == "clarification-v1":
+            return ProductManagerAgent(model_client).run_clarification(
+                requirement,
+                clarification_context=payload.get("clarification_context", {}),
+                retrieved_sources=retrieved_sources,
+                context_manifest=context_manifest,
+            )
         return ProductManagerAgent(model_client).run(
             requirement,
             retrieved_sources=retrieved_sources,

@@ -9,6 +9,7 @@ from model_gateway import OpenAICompatibleModelClient
 from runtime.context_policy import estimate_tokens
 from runtime.node_executor import NodeCommand, NodeExecutor, contract_fingerprint
 from runtime.production_handlers import build_production_registry
+from schemas.clarification import ProductManagerResult
 from schemas.prd import PrdArtifact
 
 
@@ -16,7 +17,7 @@ ENGINE = Path(__file__).resolve().parents[1]
 
 
 def frozen_command() -> NodeCommand:
-    document = json.loads((ENGINE / "contracts/autospec-v5-agent-execution-v6-d.workflow.json").read_text())
+    document = json.loads((ENGINE / "contracts/archive/autospec-v5-agent-execution-v6-d.workflow.json").read_text())
     node = next(item for item in document["nodes"] if item["node_id"] == "product_manager")
     policy, context = node["model_policy"], node["context_policy"]
     calls = policy["max_calls"]
@@ -44,6 +45,48 @@ def test_versioned_prompt_contains_exact_prd_schema_and_fits_frozen_reserve() ->
     assert "acceptance_criteria" not in embedded_schema["properties"]
     assert "acceptance_criteria" in embedded_schema["$defs"]["UserStory"]["properties"]
     assert estimate_tokens(prompt) <= frozen_command().context_policy["prompt_token_reserve"]
+
+
+def test_clarification_result_enforces_exclusive_payloads() -> None:
+    result = ProductManagerResult.model_validate(
+        {
+            "kind": "CLARIFICATION_REQUIRED",
+            "clarification_request": {
+                "request_id": "CL-1",
+                "round": 1,
+                "original_requirement_ref": "Build an internal tool",
+                "questions": [
+                    {
+                        "question_id": "Q-1",
+                        "category": "SCOPE",
+                        "question": "Who uses it?",
+                        "reason": "The primary role is missing.",
+                        "blocking": True,
+                    }
+                ],
+                "summary": "Need the primary role.",
+            },
+        }
+    )
+    assert result.kind == "CLARIFICATION_REQUIRED"
+    assert result.prd is None
+
+    with pytest.raises(ValueError, match="requires prd"):
+        ProductManagerResult.model_validate({"kind": "PRD_READY"})
+
+
+def test_fixture_clarification_does_not_auto_accept_assumption() -> None:
+    from agents.product_manager import ProductManagerAgent
+
+    result = ProductManagerAgent().run_clarification(
+        "[[clarification-required]] Build a tool",
+    )
+    assert result.kind == "CLARIFICATION_REQUIRED"
+    assert result.clarification_request is not None
+    assert all(
+        assumption.acceptance_status == "PENDING"
+        for assumption in result.clarification_request.assumptions
+    )
 
 
 @pytest.mark.asyncio

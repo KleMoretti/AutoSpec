@@ -34,6 +34,7 @@ from runtime.execution_context import (
 PROMPT_FILES = {
     "ProductManagerAgent_v1": "product_manager_v1.md",
     "ProductManagerAgent_v2": "product_manager_schema_v1.md",
+    "ProductManagerAgent_v3": "product_manager_clarification_v1.md",
     "ArchitectAgent_v1": "architect_v1.md",
     "ArchitectAgent_v2": "architect_shared_v1.md",
     "ArchitectAgent_v3": "architect_schema_v1.md",

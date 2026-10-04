@@ -23,6 +23,13 @@ from runtime.tool_harness import execute_current_tool
 from schemas.architecture_design import ArchitectureDesignArtifact, ArchitectureDesignArtifactV2
 from schemas.agent_loop import LoopPolicy
 from schemas.backend_design import BackendDesignArtifact, ExplicitBackendDesignArtifact
+from schemas.clarification import (
+    ClarificationConflict,
+    ClarificationPolicy,
+    ClarificationRequest,
+    ClarificationResponse,
+    ProductManagerResult,
+)
 from schemas.evaluation import (
     EvaluationInput,
     EvaluationInputV2,
@@ -54,6 +61,15 @@ class ProductManagerInput(BaseModel):
 
     requirement: str = Field(min_length=1)
     retrieved_sources: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class ProductManagerClarificationInput(ProductManagerInput):
+    clarification_protocol: str = "clarification-v1"
+    clarification_policy: ClarificationPolicy = Field(default_factory=ClarificationPolicy)
+    clarification_context: dict[str, Any] = Field(default_factory=dict)
+    clarification_request: ClarificationRequest | None = None
+    clarification_responses: list[ClarificationResponse] = Field(default_factory=list)
+    context_conflicts: list[ClarificationConflict] = Field(default_factory=list)
 
 
 class PrdNodeInput(ProductManagerInput):
@@ -207,6 +223,12 @@ def build_production_registry(model_client: ModelClient | None = None) -> Handle
         registry, "ProductManagerAgent", "v2", "product_manager",
         ProductManagerInput, PrdArtifact, "GenerateRequest",
         "PrdArtifact", "product_manager_schema", model_client,
+    )
+    _register_agent_node(
+        registry, "ProductManagerAgent", "v3", "product_manager",
+        ProductManagerClarificationInput, ProductManagerResult,
+        "ClarificationInput", "ProductManagerResult",
+        "product_manager_clarification", model_client,
     )
     registry.register(
         "EvaluatorAgent",

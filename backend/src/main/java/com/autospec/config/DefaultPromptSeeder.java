@@ -138,6 +138,7 @@ public class DefaultPromptSeeder implements ApplicationRunner {
             new DefaultPrompt("backend_engineer_loop_v2", "v1", readPrompt("backend_engineer_loop_v2_v1.md")),
             new DefaultPrompt("backend_engineer_loop_v3", "v1", readPrompt("backend_engineer_loop_v3_v1.md")),
             new DefaultPrompt("product_manager_schema", "v1", readPrompt("product_manager_schema_v1.md")),
+            new DefaultPrompt("product_manager_clarification", "v1", readPrompt("product_manager_clarification_v1.md")),
             new DefaultPrompt("architect_shared", "v1", readPrompt("architect_shared_v1.md")),
             new DefaultPrompt("architect_schema", "v1", readPrompt("architect_schema_v1.md")),
             new DefaultPrompt("architect_schema_v2", "v1", readPrompt("architect_schema_v2_v1.md")),
