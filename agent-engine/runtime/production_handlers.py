@@ -161,6 +161,7 @@ def build_production_registry(model_client: ModelClient | None = None) -> Handle
         ("ArchitectAgent", "v2", "architect", PrdNodeInput, ArchitectureDesignArtifactV2, "ArchitectureInput", "ArchitectureDesignArtifactV2", "architect_shared"),
         ("ArchitectAgent", "v3", "architect", PrdNodeInput, ArchitectureDesignArtifactV2, "ArchitectureInput", "ArchitectureDesignArtifactV2", "architect_schema"),
         ("ArchitectAgent", "v4", "architect", PrdNodeInput, ArchitectureDesignArtifactV2, "ArchitectureInput", "ArchitectureDesignArtifactV2", "architect_schema_v2"),
+        ("ArchitectAgent", "v5", "architect", PrdNodeInput, ArchitectureDesignArtifactV2, "ArchitectureInput", "ArchitectureDesignArtifactV2", "architect_schema_v3"),
         ("BackendEngineerAgent", "v3", "backend_engineer", BackendDesignInput, BackendDesignArtifact, "BackendDesignInput", "BackendDesignArtifact", "backend_engineer_shared"),
         ("BackendEngineerAgent", "v4", "backend_engineer", BackendDesignInput, BackendDesignArtifact, "BackendDesignInput", "BackendDesignArtifact", "backend_engineer_loop"),
          ("BackendEngineerAgent", "v5", "backend_engineer", BackendDesignInput, BackendDesignArtifact, "BackendDesignInput", "BackendDesignArtifact", "backend_engineer_loop_v2"),
