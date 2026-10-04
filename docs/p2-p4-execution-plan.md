@@ -2,7 +2,7 @@
 plan_id: autospec-p2-p4-execution
 status: in_progress
 created_at: 2026-09-30
-updated_at: 2026-10-02
+updated_at: 2026-10-04
 parent: docs/autospec-v5-spec-sandbox-plan.md
 baseline: autospec-v5:pm-schema-repair-v12
 database_baseline: V1
@@ -20,23 +20,34 @@ testing_priority: deferred-by-user
 
 | 任务 | 前置 | 交付物 | 状态 |
 | --- | --- | --- | --- |
-| KB-01 | SB-04 | 允许的只读工具与 native 协议进入候选 | planned |
-| KB-02 | KB-01 | 节点任务/issue 驱动检索、统一来源与快照 | planned |
-| KB-03 | KB-02 | 相关批准记忆、ContextConflict 和优先规则 | planned |
-| KB-04 | KB-03 | Tool/Observation/上下文/Trace 完整决策链 | planned |
-| CL-01 | KB-04 | PM 澄清输出、策略与字段契约 | planned |
-| CL-02 | CL-01 | 持久化等待、回答和 PM 恢复机制 | planned |
-| CL-03 | CL-02 | 问题/假设/冲突表单和确认交互 | planned |
-| CL-04 | CL-03 | 需求基线冻结与最终六节点组合候选 | planned |
+| KB-01 | SB-04 | 允许的只读工具与 native 协议进入候选 | done（新增未激活 `spec-sandbox-kb-v1` 候选；读工具白名单、强制 `spec.verify`、optional/required 工具预算和 ACTION 可选路径已接通；定向 21 passed） |
+| KB-02 | KB-01 | 节点任务/issue 驱动检索、统一来源与快照 | done：候选 retrieval_policy 已冻结；节点 query 显式包含 node/task、上游输入和 rework directive，snapshot 保存 query/policy/corpus/来源 hash 与 issue/evidence 字段；WorkflowRuntimeController 回归通过 |
+| KB-03 | KB-02 | 相关批准记忆、ContextConflict 和优先规则 | done：草稿不再覆盖 APPROVED fact；trusted memory 按 query 相关性/top_k/token budget 排序，输入输出 `context_conflicts` 对象 |
+| KB-04 | KB-03 | Tool/Observation/上下文/Trace 完整决策链 | done：ToolObservation 固定 request/provider id、状态、result hash、source refs/error，ToolCall reason 进入 AgentStepRecord，后续 prompt 保留结构化 observation |
+| CL-01 | KB-04 | PM 澄清输出、策略与字段契约 | done：新增 `clarification-v1` 对象、互斥 `ProductManagerResult`、PM v3 Handler/Prompt 与有界 fixture；定向 `15 passed` |
+| CL-02 | CL-01 | 持久化等待、回答和 PM 恢复机制 | done：V6 持久化澄清请求，`NODE_INPUT_REQUIRED` → `WAITING_APPROVAL`，回答以锁版本/幂等恢复 PM 新 revision；定向 Java 回归通过 |
+| CL-03 | CL-02 | 问题/假设/冲突表单和确认交互 | done：工作台新增澄清问题/选项/自由文本/假设确认/冲突展示、只读态、回答与取消操作；Vitest 29 passed，构建通过 |
+| CL-04 | CL-03 | 需求基线冻结与最终六节点组合候选 | done：V7 append-only `requirement_baseline`，PRD 审批冻结并向下游输入/provenance/Delivery Gate贯通；新增未激活 `spec-sandbox-kb-cl-v1`；定向 Java 与合同校验通过 |
+
+本表依据用户提供的 2026-10-04 只读静态复核更新；没有把它当作新测试/live 结果。
+KB 四项已有可复用零件但当前候选尚未接通，CL 的 Schema、事件、持久化、接口与页面均未开始。
+CL-01～CL-04 已完成；旧 PM Handler/Schema、历史合同和默认版本保持兼容。当前实现目标已收口，未执行 live、默认切换或付费批量评测。
 
 - 首版只让 Backend 在已有循环里自主选择只读工具，Reviewer 仍必须执行 FULL/L2。PM 的澄清是有界交互阶段，不要求再造一个通用自主循环。
 - 默认不新建知识库/Embedding 服务/Agent 框架；复用 Java KnowledgeIndexService、ProjectMemoryService、现有上传与原生工具协议适配。
 - 待实现的类/接口/字段在下文明确作为“建议新增”。先查已有实现后复用，不能把本文示意名误报为仓库现状。
-- 不安排测试集/消融/指标任务；不删除已有安全逻辑。外部 provider 是否可用属于配置条件，不得用未授权付费调用来自动补齐。
+- 不安排测试集/消融/指标专项；修复需要的最小行为、安全与接口回归可随任务执行。外部 provider 是否可用属于配置条件，不得用未授权付费调用来自动补齐。
 
 ## KB-01：让 Agent 可以按需选择现有工具
 
 **入口**：Python `runtime/tool_gateway.py`、`tool_harness.py`、`backend_agent_loop.py`、`model_protocol.py`、`model_gateway.py`、`schemas/workflow_spec.py`；Java `ToolGatewayService`、`WorkflowExecutableContractValidator`；新候选与两端 Prompt。
+
+**现状与缺口**：工具目录已有 6 个工具，循环已有 TOOL_CALL/observations，但显式 v2 候选
+主要只开放 spec.verify，没有候选实际选择 native 协议。强制验证启用时专门 ACTION 阶段
+被关闭；模型可选调用与程序必需 spec.verify 共享预算。早期候选上限为 2，后续 live 候选
+调到 3 仍未完成预算拆分；TOOL_BUDGET_EXHAUSTED 记录不能单独证明所有候选的预算根因。
+可复用 `agent-engine/contracts/archive/autospec-v5-agent-execution-v6-d.workflow.json`
+的三只读工具白名单与 retrieval_policy，迁移到新显式候选时保留强制验证和冻结身份。
 
 1. 从 SB-04 的新显式候选派生下一未激活版本，保留其 v2 Artifact 和强制验证；不能重新从旧 v12 复制而丢掉 SB 修复。
 2. Backend allowlist 开放 `knowledge.search:v1`、`artifact.get:v1`、`contract.lookup:v1` 和原有 `spec.verify:v1`。读取工具 READ_ONLY/DETERMINISTIC，验证 SANDBOXED；不加任意 HTTP/SQL/shell。
@@ -45,12 +56,17 @@ testing_priority: deferred-by-user
 5. 整理单次循环状态：Plan → 可选工具 → Observation → Candidate → 必需 Verify → Replan/Finish。必需 spec.verify 由程序发起，即使模型声称已调用也不能跳过。
 6. 冻结 max_model_calls/max_tool_calls/max_steps/replans/token 和总 deadline；模型调用预算必须容纳计划中允许的轮次。不改变上限只为继续失败循环；收到预算拒绝即结束。
 7. 复用 provider call ID 与本地 request ID 的映射、未知/多工具调用处理、结果长度与错误归一化。工具执行授权只看冻结策略和当前项目身份，不看模型理由。
+8. 显式区分可选取证调用额度与必需验证额度，并受统一总预算/deadline 约束；为允许的首次验证和修复后验证留出额度。启用强制验证不能关闭模型的取证 ACTION。不通过一次次抬高总上限掩盖阶段接线缺口。
 
 **完成条件**：同一新候选既能选择被允许的知识/契约读取，也必须完成 Sandbox 验证；没有重新发明工具网关。
 
 ## KB-02：检索围绕当前问题，不只围绕最初一句话
 
 **入口**：Java `WorkflowNodeInputAssembler`、`KnowledgeIndexService`、`KnowledgeQueryRewriter`、`KnowledgeCorpusEpochService`、`WorkflowRuntimeController`；Python `runtime/retrieval_policy.py`、`context_policy.py`、`backend_agent_loop.py`。
+
+**现状与缺口**：Java 已有节点级检索与 corpus_epoch/query_hash/hit_ids 冻结，但需要节点自带
+retrieval_policy 才触发，当前 sandbox 系候选未配置。现有 query 主要来自整份节点输入序列化，
+缺按任务摘要/issue 构造的查询。已有检索函数不等于修复阶段能够取得相关知识。
 
 1. 区分已有的项目级初始检索与节点级检索；不要删掉初始机制后宣称新增 RAG。为新候选明确配置支持节点的 retrieval_policy，并确认输入装配真正读取它。
 2. 节点查询包含 node_id、当前任务、稳定需求 ID、必要上游摘要；修复查询额外包含 issue code、源路径与缺失事实，不把整个数据库或所有历史 Artifact 拼到 query。
@@ -66,6 +82,9 @@ testing_priority: deferred-by-user
 
 **入口**：Java `ProjectMemoryService`、`ProjectMemoryController`、`WorkflowNodeInputAssembler` 与现有 fact 版本/信任字段；Python context policy；新增建议 `ContextConflict` DTO/schema。
 
+**现状与缺口**：目前只过滤批准状态和有效期，再按 fact_type/fact_key 全量返回；缺任务相关性、
+top-k/来源限制/token budget。复核未见三端 ContextConflict 对象或持久化消解流程。
+
 1. 先复用 APPROVED、ACTIVE、有效期、来源和替代链过滤，再按 node/task/requirement/entity/API 关联程度排序。首版采用确定性相关性与已有索引能力，不新增专用 memory Agent。
 2. 引入 top_k/每来源限制/token budget；不能继续仅按 fact_type/key 排序后全量塞入上下文。原始事实永久记录与本次选中上下文分开，不靠删除事实实现遗忘。
 3. 对同一事实键出现的新旧约束差异生成 ContextConflict，字段至少含 conflict_id、两侧 source/version/hash/value、影响需求、blocking、reason、resolution/status。
@@ -80,6 +99,9 @@ testing_priority: deferred-by-user
 
 **入口**：`backend_agent_loop.py`、`runtime/agent_loop_trace.py`、上下文编译、Java WorkflowTrace DTO/service，前端现有 Trace 面板。
 
+**现状与缺口**：observations 已进入后续 Prompt，但仍是裸 dict，缺 provider_call_id 与统一来源
+引用；ToolCallTurn.reason 未进入 Trace。需接通类型化 Observation 与动作理由摘要，保留现有事实/hash。
+
 1. tool result 先按其 schema 和身份校验，再生成有界 Observation：tool/request/provider_call ID、status、source refs、关键事实、限制/错误和结果 hash。
 2. 下一轮 prompt 包含当前 goal、已确认基线/约束、选中记忆/引用、先前 observations 和未解决 issue；不得只记录工具日志却没把结果送入模型。
 3. 根据失败种类决定下一步：empty knowledge 可换 query；permission denied 不通过反复改参绕过；环境失败结束；明确规格问题进入 SB 修复路径。
@@ -90,6 +112,9 @@ testing_priority: deferred-by-user
 **完成条件**：Plan→Tool→Observation→Candidate 的输入输出可逐步说明；工具调用不是装饰性日志。
 
 ## CL-01：Product Manager 的澄清协议
+
+**状态**：未开始。本节及 CL-02～04 中新增 Schema、事件、表、接口和页面都是待实现目标，
+不能从既有 PRD 审批、工具或状态机推导澄清能力已完成。
 
 **入口**：`agents/product_manager.py`、`schemas/prd.py`、`runtime/production_handlers.py`、`runtime/agent_node_runner.py`、两端 PM Prompt；建议新增 `schemas/clarification.py` 与版本化 PM 输出封套。
 
@@ -128,6 +153,17 @@ testing_priority: deferred-by-user
 7. **澄清回答不等于 PRD 批准。** CLARIFICATION 的 approve/submit 分支回到 PM 的新执行，不能复用旧 WAITING_APPROVAL→SUCCEEDED 默认逻辑；PRD 审批仍由最终 PRD_READY 触发。
 8. 支持刷新页面、服务重启后从 MySQL恢复未答问题；取消、过期和二次提交有明确结果。重复同一回答返回同结果，不触发第二个 PM。
 9. KB 关键记忆冲突进入同一澄清 payload。CL 标记解决后 KB 再装配输入，模型不能绕过冲突直接继续。
+
+**实施前必须处理的两处复用陷阱**：
+
+- 待决唯一键当前为 `pending:{nodeRunId}:{mode}`；多轮澄清必须绑定 kind/request/round
+  或新的节点 revision，关闭旧请求与创建新请求同事务完成，避免撞键或重复放行。
+- `approveNode` 当前批准后会把 PRD 置为 APPROVED 并放行下游；CLARIFICATION 必须进入
+  独立回答/恢复分支，不能复用这段副作用。复用 decide() 的乐观锁和幂等，不复用 PRD 批准语义。
+
+现有迁移文件为 V1、V2、V5；下一条从 V6 起，实施时再次核对最大版本。
+可复用 WAITING_APPROVAL→PENDING 的恢复机制和 WorkflowApprovalPanel，但必须先补 kind、
+NODE_INPUT_REQUIRED 的三端消费与预算结算，不在 Worker 内等待用户。
 
 **完成条件**：用户等待是可恢复的产品状态；回答能准确续跑 PM，且未提前放行 Architect。
 
@@ -171,13 +207,17 @@ testing_priority: deferred-by-user
 下一任务编号和第一步：
 ```
 
-开始执行时先查看总计划的 SB 是否已完成，再按 KB→CL 顺序处理。不要把原 BASE-02 的 done、新函数存在或手写 v2 policy 当成真实候选接线完成。遇到接口/状态缺口，完成必要消费方；遇到未获授权的付费/发布动作，保留实现并明确记录。
+开始执行时先确认 P0/P1 手册的 Architect v6、SB-02 偏差、真实责任路由和当前产物事实绑定
+已收口，再按 KB-01→04、CL-01→04 顺序实施。不要把历史 done、模块存在或 fixture 注入
+当作候选接线完成；仅有计划更新也不算实现。576 CNY 批量评测与消融暂缓，不作为本轮前置。
 
 ## 2026-10-04 外部验收状态
 
-- 真实 `.env` 冷启动、远端 Sandbox CI 和跨节点责任返工已完成；live 诊断与成本/失败路径见 [`p1-live-self-repair-2026-10-04.md`](archive/evidence/p1-live-self-repair-2026-10-04.md)。
-- explicit v2 manifest development/holdout validate-only 通过，但完整 P2 development/holdout 付费矩阵未启动，保守上限 `384 + 192 = 576 CNY` 未执行，P2-E 保持 `blocked/NOT_EVALUATED`。
+- 真实 `.env` 冷启动、远端 Sandbox CI 和 fixture 注入的跨节点返工样本已记录；live 诊断与成本/失败路径见 [`p1-live-self-repair-2026-10-04.md`](archive/evidence/p1-live-self-repair-2026-10-04.md)。真实 verifier FAILED→routes 仍是 SB-03 缺口。
+- explicit v2 manifest development/holdout validate-only 是已有预检；576 CNY 完整矩阵、消融和指标按当前优先级暂缓，未执行结果保持 `NOT_EVALUATED`，不算 KB/CL 的缺口或预算阻塞。
 - 真实 live 的 Backend bounded self-repair 已有部分通过 Trace；完整六节点质量门禁尚未通过，不填写收益或 PROMOTE 结论。
+- live-loop v12 的 Architect v6 漏接共享契约分支，修复及行为回归前不启动新的付费 live。
+  JSON 配置已按 [收敛说明](archive/json-consolidation.md)归档去重，历史合同仍按原 hash 校验。
 
 <!-- CURRENT_IMPLEMENTATION_PLAN_END -->
 

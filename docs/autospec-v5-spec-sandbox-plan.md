@@ -1,9 +1,9 @@
 ---
 plan_id: autospec-spec-sandbox
-version: 1.2
+version: 1.3
 status: in_progress
 created_at: 2026-09-29
-updated_at: 2026-10-02
+updated_at: 2026-10-04
 product_baseline: autospec-v5:pm-schema-repair-v12
 database_baseline: V1
 predecessor: docs/archive/agent-execution-plan.md
@@ -18,6 +18,18 @@ testing_priority: deferred-by-user
 > 本文定义范围与顺序。[P0/P1 手册](p0-p1-execution-plan.md)负责 SB-01～SB-04；[P2–P4 手册](p2-p4-execution-plan.md)负责 KB-01～KB-04、CL-01～CL-04。文件名沿用用户指定路径，当前任务编号优先于旧阶段编号。文末折叠区原文为历史记录，不再作为当前待办。
 
 <!-- CURRENT_IMPLEMENTATION_PLAN_BEGIN -->
+
+## 2026-10-04 复核结论与边界
+
+本次依据用户提供的只读静态复核更新计划；复核没有运行测试、容器或模型，
+其代码缺口不能写成已复现的运行结果。对照 SB/KB/CL 共 12 项任务，当前完成了
+Sandbox 的前半：SB-01 完成，SB-02 基本实现但仍有偏差，SB-03 仅本节点修复可用，
+SB-04 已有校验零件但尚未绑定当前产物。KB 四项已有公共模块而未接入显式候选，
+CL 四项尚未开始。完整六节点 live 仍未通过。
+
+`spec-sandbox-explicit-v2-live-loop-v12` 的 Architect v6 仍漏接
+`shared_contract_required`，修复及必要行为回归完成前不启动该候选的付费 live。
+它与产品默认 `pm-schema-repair-v12` 是两个不同版本标识。
 
 ## 当前目标
 
@@ -42,15 +54,17 @@ POST /api/workflow-runs
 
 ## 当前代码基线与复用边界
 
-依据 [bc00b0d6 复核](archive/evidence/spec-sandbox-reassessment-bc00b0d6-2026-10-02.md)：
+以用户提供的 10-04 静态复核为当前增量状态；[bc00b0d6 复核](archive/evidence/spec-sandbox-reassessment-bc00b0d6-2026-10-02.md)仅保留起点背景：
 
 - 六节点编排、Redis Worker、Outbox、审批、返工、预算、可靠性与可观测已有实现，继续复用。
-- 显式 PK/FK、API 参数位置、前端响应消费、v2 编译与适配已存在；但 v12、`spec-sandbox` 和已冻结消融配置仍声明 v1 verifier，实际没有选择 v2 显式路径。这是 SB-01 的起点，不能继续按“生产显式接线 done”推进。
-- Sandbox 随机 schema 清理、隔离配置和 L2 执行已经存在。剩余代码缺口包括 L2 规格错误的 FAILED/ERROR 分类、输入读取上限、共享执行 deadline 和取消清理。
+- SB-01 的显式 v2 Schema、适配、候选与 Java/Python 注册已接通；后续 live-loop v12 的 Architect v6 注册存在，但执行分支仍按写死版本集合选择旧输出模型。按输出模型判定共享契约，并补行为回归后才复验。
+- Sandbox 已有先鉴权、流式限长、30s 上限、共享 deadline、进程组回收、随机 schema 清理及 Java 剩余超时联动。SB-02 仍需修正混合错误的 ERROR 优先、未知数据库异常归 ERROR，以及 DDL/TS 诊断到源 Artifact 的映射。
+- Backend 本节点修复与停止策略已有；Reviewer FULL 验证失败仍直接抛异常，fixture 注入 routes 只证明协调器可执行。真实 issue 的责任/来源、RepairDirective、Reviewer FAILED→routes 和 Backend→Architect 返工事件/合法边尚未接通。
+- 验证事实已绑定 execution、fencing、policy、digest、scope、版本和有效期；SB-04 尚未绑定当前 Artifact id/version/hash。DeliveryGate 从冻结 policy 读取 source_digest 的条件不足以证明当前产物一致，必须按实际来源集合重算并失效旧报告。
 - native tool-call 适配、`knowledge.search`、`artifact.get`、`contract.lookup`、上传语料与批准记忆已有实现。当前候选主要只开放 `spec.verify`，尚未把按需取证、节点查询和相关记忆连成主路径。
 - 项目级初始检索已经存在；缺节点 `retrieval_policy` 不能简单等同于“没有 RAG”。当前目标是节点根据问题和最新上游输入取证，而非再建一套检索系统。
 - PR #13 合并后的 master CI 已成功，包含 verifier probe。它是既有事实，本轮不重复把“取一个绿色 CI”列为功能任务。
-- 当前新库种子仍是 `pm-schema-repair-v12`；V1 数据库基线已重置，不恢复旧 V104～V117。新迁移取实施时实际最大版本加一，不改 V1 或任何已应用迁移。
+- 当前新库种子仍是 `pm-schema-repair-v12`；现有迁移为 V1、V2、V5，下一新增迁移从 V6 起，实施前再核对实际最大版本。不恢复旧 V104～V117，不改已应用迁移。
 
 ## 范围与不做项
 
@@ -103,20 +117,22 @@ POST /api/workflow-runs
 
 | 顺序 | 任务 | 主交付物 | 依赖 | 状态 |
 | --- | --- | --- | --- | --- |
-| 1 | SB-01 | 新显式规格候选与真实 Handler/Prompt/Schema 接线 | 当前基线 | planned |
-| 2 | SB-02 | L2 失败分类、限流读取、共享 deadline/取消清理 | SB-01 | planned |
-| 3 | SB-03 | 有界局部修复与跨节点责任返工 | SB-01、SB-02 | planned |
-| 4 | SB-04 | 可信验证事实、版本化交付和候选收口 | SB-03 | planned |
-| 5 | KB-01 | 现有只读工具进入候选，native 决策受预算治理 | SB-04 | planned |
-| 6 | KB-02 | 当前任务/问题驱动的节点 RAG 与统一引用 | KB-01 | planned |
-| 7 | KB-03 | 相关批准记忆、冲突对象和消解规则 | KB-02 | planned |
-| 8 | KB-04 | 工具观察进入后续决策和现有 Trace | KB-03 | planned |
-| 9 | CL-01 | PM 澄清协议、字段和策略 | KB-04 | planned |
-| 10 | CL-02 | 控制面持久化等待、回答和恢复 PM | CL-01 | planned |
-| 11 | CL-03 | 用户澄清表单、假设确认与 PRD 审批 | CL-02 | planned |
-| 12 | CL-04 | 冻结需求基线、下游统一消费与最终候选 | CL-03 | planned |
+| 1 | SB-01 | 新显式规格候选与真实 Handler/Prompt/Schema 接线 | 当前基线 | done（当前显式候选，旧版本兼容保留） |
+| 2 | SB-02 | L2 失败分类、限流读取、共享 deadline/取消清理 | SB-01 | in_progress（基本实现；错误优先级、未知异常和源映射待补） |
+| 3 | SB-03 | 有界局部修复与跨节点责任返工 | SB-01、SB-02 | in_progress（本节点修复已有；真实责任路由未接通） |
+| 4 | SB-04 | 可信验证事实、版本化交付和候选收口 | SB-03 | in_progress（已有事实/门禁零件；当前 Artifact 绑定与基线预留未接通） |
+| 5 | KB-01 | 现有只读工具进入候选，native 决策受预算治理 | SB-04 | done（未激活 `spec-sandbox-kb-v1` 候选；工具白名单、强制验证预算和可选 ACTION 已接通，未执行 live） |
+| 6 | KB-02 | 当前任务/问题驱动的节点 RAG 与统一引用 | KB-01 | done（候选策略、节点/issue query 和统一 retrieval snapshot 已接通；未宣称质量收益） |
+| 7 | KB-03 | 相关批准记忆、冲突对象和消解规则 | KB-02 | done（批准事实保护、相关性 bounded recall 和 conflict context 已接通） |
+| 8 | KB-04 | 工具观察进入后续决策和现有 Trace | KB-03 | done（ToolObservation、source refs/result hash 和 ToolCall reason 已进入 loop/Trace，保持旧字段兼容） |
+| 9 | CL-01 | PM 澄清协议、字段和策略 | KB-04 | done（`clarification-v1`、互斥 PM 结果封套、PM v3 Handler/Prompt 已接通；定向 15 passed） |
+| 10 | CL-02 | 控制面持久化等待、回答和恢复 PM | CL-01 | done（V6 澄清表、`NODE_INPUT_REQUIRED`、WAITING_APPROVAL、锁版本/幂等恢复新 PM revision；Java 定向回归通过） |
+| 11 | CL-03 | 用户澄清表单、假设确认与 PRD 审批 | CL-02 | done（工作台澄清面板、选项/自由文本、假设/冲突展示、只读态和取消操作已接通；Vitest 29 passed，构建通过） |
+| 12 | CL-04 | 冻结需求基线、下游统一消费与最终候选 | CL-03 | done（V7 append-only 基线、PRD 审批冻结、下游输入/provenance/Delivery Gate绑定和未激活 `spec-sandbox-kb-cl-v1` 已接通；定向 Java/合同校验通过） |
 
-当前下一步固定为 **SB-01**。修完当前接口的步骤再做消费方；不要从历史状态表中挑一个旧 `done` 就认为当前任务已完成。任务细节按两份手册各自的“当前实现”章节执行。
+当前实现目标已收口：**SB/KB/CL 当前代码链路完成，候选仍未激活**。修复只补必要行为与高风险边界回归，
+不新增测试集/消融专项。完整 live、576 CNY 批量评测均不作为本地实现的前置。
+任务细节按两份手册的“当前实现”章节执行，三份当前状态表同步更新。
 
 ## 版本、发布与资料治理
 
@@ -125,6 +141,8 @@ POST /api/workflow-runs
 - 本计划是代码实现授权范围说明，不包含付费批量调用、默认切换、commit 或 push 授权。
 - 真实 Key 只保存在本地秘密配置；provider 不可用时明确报告配置问题，不假称 live 完成。
 - 前端新增澄清卡片和已有 Trace 字段展示属于本轮交付；新 DAG 看板和独立评测产品不属于本轮。
+- JSON 已收敛：当前契约保留唯一副本，历史契约/实验位于各自 `archive/`；见 [收敛说明](archive/json-consolidation.md)。旧全量副本问题已做目录治理，但不表示业务缺口已修复。共享 `structured_output.py` 的 explicit-v2 专用修复措辞仍需按协议/Schema 版本分派，避免改变历史行为。
+- 用户复核中“3 个提交未推送”和根 `package*.json` 用途属于当时仓库状态，执行前重新核对；本文更新不授权 push、删除文件或外部付费调用。
 
 ## 当前完成定义与面试主题
 
@@ -142,9 +160,9 @@ POST /api/workflow-runs
 
 ## 2026-10-04 外部验收状态
 
-- P1 Sandbox 的真实 `.env` 冷启动、远端五项 Sandbox CI、跨节点 Reviewer→Backend 责任返工已完成；证据见 [`p1-live-self-repair-2026-10-04.md`](archive/evidence/p1-live-self-repair-2026-10-04.md)。
+- 真实 `.env` 冷启动、远端五项 Sandbox CI 和 fixture 注入的 Reviewer→Backend 返工样本已记录；证据见 [`p1-live-self-repair-2026-10-04.md`](archive/evidence/p1-live-self-repair-2026-10-04.md)。fixture 样本证明协调器执行，不能关闭真实 verifier issue 的 SB-03 责任路由缺口。
 - DeepSeek Flash live 已完成真实小额诊断，Backend 有界自我修复路径已在真实运行中完成 Replan/验证，但完整六节点 live 仍被结构化输出或 Evaluator 质量门禁阻断，不能标记为完整 live 通过。
-- P2 完整矩阵未启动；保守 `576 CNY` 外部预算未执行，P2-E 继续 `blocked/NOT_EVALUATED`。默认版本、历史运行和数据库基线保持不变。
+- P2 完整矩阵未启动、结果仍为 `NOT_EVALUATED`；按 10-02 调整，576 CNY 批量评测、消融和指标报告是当前范围外的暂缓项，不能列为 SB/KB/CL 完成的阻塞。默认版本、历史运行和数据库基线保持不变。
 
 <!-- CURRENT_IMPLEMENTATION_PLAN_END -->
 
