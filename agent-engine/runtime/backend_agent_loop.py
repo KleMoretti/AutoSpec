@@ -519,7 +519,12 @@ async def _next_turn(
         return turn, _record_fixture_model_call(payload, turn)
     output = await asyncio.to_thread(
         model_client.generate_json,
-        "BackendEngineerAgent_v7"
+        "BackendEngineerAgent_v9"
+        if (
+            current_model_execution_contract()
+            and current_model_execution_contract().prompt_key == "backend_engineer_explicit_loop_v2"
+        )
+        else "BackendEngineerAgent_v7"
         if base_payload.get("explicit_contract_required")
         else "BackendEngineerAgent_v2"
         if policy.version == "agent-loop-v2"

@@ -166,6 +166,7 @@ def build_production_registry(model_client: ModelClient | None = None) -> Handle
          ("BackendEngineerAgent", "v6", "backend_engineer", BackendDesignInput, BackendDesignArtifact, "BackendDesignInput", "BackendDesignArtifact", "backend_engineer_loop_v3"),
          ("BackendEngineerAgent", "v7", "backend_engineer", BackendDesignInput, ExplicitBackendDesignArtifact, "BackendDesignInput", "ExplicitBackendDesignArtifact", "backend_engineer_explicit"),
          ("BackendEngineerAgent", "v8", "backend_engineer", BackendDesignInput, ExplicitBackendDesignArtifact, "BackendDesignInput", "ExplicitBackendDesignArtifact", "backend_engineer_explicit_loop"),
+         ("BackendEngineerAgent", "v9", "backend_engineer", BackendDesignInput, ExplicitBackendDesignArtifact, "BackendDesignInput", "ExplicitBackendDesignArtifact", "backend_engineer_explicit_loop_v2"),
          ("FrontendEngineerAgent", "v2", "frontend_engineer", FrontendNodeInputV2, FrontendSkeletonArtifact, "FrontendSkeletonInputV2", "FrontendSkeletonArtifact", "frontend_engineer_shared"),
          ("FrontendEngineerAgent", "v3", "frontend_engineer", FrontendNodeInputV2, FrontendSkeletonArtifact, "FrontendSkeletonInputV2", "FrontendSkeletonArtifact", "frontend_schema"),
          ("FrontendEngineerAgent", "v4", "frontend_engineer", FrontendNodeInputV2, ExplicitFrontendSkeletonArtifact, "FrontendSkeletonInputV2", "ExplicitFrontendSkeletonArtifact", "frontend_explicit"),
