@@ -272,7 +272,10 @@ def _register_agent_node(
     def execute_single_shot(input_payload: BaseModel) -> dict[str, Any]:
         compacted_input, quality_profile = compact_input(input_payload)
         if prompt_key.endswith("_shared") or (
-            handler_key in {"ArchitectAgent", "FrontendEngineerAgent"}
+            handler_key == "ArchitectAgent"
+            and handler_version in {"v3", "v4", "v5"}
+        ) or (
+            handler_key == "FrontendEngineerAgent"
             and handler_version == "v3"
         ) or (
             handler_key == "BackendEngineerAgent"
