@@ -33,7 +33,7 @@ def main() -> int:
     # Older snapshots remain compatibility fixtures, not database bootstrap seeds.
     documents = [
         json.loads(path.read_text(encoding="utf-8"))
-        for path in sorted((AGENT_ENGINE / "contracts").glob("*.workflow.json"))
+        for path in sorted((AGENT_ENGINE / "contracts").rglob("*.workflow.json"))
     ]
     prompts = set()
     for document in documents:

@@ -2,7 +2,7 @@
 
 ## 目录约定
 
-- `agent-engine/contracts/`：产品基线、兼容入口、当前候选及协议 Schema，共 7 个 JSON。
+- `agent-engine/contracts/`：产品基线、兼容入口、当前候选及协议 Schema，共 9 个 JSON（含后续新增的 KB 与 KB/CL 候选）。
 - `agent-engine/contracts/archive/`：19 个历史 WorkflowSpec，保持原文件名和原内容。
 - `agent-engine/evaluation/configs/p2-p3-20261003-explicit-v2/`：当前 A/B/C/D 契约、development/holdout manifest 与 fixture 配置、v12 smoke manifest/config，共 10 个 JSON。
 - `agent-engine/evaluation/configs/archive/<原批次目录>/`：历史实验配置，共 65 个 JSON。原批次内 manifest/config 相对引用保持有效。
@@ -25,5 +25,6 @@ manifest 首先读取同批次相对路径；没有副本时，只允许按 Work
 避免在常用目录累计 smoke 副本。配置生成继续复用已有
 `evaluation.freeze_ablation_contracts`，输出目录由调用者选择。
 
-常用目录由 109 个 JSON 减至 17 个；84 个文件归档，8 个重复副本移除。
+目录收敛时常用目录由 109 个 JSON 减至 17 个；后续新增 KB、KB/CL 两个候选，当前为 19 个。
+84 个文件归档，8 个重复副本移除。
 删除的副本可从唯一契约文件或 Git 历史恢复。

@@ -28,7 +28,7 @@ from runtime.execution_context import (
 
 
 def test_frozen_thinking_mode_is_sent_hashed_and_truncation_keeps_usage() -> None:
-    node = json.loads((Path(__file__).resolve().parents[1] / "contracts" /
+    node = json.loads((Path(__file__).resolve().parents[1] / "contracts" / "archive" /
                        "autospec-v5-agent-execution-v5-d.workflow.json").read_text())["nodes"][0]
     calls = []
     class Completions:

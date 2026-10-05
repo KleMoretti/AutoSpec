@@ -47,7 +47,7 @@ def test_shared_contract_allows_backend_detail_and_conventional_table_names() ->
 
 
 def test_canonical_graph_has_real_parallel_branch() -> None:
-    path = Path(__file__).parents[1] / "contracts" / "autospec-v5-parallel.workflow.json"
+    path = Path(__file__).parents[1] / "contracts" / "archive" / "autospec-v5-parallel.workflow.json"
     spec = WorkflowSpec.model_validate(json.loads(path.read_text(encoding="utf-8")))
     nodes = {node.node_id: node for node in spec.nodes}
     assert nodes["backend_engineer"].depends_on == ["architect"]
@@ -64,7 +64,7 @@ def test_frozen_frontend_context_preserves_shared_contract() -> None:
     requirement = "Campus products: publish, search, favorite and audit"
     prd = ProductManagerAgent().run(requirement)
     architecture = ArchitectAgent().run(requirement, prd, shared_contract_required=True)
-    path = Path(__file__).parents[1] / "contracts" / "autospec-v5-parallel.workflow.json"
+    path = Path(__file__).parents[1] / "contracts" / "archive" / "autospec-v5-parallel.workflow.json"
     node = next(item for item in json.loads(path.read_text(encoding="utf-8"))["nodes"] if item["node_id"] == "frontend_engineer")
     payload = {"requirement": requirement, "prd": prd.model_dump(mode="json"), "architecture_design": architecture.model_dump(mode="json")}
     compacted, _ = apply_context_policy("frontend_engineer", payload, "BALANCED", node["context_policy"])

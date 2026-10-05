@@ -15,7 +15,7 @@ class WorkflowExecutableContractTest {
     @Test
     void parallelSharedContractVersionHasIndependentEngineeringBranches() throws Exception {
         var mapper = new ObjectMapper();
-        var snapshot = Files.readString(Path.of("..", "agent-engine", "contracts",
+        var snapshot = Files.readString(Path.of("..", "agent-engine", "contracts", "archive",
                 "autospec-v5-parallel.workflow.json"));
         var spec = new WorkflowSnapshotParser(mapper).parse(snapshot);
         WorkflowExecutableContractValidator.validate(spec);
@@ -57,7 +57,7 @@ class WorkflowExecutableContractTest {
     void diagnosticPinsThinkingModeAndRejectsInvalidValues(String version) throws Exception {
         var mapper = new ObjectMapper();
         var parser = new WorkflowSnapshotParser(mapper);
-        var document = mapper.readTree(Files.readString(Path.of("..", "agent-engine", "contracts",
+        var document = mapper.readTree(Files.readString(Path.of("..", "agent-engine", "contracts", "archive",
                 "autospec-v5-agent-execution-" + version + "-d.workflow.json")));
         var spec = parser.parse(document.toString());
         assertThat(spec.nodes()).hasSize(6);

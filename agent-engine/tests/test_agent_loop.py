@@ -460,7 +460,7 @@ async def test_fixture_verification_marker_bounds_replan(
 @pytest.mark.asyncio
 @pytest.mark.parametrize("early_final,invalid_tool", [(False, False), (True, False), (False, True)])
 async def test_v2_frozen_candidate_executes_tools_and_repairs_within_actual_budget(early_final: bool, invalid_tool: bool) -> None:
-    document = json.loads((Path(__file__).resolve().parents[1] / "contracts" /
+    document = json.loads((Path(__file__).resolve().parents[1] / "contracts" / "archive" /
                           "autospec-v5-agent-execution-v2-d.workflow.json").read_text())
     spec = WorkflowSpec.model_validate(document)
     node = next(n for n in spec.nodes if n.node_id == "backend_engineer")

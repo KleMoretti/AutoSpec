@@ -2,7 +2,7 @@
 plan_id: autospec-p0-p1-execution
 status: in_progress
 created_at: 2026-09-29
-updated_at: 2026-10-03
+updated_at: 2026-10-04
 parent: docs/autospec-v5-spec-sandbox-plan.md
 current_focus: implementation-2
 testing_priority: deferred-by-user
@@ -27,13 +27,25 @@ testing_priority: deferred-by-user
 | 任务 | 状态 | 前置 | 实现完成条件 |
 | --- | --- | --- | --- |
 | SB-01 | done | 无 | `spec-sandbox-explicit-v2` 已由正式 API/Worker 实际选择；Backend/Frontend/Reviewer/Evaluator 显式 Schema、v2 compiler/verifier、上下游 context 与消费均通过，Backend v7 loop trace 已保存 |
-| SB-02 | done（限定范围） | SB-01 | L2 TS/DDL 规格错误与环境错误分流、流式请求体、共享 deadline、进程/锁等待/内存探针和远端 Sandbox probes 均有证据；不泛化为生产 SLA |
-| SB-03 | in_progress（限定范围已验收） | SB-02 | Backend FAILED→Replan→Verify、Reviewer→Backend 跨节点返工和真实 live Backend bounded self-repair 有证据；Architect/Frontend 责任返工及完整 live 六节点质量门禁仍未通过 |
-| SB-04 | planned | SB-03 | 交付事实匹配当前来源、基线/执行、版本、scope、层级与策略 |
+| SB-02 | in_progress（基本实现） | SB-01 | 流式限长、30s deadline、清理与超时已有；混合错误 ERROR 优先、未知数据库异常归 ERROR、DDL/TS 源映射仍待补 |
+| SB-03 | in_progress（本节点修复已有） | SB-02 | Backend FAILED→Replan→Verify 和停止策略可复用；fixture 注入返工只证明协调器执行，真实 issue 责任/来源、Reviewer routes、Backend→Architect 事件/合法边未接通 |
+| SB-04 | in_progress（已有公共零件） | SB-03 | 事实已有执行/fencing/策略/版本/scope/有效期；当前 Artifact id/version/hash 绑定、交付重算与需求基线预留未接通 |
+
+## 2026-10-04 复核后的第一步
+
+依据用户提供的只读静态复核更新本表，本次不把代码观察写成新测试/live 结果。
+优先修复 `spec-sandbox-explicit-v2-live-loop-v12` 的 Architect v6 漏接：
+`production_handlers.py` 仍只为 Architect v3/v4/v5 设置共享契约标记；
+改为按 `output_model is ArchitectureDesignArtifactV2` 判定，并补 v6 输出包含
+shared_contract 的行为回归。仅注册存在的测试不足以证明执行分支正确。
+修复完成前不启动该候选的付费 live；产品默认 `pm-schema-repair-v12` 保持独立。
+
+随后修 SB-02 三处偏差，再依次收口 SB-03、SB-04。必要行为/安全回归可随修复运行，
+不新增测试集或付费消融任务。
 
 ## SB-01：把已有显式契约接到真实候选
 
-**已知缺口**：当前 `spec-sandbox` 和 r1 消融配置仍声明 `spec-verifier-v1`。`_explicit_contract_required` 和 Backend verifier 分支仅在 v2 时启用显式适配；部分 Handler 输出注册也仍是旧模型。因此旧 `P1-A done` / `BASE-02 done` 不能作为本任务完成依据。
+**起点与当前差异**：旧 `spec-sandbox` 和历史消融配置声明 v1 verifier，这是 SB-01 的历史起点。新 `spec-sandbox-explicit-v2` 已接通显式适配并由正式运行选择；不重开其已完成接线。后续 live-loop v12 的 Architect v6 执行分支漏接是当前待修缺陷，不能用 SB-01 done 或 Handler 已注册跳过。
 
 **代码入口**
 
@@ -54,11 +66,13 @@ testing_priority: deferred-by-user
 7. 原推断适配器保留为旧版本兼容入口，新候选必须没有到它的回退分支；不因为该候选失败自动转成 fixture 或旧模型。
 8. 新 canonical、Java catalog、Prompt 资源、工作流种子/注册入口和契约脚本的枚举范围同步；新增迁移取实际最大版本加一。不要让脚本只认识旧文件名而漏掉新候选。
 
-**交接输出**：新候选 `spec-sandbox-explicit-v2`（隔离治理版本 id `3`）及六节点接线已由正式 run 9/run 10 验收；旧 `spec-sandbox`、默认 v12 和旧 v1 解析保持不变。后续 SB-02 仍需完成 shared deadline、流式 body 与主动资源故障边界。
+**交接输出**：新候选 `spec-sandbox-explicit-v2`（隔离治理版本 id `3`）及六节点接线已由正式 run 9/run 10 验收；旧 `spec-sandbox`、默认 v12 和旧 v1 解析保持不变。SB-02 的流式 body/deadline 已有实现，当前补缺以以下静态复核为准。
 
 ## SB-02：让 L2 错误可以被正确处理
 
 **入口**：`spec_verifier/sandbox.py`、`service.py`、`validators.py`、`schemas/verification.py`、Java `SpecVerificationClient` / `ToolGatewayService`；复用已有随机 schema、tmpfs 和专用 Token。
+
+**当前三处偏差**：`compiled_report` 只要包含规格错误 code 就判 FAILED，可能压过同时出现的环境 ERROR；`_database_issue_code` 的未知异常兜底仍为 `L2_DATABASE_SCHEMA_FAILED`；L2 诊断缺 DDL/TS 到源对象映射，path 常为 `$` 且只返回截断 stderr。先修这三处，保留已实现的鉴权、流式限长、共享 deadline、进程/schema 清理和 Java 超时联动。
 
 **固定错误语义**
 
@@ -83,9 +97,17 @@ testing_priority: deferred-by-user
 
 **交接输出**：失败分类表、源位置映射、deadline/取消的调用链；指出真实规格错误如何到达 SB-03 的 FAILED 分支。
 
+**必要回归**：规格 FAILED 与环境 ERROR 同时出现必须聚合为 ERROR；未知数据库异常不触发模型 Replan；DDL/TS 错误能关联源 Artifact 路径与稳定对象 ID。复用现有测试，不另建故障注入专项。
+
 ## SB-03：补齐局部修复与跨节点责任路由
 
 **入口**：`runtime/backend_agent_loop.py`、`schemas/agent_loop.py`、`review/backend_validator.py`、`agents/reviewer.py`、`schemas/rework.py`；Java `ReworkPlanner`、`ReworkPlanExecutionService`、`DefaultReviewerReworkCoordinator`、`WorkflowEventConsumer`。
+
+**当前缺口**：本节点修复、candidate/fact hash Trace、预算/震荡/步数停止已有。
+Reviewer 的真实 FULL 验证阻断后仍直接 `raise RuntimeError`，没有 routes；现有返工样本
+来自 `[[fixture-cross-node-rework]]` 固定问题注入。复核未见 RepairDirective、owner_node
+或 NODE_REWORK_REQUESTED，VerificationIssue 仅有 code/severity/message/path。
+冻结返工边只允许 Reviewer→三个责任节点，缺 Backend→Architect；真实验证反馈尚未接通责任路由。
 
 **按顺序实现**
 
@@ -101,9 +123,18 @@ testing_priority: deferred-by-user
 
 **交接输出**：局部 FAILED→Repair→Verify 与上游 REWORK_REQUEST→合法返工两条明确分支，以及不能修复时的停止路径。
 
+**完成检查**：真实 verifier 的 FAILED 由确定性责任映射产生 routes/事件，Frontend/Architect
+可被定向返工；ERROR 直接结束而不 Replan；无合法边明确阻断。使用真实报告形状的可控输入验证
+消费链，不能再用固定 fixture HIGH 注入当作这项实现完成。
+
 ## SB-04：从验证结果到可信交付收口
 
 **入口**：`ToolGatewayService`、`SpecVerificationClient`、`WorkflowNodeInputAssembler`、`MybatisWorkflowArtifactProjector`、`DeliveryGateService`、`GeneratedBundleVerificationService`、`CodeSkeletonService`、Python `review/evaluator.py`。
+
+**当前缺口**：VerificationFact 的执行身份、fencing、policy、digest、scope、版本和有效期已有。
+尚缺当前 Artifact id/version/hash 与需求基线预留；DeliveryGate 只有冻结 policy 含 source_digest
+才比对，而现有 policy 没有该字段，不能证明导出时仍使用当次验证来源。
+代码骨架 manifest 的 Artifact id 集合检查也不能代替 L2 事实与当前内容的绑定。
 
 1. 验证请求与结果关联执行身份、候选 hash、上游 Artifact id/version/hash、scope、要求层级、profile 和编译/验证器版本；这些由控制面冻结/读取，不能全相信模型 arguments。
 2. Tool Gateway 保留授权、fencing、预算、幂等；长耗时调用用短事务领取、事务外执行、短事务落账。重投同请求复用同事实，不同候选不能误命中旧缓存。
@@ -112,6 +143,10 @@ testing_priority: deferred-by-user
 5. Java 交付入口统一再核对当前源集合、执行与报告；人工编辑产物后旧报告失效。manifest 绑定明确源 hash/fact，避免报告包含自身 hash 的循环依赖。
 6. 引入 CL-04 需求基线前预留可版本化绑定位置，不伪造不存在的 baseline_id；CL-04 完成时补齐新候选的强制基线校验，旧历史运行不追溯要求。
 7. 将本轮三项最终组合留给 CL-04；此处完成可独立运行的未默认激活 Sandbox 候选。按最新本地环境记录配置缺项，不声称已自动发布到默认路径。
+
+**完成检查**：Backend/Frontend 人工编辑或换版本后，旧 FULL/L2 事实失效；门禁从控制面
+当前来源集合重算，而非从模型 arguments 或静态 policy 读取“期望 digest”。基线字段可版本化
+预留但不得虚构 baseline_id，CL-04 落地时再强制绑定。
 
 **交接输出**：SB-01 候选经过真实字段接线与控制分支后可被正式入口选择；读取 SB 状态即可开始 KB-01，不以付费消融作为前置。
 
@@ -130,11 +165,12 @@ testing_priority: deferred-by-user
 结束时更新当前表并说明具体下一步；只有计划更新不算业务实现完成。
 ```
 
-## 2026-10-04 外部验收收口
+## 2026-10-04 既有外部证据与当前限制
 
-- 真实 `.env` 冷启动、远端 Sandbox CI、fixture 跨节点责任返工已完成；逐次命令、状态和成本见 [`p1-live-self-repair-2026-10-04.md`](archive/evidence/p1-live-self-repair-2026-10-04.md)。
+- 真实 `.env` 冷启动、远端 Sandbox CI、fixture 注入的跨节点返工样本已记录；逐次命令、状态和成本见 [`p1-live-self-repair-2026-10-04.md`](archive/evidence/p1-live-self-repair-2026-10-04.md)。协调器样本不关闭真实 verifier issue→责任路由的 SB-03 缺口。
 - DeepSeek Flash live 已真实执行多次小额单用例；Backend bounded self-repair 的 `SCHEMA_INVALID → REPLAN → SPEC_VERIFY_PASSED → FINISH` 已出现，但完整六节点 live 仍被 Frontend/Architect 结构错误或 Evaluator 质量门禁阻断，不能记为 live 自我修复完全通过。
-- P2 完整 development/holdout 矩阵没有启动；`576 CNY` 保守上限保持未授权，P2-E/质量收益继续 `blocked/NOT_EVALUATED`。默认 active、历史 WorkflowSpec 与 V1 基线未改变。
+- 按 10-02 调整，576 CNY 批量评测、消融和指标暂缓，未执行结果保持 `NOT_EVALUATED`；不算本轮 SB/KB/CL 代码缺口或实施前置。v12 live 须先修 Architect v6 接线，外呼另按用户授权执行。
+- JSON 历史快照已归档、重复副本已移除，参见 [收敛说明](archive/json-consolidation.md)。共享结构修复提示仍需版本化分派；目录收敛不代替 Schema/Handler/控制链修复。
 
 <!-- CURRENT_IMPLEMENTATION_PLAN_END -->
 

@@ -8,6 +8,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from runtime.workflow_contracts import workflow_contract_path
+
 
 class ManifestGroup(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -65,6 +67,10 @@ def resolve_contract_path(manifest_path: Path, contract_path: str) -> Path:
         raise ValueError("manifest contract_path must be a relative non-parent path")
     resolved = (manifest_path.parent / candidate).resolve()
     if not resolved.is_file():
+        # Existing manifests keep their original bytes and checksums. A removed
+        # duplicate can reference the single current/archive snapshot by name.
+        if len(candidate.parts) == 1 and contract_path.endswith(".workflow.json"):
+            return workflow_contract_path(contract_path)
         raise ValueError(f"manifest contract does not exist: {contract_path}")
     return resolved
 

@@ -27,7 +27,7 @@ class ToolGatewayServiceTest {
     @Test
     void resolvesPolicyFromVerifiedBundleAndIgnoresBusinessInputPolicy() throws Exception {
         var mapper = new ObjectMapper();
-        var document = mapper.readTree(Files.readString(Path.of("..", "agent-engine", "contracts",
+        var document = mapper.readTree(Files.readString(Path.of("..", "agent-engine", "contracts", "archive",
                 "autospec-v5-agent-execution-v3-c.workflow.json")));
         var bundle = mapper.createObjectNode();
         bundle.set("nodes", document.path("nodes"));

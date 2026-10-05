@@ -15,6 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from evaluation.metrics import aggregate_case_metrics
 from evaluation.budget_ledger import BudgetLedger, DEFAULT_LEDGER_PATH, money_units
 from evaluation.experiment_manifest import load_manifest, validate_manifest_contracts
+from runtime.workflow_contracts import workflow_contract_path
 from schemas.evaluation import AutoSpecEvalCase, AutoSpecEvalRun, AutoSpecCaseResult
 
 
@@ -168,7 +169,7 @@ class ControlPlaneCollector:
             else:
                 # Compatibility for the pre-manifest tests and historical local
                 # examples. New collection configs must use manifest_path.
-                expected = Path(__file__).resolve().parents[1] / "contracts" / f"autospec-v5-agent-execution-{self.config.contract_family}-{group.lower()}.workflow.json"
+                expected = workflow_contract_path(f"autospec-v5-agent-execution-{self.config.contract_family}-{group.lower()}.workflow.json")
                 if not expected.exists() or json.loads(expected.read_text(encoding="utf-8")) != spec:
                     raise ValueError(f"group {group} is not the reviewed experimental contract")
             if self.config.environment.get("model_mode") == "live":

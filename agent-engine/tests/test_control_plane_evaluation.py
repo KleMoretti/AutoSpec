@@ -30,7 +30,7 @@ def config() -> CollectionConfig:
 
 @pytest.mark.asyncio
 async def test_collector_uses_published_formal_api_and_keeps_fixture_and_budget_unmeasured(eval_output: Path) -> None:
-    spec = json.loads((Path(__file__).resolve().parents[1] / "contracts" /
+    spec = json.loads((Path(__file__).resolve().parents[1] / "contracts" / "archive" /
                       "autospec-v5-agent-execution-v3-a.workflow.json").read_text())
     created = []
     def handler(request):
@@ -223,7 +223,7 @@ async def test_fixture_auto_approval_is_explicit_and_journaled(eval_output: Path
         requests.append((request.method, request.url.path))
         path = request.url.path
         if path == "/api/workflows/autospec-v5/versions":
-            spec = json.loads((Path(__file__).resolve().parents[1] / "contracts" /
+            spec = json.loads((Path(__file__).resolve().parents[1] / "contracts" / "archive" /
                                "autospec-v5-agent-execution-v3-a.workflow.json").read_text())
             return httpx.Response(200, json=[{"id": 1, "status": "PUBLISHED",
                                               "specJson": json.dumps(spec), "contentHash": digest(spec)}])
@@ -296,7 +296,7 @@ def test_authorization_survives_restart_and_serializes_concurrent_reservations(e
 @pytest.mark.asyncio
 async def test_interrupted_live_request_keeps_reservation_across_experiment_ids(eval_output: Path) -> None:
     cfg = live_config()
-    spec = json.loads((Path(__file__).resolve().parents[1] / "contracts" /
+    spec = json.loads((Path(__file__).resolve().parents[1] / "contracts" / "archive" /
                        "autospec-v5-agent-execution-v4-a.workflow.json").read_text())
     posts = []
     def handler(request):
@@ -320,7 +320,7 @@ async def test_interrupted_live_request_keeps_reservation_across_experiment_ids(
 @pytest.mark.asyncio
 async def test_live_preflight_rejects_unpriced_historical_contract_before_writes(eval_output: Path) -> None:
     cfg = live_config().model_copy(update={"contract_family": "v3"})
-    spec = json.loads((Path(__file__).resolve().parents[1] / "contracts" /
+    spec = json.loads((Path(__file__).resolve().parents[1] / "contracts" / "archive" /
                        "autospec-v5-agent-execution-v3-a.workflow.json").read_text())
     def handler(request):
         assert request.method == "GET"

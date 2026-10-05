@@ -27,7 +27,7 @@ class DefaultPromptSeederTest {
         new DefaultPromptSeeder(registry).run(null);
         var content = ArgumentCaptor.forClass(String.class);
         verify(registry).registerActive(eq(promptKey), eq("v1"), content.capture());
-        var spec = new ObjectMapper().readTree(Path.of("..", "agent-engine", "contracts",
+        var spec = new ObjectMapper().readTree(Path.of("..", "agent-engine", "contracts", "archive",
                 "autospec-v5-agent-execution-" + version + "-d.workflow.json").toFile());
         String expected = null;
         for (var node : spec.path("nodes")) {

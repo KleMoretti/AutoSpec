@@ -236,7 +236,10 @@ AutoSpec/
 │  ├─ runtime/                  # Worker, context, RAG, tools, telemetry
 │  ├─ review/                   # Deterministic review + evaluator
 │  ├─ schemas/                  # Pydantic contracts
-│  └─ contracts/                # Versioned WorkflowSpec files
+│  ├─ contracts/                # Current WorkflowSpec and protocol schemas
+│  │  └─ archive/               # Immutable historical workflow snapshots
+│  └─ evaluation/configs/       # Current frozen evaluation batch
+│     └─ archive/               # Historical experiment configurations
 ├─ frontend/                    # React product workspace
 ├─ observability/               # Prometheus / Grafana / Tempo
 ├─ performance/                 # k6 scenarios and performance reports
@@ -246,6 +249,14 @@ AutoSpec/
 ~~~
 
 ## Development
+
+Workflow JSON has one authoritative copy. `agent-engine/contracts/` keeps the
+product baseline, compatibility entry point and current candidates; older
+snapshots live in `contracts/archive/`. Evaluation manifests resolve a workflow
+filename from their own batch or the current/archive contract catalog and still
+verify its original content hash. Do not copy a contract into every smoke batch.
+Historical evaluation commands use `evaluation/configs/archive/<batch>/` in place
+of `evaluation/configs/<batch>/`. Their frozen JSON and hashes remain unchanged.
 
 ### Backend
 
