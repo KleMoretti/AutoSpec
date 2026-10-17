@@ -174,9 +174,42 @@ public class ToolGatewayService {
         }
         int maxCalls = policy.path("max_calls").asInt(0);
         long usedCalls = factMapper.selectCount(new LambdaQueryWrapper<WorkflowToolCallFact>()
-                .eq(WorkflowToolCallFact::getExecutionId, request.executionId()));
+                .eq(WorkflowToolCallFact::getExecutionId, request.executionId())
+                .and(query -> query.isNull(WorkflowToolCallFact::getErrorCode).or()
+                        .notIn(WorkflowToolCallFact::getErrorCode, "TOOL_BUDGET_EXCEEDED", "TOOL_OPTIONAL_BUDGET_EXCEEDED")));
         if (maxCalls < 1 || usedCalls >= maxCalls) {
             return persistFailure(request, run, "TOOL_BUDGET_EXCEEDED", "frozen tool call budget was exhausted");
+        }
+        int optionalLimit = policy.path("optional_max_calls").asInt(32);
+        JsonNode required = policy.path("required_tools");
+        if (!required.isEmpty() || optionalLimit < 32) {
+            Set<String> requiredKeys = new java.util.HashSet<>();
+            Set<String> remainingRequired = new java.util.HashSet<>();
+            for (JsonNode tool : required) {
+                String key = tool.path("name").asText() + "\u0000" + tool.path("version").asText();
+                requiredKeys.add(key);
+                if (CONTROLLED_TOOLS.contains(tool.path("name").asText())) {
+                    remainingRequired.add(key);
+                }
+            }
+            List<WorkflowToolCallFact> calls = factMapper.selectList(new LambdaQueryWrapper<WorkflowToolCallFact>()
+                    .eq(WorkflowToolCallFact::getExecutionId, request.executionId())
+                    .and(query -> query.isNull(WorkflowToolCallFact::getErrorCode).or()
+                            .notIn(WorkflowToolCallFact::getErrorCode, "TOOL_BUDGET_EXCEEDED", "TOOL_OPTIONAL_BUDGET_EXCEEDED")));
+            long optionalUsed = 0;
+            for (WorkflowToolCallFact call : calls) {
+                String key = call.getName() + "\u0000" + call.getVersion();
+                remainingRequired.remove(key);
+                if (!requiredKeys.contains(key)) optionalUsed++;
+            }
+            String requested = request.name() + "\u0000" + request.version();
+            if (!requiredKeys.contains(requested) && optionalUsed >= optionalLimit) {
+                return persistFailure(request, run, "TOOL_OPTIONAL_BUDGET_EXCEEDED", "optional tool call budget was exhausted");
+            }
+            remainingRequired.remove(requested);
+            if (usedCalls + 1 + remainingRequired.size() > maxCalls) {
+                return persistFailure(request, run, "TOOL_BUDGET_EXCEEDED", "remaining calls are reserved for required tools");
+            }
         }
 
         long started = System.currentTimeMillis();
@@ -384,6 +417,10 @@ public class ToolGatewayService {
         result.put("version", source.path("version").asText("tools-v1"));
         result.put("enabled", source.path("enabled").asBoolean(false));
         result.set("allowed_tools", normalizedAllowedTools(source.get("allowed_tools")));
+        ArrayNode required = normalizedAllowedTools(source.get("required_tools"));
+        if (!required.isEmpty()) result.set("required_tools", required);
+        int optionalCalls = source.path("optional_max_calls").asInt(32);
+        if (optionalCalls != 32) result.put("optional_max_calls", optionalCalls);
         result.put("max_calls", source.path("max_calls").asInt(0));
         result.put("per_call_timeout_ms", source.path("per_call_timeout_ms").asInt(5_000));
         result.put("total_timeout_ms", source.path("total_timeout_ms").asInt(30_000));

@@ -61,7 +61,9 @@ public final class WorkflowExecutableContractValidator {
             "version",
             "enabled",
             "allowed_tools",
+            "required_tools",
             "max_calls",
+            "optional_max_calls",
             "per_call_timeout_ms",
             "total_timeout_ms",
             "max_result_bytes",
@@ -391,6 +393,31 @@ public final class WorkflowExecutableContractValidator {
                     );
                 }
             });
+        }
+        JsonNode requiredTools = policy.path("required_tools");
+        if (!requiredTools.isMissingNode() && !requiredTools.isArray()) {
+            throw new IllegalArgumentException("Node required_tools must be an array: " + node.nodeId());
+        }
+        Set<String> requiredKeys = new java.util.HashSet<>();
+        for (JsonNode tool : requiredTools) {
+            if (!tool.isObject() || tool.size() != 2 || text(tool, "name") == null
+                    || text(tool, "version") == null
+                    || !requiredKeys.add(text(tool, "name") + "\u0000" + text(tool, "version"))) {
+                throw new IllegalArgumentException("Invalid or duplicate required_tools: " + node.nodeId());
+            }
+            boolean allowed = false;
+            for (JsonNode candidate : allowedTools) {
+                allowed |= candidate.equals(tool);
+            }
+            if (!allowed) {
+                throw new IllegalArgumentException("required_tools must be included in allowed_tools: " + node.nodeId());
+            }
+        }
+        int optionalCalls = policy.path("optional_max_calls").asInt(32);
+        if ((policy.has("optional_max_calls") && !policy.path("optional_max_calls").isIntegralNumber())
+                || optionalCalls < 0 || optionalCalls > 32
+                || (!requiredKeys.isEmpty() && optionalCalls > policy.path("max_calls").asInt(0) - requiredKeys.size())) {
+            throw new IllegalArgumentException("optional_max_calls must leave room for required tools: " + node.nodeId());
         }
         JsonNode retry = policy.path("retry_policy");
         if (!retry.isMissingNode() && !retry.isObject()) {

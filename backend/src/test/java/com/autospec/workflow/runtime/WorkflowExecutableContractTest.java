@@ -13,6 +13,27 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class WorkflowExecutableContractTest {
     @Test
+    void requiredToolBudgetIsAcceptedAndFrozenWithoutDroppingFields() throws Exception {
+        var mapper = new ObjectMapper();
+        var document = mapper.readTree(Files.readString(Path.of("..", "agent-engine", "contracts",
+                "autospec-pm-schema-repair-v12.workflow.json")));
+        var backend = java.util.stream.StreamSupport.stream(document.path("nodes").spliterator(), false)
+                .filter(node -> "backend_engineer".equals(node.path("node_id").asText())).findFirst().orElseThrow();
+        var policy = (com.fasterxml.jackson.databind.node.ObjectNode) backend.path("tool_policy");
+        policy.set("required_tools", policy.path("allowed_tools").deepCopy());
+        policy.put("max_calls", 2).put("optional_max_calls", 1);
+        var spec = new WorkflowSnapshotParser(mapper).parse(document.toString());
+        WorkflowExecutableContractValidator.validate(spec);
+        var node = spec.nodes().stream().filter(value -> "backend_engineer".equals(value.nodeId())).findFirst().orElseThrow();
+        var frozen = WorkflowExecutableContract.from(2, node, "BackendEngineerAgent", "v6", mapper);
+        assertThat(frozen.toolPolicy().path("required_tools")).isEqualTo(policy.path("required_tools"));
+        assertThat(frozen.toolPolicy().path("optional_max_calls").asInt()).isEqualTo(1);
+        policy.put("optional_max_calls", 2);
+        assertThatThrownBy(() -> WorkflowExecutableContractValidator.validate(new WorkflowSnapshotParser(mapper).parse(document.toString())))
+                .hasMessageContaining("leave room");
+    }
+
+    @Test
     void parallelSharedContractVersionHasIndependentEngineeringBranches() throws Exception {
         var mapper = new ObjectMapper();
         var snapshot = Files.readString(Path.of("..", "agent-engine", "contracts", "archive",
