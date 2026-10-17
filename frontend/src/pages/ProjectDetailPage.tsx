@@ -244,6 +244,15 @@ function ProjectDetailPage() {
         />
       </section>
 
+      <RequirementClarificationPanel
+        runId={latestRun?.id}
+        runStatus={latestRun?.status}
+        refreshKey={approvals.map((approval) => `${approval.id}:${approval.lockVersion}:${approval.status}`).join('|')}
+        canEdit={project?.canEdit === true}
+        onChanged={loadProject}
+        onCancel={handleCancelRun}
+      />
+
       {activeStage === 0 ? (
         <section className="panel intake-stage" aria-labelledby="intake-title">
           <Typography.Title level={2} id="intake-title">{t('projectDetail.intake.title')}</Typography.Title>
@@ -290,12 +299,7 @@ function ProjectDetailPage() {
 
       {activeStage === 2 ? (
         <>
-          <RequirementClarificationPanel
-            runId={latestRun?.id}
-            onChanged={loadProject}
-            onCancel={handleCancelRun}
-          />
-          <WorkflowApprovalPanel approvals={approvals} artifacts={artifacts} onDecide={handleApprovalDecision} />
+          <WorkflowApprovalPanel approvals={approvals.filter((approval) => approval.mode !== 'CLARIFICATION')} artifacts={artifacts} onDecide={handleApprovalDecision} />
           <ReviewIssueTable
             projectId={projectId}
             review={review}

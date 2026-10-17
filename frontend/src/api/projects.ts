@@ -13,6 +13,7 @@ export interface ProjectResponse {
   name: string;
   originalRequirement: string;
   status: string;
+  canEdit?: boolean;
   createdAt?: string;
   updatedAt?: string;
 }
