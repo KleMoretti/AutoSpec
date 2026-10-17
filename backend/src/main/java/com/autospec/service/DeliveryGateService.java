@@ -287,7 +287,80 @@ public class DeliveryGateService {
                     "The PRD must be approved before delivery"
             );
         }
+        requireCurrentEvaluationSources(latestV5Run, evaluator, evaluation, selected);
         return REQUIRED_ARTIFACT_TYPES.stream().map(selected::get).toList();
+    }
+
+    private void requireCurrentEvaluationSources(
+            WorkflowRun run, WorkflowNodeRun evaluator, Artifact evaluation, Map<String, Artifact> selected
+    ) {
+        try {
+            JsonNode report = objectMapper.readTree(evaluation.getContent());
+            // Legacy snapshots without verification or clarification retain their delivery behavior.
+            if (!report.has("verification_fact") && !requiresRequirementBaseline(run)
+                    && (run.getExecutionBundleJson() == null
+                    || !run.getExecutionBundleJson().contains("verification_policy"))) {
+                return;
+            }
+            JsonNode input = objectMapper.readTree(evaluator.getInputJson());
+            if (input == null || !input.isObject() || evaluator.getOutputJson() == null
+                    || !report.equals(objectMapper.readTree(evaluator.getOutputJson()))) {
+                throw new IllegalArgumentException("Evaluation output was modified or its input is missing");
+            }
+            Map<String, String> fields = Map.of(
+                    "PRD", "prd", "ARCHITECTURE_DESIGN", "architecture_design",
+                    "BACKEND_DESIGN", "backend_design", "FRONTEND_SKELETON", "frontend_skeleton",
+                    "REVIEW_REPORT", "review_report"
+            );
+            for (Map.Entry<String, String> entry : fields.entrySet()) {
+                Artifact artifact = selected.get(entry.getKey());
+                if (artifact == null || !com.autospec.util.ArtifactBindings.matches(
+                        input.path("artifact_bindings").path(entry.getValue()), artifact)) {
+                    throw new IllegalArgumentException("Evaluation source identity changed: " + entry.getKey());
+                }
+                JsonNode content = objectMapper.readTree(artifact.getContent());
+                if ("PRD_READY".equals(content.path("kind").asText())) {
+                    content = content.path("prd");
+                }
+                if (!content.equals(input.path(entry.getValue()))) {
+                    throw new IllegalArgumentException("Evaluation source content changed: " + entry.getKey());
+                }
+            }
+            if (requirementBaselineService != null) {
+                Map<String, Object> baseline = requirementBaselineService.inputForRun(run.getId());
+                if (!baseline.isEmpty()
+                        && !objectMapper.valueToTree(baseline).equals(input.path("requirement_baseline"))) {
+                    throw new IllegalArgumentException("Evaluation requirement baseline changed");
+                }
+            }
+            JsonNode fact = report.path("verification_fact");
+            if (fact.isObject()) {
+                WorkflowNodeRun verifier = workflowNodeRunMapper.selectById(fact.path("node_run_id").asLong());
+                Artifact review = selected.get("REVIEW_REPORT");
+                if (verifier == null || !"SUCCEEDED".equals(verifier.getStatus())
+                        || !Objects.equals(verifier.getWorkflowRunId(), run.getId())
+                        || review == null || !Objects.equals(review.getWorkflowNodeRunId(), verifier.getId())
+                        || fact.path("workflow_run_id").asLong() != run.getId()
+                        || fact.path("fencing_token").asLong() != verifier.getFencingToken()
+                        || !fact.equals(objectMapper.readTree(verifier.getOutputJson()).path("verification_fact"))) {
+                    throw new IllegalArgumentException("Verification fact does not belong to the delivered review");
+                }
+                JsonNode verifierInput = objectMapper.readTree(verifier.getInputJson());
+                for (Map.Entry<String, String> entry : fields.entrySet()) {
+                    if ("REVIEW_REPORT".equals(entry.getKey())) {
+                        continue;
+                    }
+                    if (verifierInput == null || !com.autospec.util.ArtifactBindings.matches(
+                            verifierInput.path("artifact_bindings").path(entry.getValue()), selected.get(entry.getKey()))
+                            || !verifierInput.path(entry.getValue()).equals(input.path(entry.getValue()))) {
+                        throw new IllegalArgumentException("Verification source changed: " + entry.getKey());
+                    }
+                }
+            }
+        } catch (Exception exception) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Evaluation evidence no longer matches the current delivery materials; evaluate again", exception);
+        }
     }
 
     private void requireTrustedVerificationEvidence(WorkflowRun run, JsonNode evaluationReport) {
@@ -337,6 +410,22 @@ public class DeliveryGateService {
                                 HttpStatus.UNPROCESSABLE_ENTITY,
                                 "Trusted verification evidence does not match the frozen verification policy"
                         );
+                    }
+                }
+                if (!policy.has("policy_hash")) {
+                    Map<String, Object> material = objectMapper.convertValue(policy, Map.class);
+                    String expected = com.autospec.util.ContentHash.sha256(objectMapper.copy()
+                            .enable(com.fasterxml.jackson.databind.SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS)
+                            .writeValueAsString(material));
+                    if (!expected.equals(fact.path("policy_hash").asText())) {
+                        throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                                "Trusted verification evidence does not match the frozen verification policy");
+                    }
+                }
+                for (String field : List.of("verifier_version", "compiler_version")) {
+                    if (policy.has(field) && !policy.path(field).equals(fact.path(field))) {
+                        throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                                "Trusted verification evidence does not match the frozen verification policy");
                     }
                 }
             }
@@ -444,24 +533,15 @@ public class DeliveryGateService {
             return false;
         }
         try {
-            Map<Long, String> manifestArtifacts = new java.util.HashMap<>();
-            for (JsonNode value : objectMapper.readTree(job.getManifest()).path("artifacts")) {
-                if (value.path("artifact_id").canConvertToLong()) {
-                    String contentHash = value.path("content_hash").asText("");
-                    if (!contentHash.matches("[0-9a-f]{64}")) {
-                        return false;
-                    }
-                    manifestArtifacts.put(value.path("artifact_id").asLong(), contentHash);
-                }
+            String manifestHash = com.autospec.util.ContentHash.sha256(job.getManifest());
+            JsonNode evidence = objectMapper.readTree(job.getVerificationJson());
+            if (!manifestHash.equals(job.getManifestHash()) || evidence == null
+                    || !"PASSED".equals(evidence.path("status").asText())
+                    || !manifestHash.equals(evidence.path("manifest_sha256").asText())) {
+                return false;
             }
-            Map<Long, String> selectedArtifacts = artifacts.stream()
-                    .filter(artifact -> artifact.getId() != null && artifact.getContentHash() != null)
-                    .collect(java.util.stream.Collectors.toMap(
-                            Artifact::getId,
-                            Artifact::getContentHash,
-                            (left, right) -> right
-                    ));
-            return !selectedArtifacts.isEmpty() && manifestArtifacts.equals(selectedArtifacts);
+            return com.autospec.util.ArtifactBindings.manifestMatches(
+                    objectMapper.readTree(job.getManifest()).path("artifacts"), artifacts);
         } catch (Exception ignored) {
             return false;
         }

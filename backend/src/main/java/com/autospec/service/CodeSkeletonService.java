@@ -617,9 +617,7 @@ public class CodeSkeletonService {
                 value.put("type", artifact.getType());
                 value.put("version", artifact.getVersion());
                 value.put("title", artifact.getTitle());
-                value.put("content_hash", artifact.getContentHash() == null
-                        ? sha256(artifact.getContent())
-                        : artifact.getContentHash());
+                value.put("content_hash", sha256(artifact.getContent()));
                 value.put("workflow_node_run_id", artifact.getWorkflowNodeRunId());
                 value.put("schema_version", artifact.getSchemaVersion());
                 value.put("prompt_key", artifact.getPromptKey());

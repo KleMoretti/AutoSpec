@@ -95,20 +95,12 @@ public class GeneratedBundleVerificationService {
         try {
             JsonNode manifest = objectMapper.readTree(content);
             JsonNode manifestArtifacts = manifest.path("artifacts");
-            long selectedArtifactCount = artifacts.stream()
-                    .map(Artifact::getType)
-                    .filter(java.util.Objects::nonNull)
-                    .distinct()
-                    .count();
-            boolean hasHashes = manifestArtifacts.isArray()
-                    && manifestArtifacts.size() == selectedArtifactCount
-                    && java.util.stream.StreamSupport.stream(manifestArtifacts.spliterator(), false)
-                    .allMatch(value -> value.path("artifact_id").canConvertToLong()
-                            && value.path("content_hash").asText("").length() == 64);
+            boolean hasHashes = com.autospec.util.ArtifactBindings.manifestMatches(manifestArtifacts, artifacts);
             return new Check(
                     "MANIFEST_INTEGRITY",
                     hasHashes,
-                    hasHashes ? "Every selected artifact is pinned by id and SHA-256" : "Artifact ids or hashes are incomplete"
+                    hasHashes ? "Every selected artifact matches its id, version and SHA-256"
+                            : "Manifest does not match the selected artifact identities and contents"
             );
         } catch (Exception exception) {
             return new Check("MANIFEST_INTEGRITY", false, "Manifest JSON is invalid");

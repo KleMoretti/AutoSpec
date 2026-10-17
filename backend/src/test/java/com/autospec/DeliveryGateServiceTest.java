@@ -69,6 +69,20 @@ class DeliveryGateServiceTest {
     }
 
     @Test
+    void bundleManifestRequiresActualContentAndVersionInsteadOfHashShape() throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+        Artifact artifact = artifact(71L, "BACKEND_DESIGN", "GENERATED", "{}");
+        var entries = mapper.createArrayNode();
+        var binding = entries.addObject().put("artifact_id", artifact.getId()).put("type", artifact.getType())
+                .put("version", 1).put("content_hash", com.autospec.util.ContentHash.sha256(artifact.getContent()));
+        assertThat(com.autospec.util.ArtifactBindings.manifestMatches(entries, List.of(artifact))).isTrue();
+        binding.put("content_hash", "a".repeat(64));
+        assertThat(com.autospec.util.ArtifactBindings.manifestMatches(entries, List.of(artifact))).isFalse();
+        binding.put("content_hash", com.autospec.util.ContentHash.sha256(artifact.getContent())).put("version", 2);
+        assertThat(com.autospec.util.ArtifactBindings.manifestMatches(entries, List.of(artifact))).isFalse();
+    }
+
+    @Test
     void rejectsDeliveryUntilLatestV5RunCompletes() {
         when(workflowRunService.list(org.mockito.ArgumentMatchers.<Wrapper<WorkflowRun>>any()))
                 .thenReturn(List.of(run("RUNNING")));
@@ -136,20 +150,58 @@ class DeliveryGateServiceTest {
     }
 
     @Test
-    void acceptsFullVerificationEvidenceWhenBackendPolicyUsesAnotherScope() {
+    void acceptsCurrentVerifiedMaterialsAndRejectsChangedContentOrVersion() throws Exception {
         when(workflowRunService.list(org.mockito.ArgumentMatchers.<Wrapper<WorkflowRun>>any()))
                 .thenReturn(List.of(verifiedRun("COMPLETED")));
+        ObjectMapper mapper = new ObjectMapper();
         WorkflowNodeRun evaluator = evaluator(71L);
+        Artifact evaluation = evaluationWithVerification(71L, System.currentTimeMillis() + 60_000);
+        var report = (com.fasterxml.jackson.databind.node.ObjectNode) mapper.readTree(evaluation.getContent());
+        var fact = (com.fasterxml.jackson.databind.node.ObjectNode) report.path("verification_fact");
+        fact.put("workflow_run_id", 44L).put("node_run_id", 72L).put("fencing_token", 1L);
+        evaluation.setContent(report.toString());
+        evaluator.setOutputJson(evaluation.getContent());
+        var artifacts = new java.util.ArrayList<>(completeArtifacts(71L));
+        artifacts.removeIf(value -> "EVALUATION_REPORT".equals(value.getType()));
+        artifacts.add(0, evaluation);
+        Artifact review = artifacts.stream().filter(value -> "REVIEW_REPORT".equals(value.getType())).findFirst().orElseThrow();
+        review.setWorkflowNodeRunId(72L);
+        review.setContent("{\"verification_fact\":" + fact + "}");
+        WorkflowNodeRun verifier = evaluator(72L);
+        verifier.setFencingToken(1L);
+        verifier.setOutputJson(review.getContent());
+        var input = mapper.createObjectNode();
+        var bindings = input.putObject("artifact_bindings");
+        var fields = java.util.Map.of("PRD", "prd", "ARCHITECTURE_DESIGN", "architecture_design",
+                "BACKEND_DESIGN", "backend_design", "FRONTEND_SKELETON", "frontend_skeleton", "REVIEW_REPORT", "review_report");
+        for (Artifact artifact : artifacts) {
+            if (!fields.containsKey(artifact.getType())) continue;
+            String field = fields.get(artifact.getType());
+            input.set(field, mapper.readTree(artifact.getContent()));
+            bindings.putObject(field).put("artifact_id", artifact.getId()).put("type", artifact.getType())
+                    .put("version", artifact.getVersion()).put("content_hash", com.autospec.util.ContentHash.sha256(artifact.getContent()));
+        }
+        evaluator.setInputJson(input.toString());
+        verifier.setInputJson(input.toString());
         when(workflowNodeRunMapper.selectOne(any())).thenReturn(evaluator);
-        when(workflowNodeRunMapper.selectList(any())).thenReturn(List.of(evaluator));
+        when(workflowNodeRunMapper.selectById(72L)).thenReturn(verifier);
+        when(workflowNodeRunMapper.selectList(any())).thenReturn(List.of(evaluator, verifier));
         when(artifactService.list(org.mockito.ArgumentMatchers.<Wrapper<Artifact>>any()))
-                .thenReturn(
-                        List.of(evaluationWithVerification(71L, System.currentTimeMillis() + 60_000)),
-                        completeArtifacts(71L)
-                );
+                .thenAnswer(invocation -> artifacts);
 
-        assertThatCode(() -> deliveryGateService.requireDeliverable(9L))
-                .doesNotThrowAnyException();
+        assertThatCode(() -> deliveryGateService.requireDeliverable(9L)).doesNotThrowAnyException();
+        Artifact backend = artifacts.stream().filter(value -> "BACKEND_DESIGN".equals(value.getType())).findFirst().orElseThrow();
+        backend.setContent("{\"changed\":true}");
+        assertThatThrownBy(() -> deliveryGateService.requireDeliverable(9L)).hasMessageContaining("current delivery materials");
+        // A fresh evaluator cannot reuse a review over older materials, even if the verifier digest is unchanged.
+        input.set("backend_design", mapper.readTree(backend.getContent()));
+        ((com.fasterxml.jackson.databind.node.ObjectNode) bindings.path("backend_design"))
+                .put("content_hash", com.autospec.util.ContentHash.sha256(backend.getContent()));
+        evaluator.setInputJson(input.toString());
+        assertThatThrownBy(() -> deliveryGateService.requireDeliverable(9L)).hasMessageContaining("current delivery materials");
+        backend.setContent("{}");
+        backend.setVersion(2);
+        assertThatThrownBy(() -> deliveryGateService.requireDeliverable(9L)).hasMessageContaining("current delivery materials");
     }
 
     @Test
@@ -192,17 +244,15 @@ class DeliveryGateServiceTest {
     }
 
     @Test
-    void doesNotReuseBuildVerificationFromDifferentArtifactVersions() {
+    void doesNotReuseBuildVerificationFromDifferentArtifactVersions() throws Exception {
         when(workflowRunService.list(org.mockito.ArgumentMatchers.<Wrapper<WorkflowRun>>any()))
                 .thenReturn(List.of(run("COMPLETED")));
         WorkflowNodeRun evaluator = evaluator(71L);
         when(workflowNodeRunMapper.selectOne(any())).thenReturn(evaluator);
         when(workflowNodeRunMapper.selectList(any())).thenReturn(List.of(evaluator));
-        when(artifactService.list(org.mockito.ArgumentMatchers.<Wrapper<Artifact>>any()))
-                .thenReturn(
-                        List.of(evaluation(71L, "PASSED")),
-                        completeArtifacts(71L)
-                );
+        var artifacts = new java.util.ArrayList<>(completeArtifacts(71L));
+        artifacts.sort(java.util.Comparator.comparing(value -> !"EVALUATION_REPORT".equals(value.getType())));
+        when(artifactService.list(org.mockito.ArgumentMatchers.<Wrapper<Artifact>>any())).thenAnswer(invocation -> artifacts);
         CodeGenerationJob staleJob = new CodeGenerationJob();
         staleJob.setId(88L);
         staleJob.setProjectId(9L);
@@ -217,6 +267,21 @@ class DeliveryGateServiceTest {
                     assertThat(readiness.buildReady()).isFalse();
                     assertThat(readiness.status()).isEqualTo("BUILD_REQUIRED");
                 });
+        ObjectMapper mapper = new ObjectMapper();
+        var manifest = mapper.createObjectNode();
+        var entries = manifest.putArray("artifacts");
+        for (Artifact artifact : artifacts) {
+            entries.addObject().put("artifact_id", artifact.getId()).put("type", artifact.getType())
+                    .put("version", artifact.getVersion()).put("content_hash", com.autospec.util.ContentHash.sha256(artifact.getContent()));
+        }
+        staleJob.setManifest(manifest.toString());
+        String digest = com.autospec.util.ContentHash.sha256(staleJob.getManifest());
+        staleJob.setManifestHash(digest);
+        staleJob.setVerificationJson("{\"status\":\"PASSED\",\"manifest_sha256\":\"" + digest + "\"}");
+        assertThat(deliveryGateService.readiness(9L).buildReady()).isTrue();
+        staleJob.setManifestHash("a".repeat(64));
+        assertThat(deliveryGateService.readiness(9L).buildReady()).isFalse();
+
     }
 
     private WorkflowRun run(String status) {

@@ -3,6 +3,8 @@ package com.autospec.workflow.runtime;
 import com.autospec.dto.KnowledgeSourceResponse;
 import com.autospec.entity.WorkflowNodeRun;
 import com.autospec.entity.ModelInvocation;
+import com.autospec.entity.Artifact;
+import com.autospec.mapper.ArtifactMapper;
 import com.autospec.mapper.ModelInvocationMapper;
 import com.autospec.mapper.WorkflowNodeRunMapper;
 import com.autospec.service.KnowledgeIndexService;
@@ -38,6 +40,12 @@ public class WorkflowNodeInputAssembler {
     private final KnowledgeIndexService knowledgeIndexService;
     private final ProjectMemoryService projectMemoryService;
     private final RequirementBaselineService requirementBaselineService;
+    private ArtifactMapper artifactMapper;
+
+    @Autowired
+    public void setArtifactMapper(ArtifactMapper artifactMapper) {
+        this.artifactMapper = artifactMapper;
+    }
 
     public WorkflowNodeInputAssembler(
             WorkflowNodeRunMapper nodeRunMapper,
@@ -94,6 +102,7 @@ public class WorkflowNodeInputAssembler {
         ObjectNode input = objectInput(target.getInputJson());
         Map<String, WorkflowNodeRun> latest = latestRuns(target.getWorkflowRunId());
         Set<String> ancestorIds = ancestors(graph, target.getNodeId());
+        ObjectNode bindings = objectMapper.createObjectNode();
         for (String ancestor : ancestorIds) {
             WorkflowNodeRun source = latest.get(ancestor);
             if (source == null || !"SUCCEEDED".equals(source.getStatus()) || source.getOutputJson() == null) {
@@ -104,6 +113,24 @@ public class WorkflowNodeInputAssembler {
                     inputField(sourceSpec),
                     outputForDownstream(sourceSpec, json(source.getOutputJson()))
             );
+            if (artifactMapper != null) {
+                Artifact artifact = artifactMapper.selectOne(new LambdaQueryWrapper<Artifact>()
+                        .eq(Artifact::getWorkflowNodeRunId, source.getId())
+                        .eq(Artifact::getType, sourceSpec.artifactType())
+                        .orderByDesc(Artifact::getVersion).orderByDesc(Artifact::getId).last("limit 1"));
+                if (artifact != null) {
+                    // Human approval may create a new artifact version for the same node.
+                    input.set(inputField(sourceSpec), outputForDownstream(sourceSpec, json(artifact.getContent())));
+                    ObjectNode binding = bindings.putObject(inputField(sourceSpec));
+                    binding.put("artifact_id", artifact.getId());
+                    binding.put("type", artifact.getType());
+                    binding.put("version", artifact.getVersion());
+                    binding.put("content_hash", ContentHash.sha256(artifact.getContent()));
+                }
+            }
+        }
+        if (!bindings.isEmpty()) {
+            input.set("artifact_bindings", bindings);
         }
         if ("evaluator".equals(target.getNodeId())) {
             input.set("records", trustedRecords(latest, ancestorIds));
@@ -162,14 +189,26 @@ public class WorkflowNodeInputAssembler {
                         )
                 )
         );
-        input.set(
-                "context_conflicts",
-                objectMapper.valueToTree(
+        ArrayNode conflicts = objectMapper.valueToTree(
                         projectMemoryService.conflictsForProject(
                                 projectId, Set.of("REQUIREMENT", "DECISION", "CONSTRAINT", "ENTITY", "API", "ARTIFACT")
                         )
-                )
-        );
+                );
+        Set<String> resolved = new LinkedHashSet<>();
+        for (JsonNode response : input.path("clarification_context").path("clarification_responses")) {
+            response.path("conflict_resolutions").forEach(value -> resolved.add(value.path("conflict_id").asText()));
+        }
+        input.path("requirement_baseline").path("conflict_resolutions")
+                .forEach(value -> resolved.add(value.path("conflict_id").asText()));
+        for (JsonNode value : conflicts) {
+            ObjectNode conflict = (ObjectNode) value;
+            conflict.remove("project_id"); // Project scope is already authenticated in the command envelope.
+            if (resolved.contains(conflict.path("conflict_id").asText())) {
+                conflict.put("status", "RESOLVED");
+                conflict.put("blocking", false);
+            }
+        }
+        input.set("context_conflicts", conflicts);
     }
 
     /**
