@@ -374,6 +374,7 @@ public class WorkflowApprovalServiceImpl implements WorkflowApprovalService {
                 response,
                 response.userId()
         );
+        validateClarificationResponse(clarification, responseJson);
         LocalDateTime now = LocalDateTime.now();
         int updated = clarificationMapper.update(null, new LambdaUpdateWrapper<WorkflowClarification>()
                 .eq(WorkflowClarification::getId, clarification.getId())
@@ -572,6 +573,69 @@ public class WorkflowApprovalServiceImpl implements WorkflowApprovalService {
         // This is an audit field, not a client-controlled request field.
         value.put("actor_user_id", userId);
         return value;
+    }
+
+    private void validateClarificationResponse(WorkflowClarification clarification, ObjectNode response) {
+        JsonNode request;
+        try {
+            request = objectMapper.readTree(clarification.getRequestJson());
+        } catch (JsonProcessingException exception) {
+            throw badRequest("clarification request is invalid");
+        }
+        Map<String, JsonNode> questions = new java.util.LinkedHashMap<>();
+        request.path("questions").forEach(value -> questions.put(value.path("question_id").asText(), value));
+        Set<String> answered = new java.util.HashSet<>();
+        for (JsonNode answer : response.path("answers")) {
+            String id = answer.path("question_id").asText();
+            JsonNode question = questions.get(id);
+            JsonNode value = answer.path("value");
+            if (question == null || !answered.add(id)
+                    || !(value.isTextual() && !value.asText().isBlank()
+                    || value.isArray() && !value.isEmpty() && java.util.stream.StreamSupport
+                    .stream(value.spliterator(), false).allMatch(item -> item.isTextual() && !item.asText().isBlank()))) {
+                throw badRequest("clarification answers must identify known questions and contain non-empty values");
+            }
+        }
+        for (JsonNode question : questions.values()) {
+            if (question.path("blocking").asBoolean() && !answered.contains(question.path("question_id").asText())) {
+                throw badRequest("all blocking clarification questions must be answered");
+            }
+        }
+        Set<String> assumptions = new java.util.HashSet<>();
+        request.path("assumptions").forEach(value -> assumptions.add(value.path("assumption_id").asText()));
+        Set<String> accepted = new java.util.HashSet<>();
+        for (JsonNode value : response.path("accepted_assumption_ids")) {
+            if (!value.isTextual() || !assumptions.contains(value.asText()) || !accepted.add(value.asText())) {
+                throw badRequest("accepted assumptions must be unique known assumption ids");
+            }
+        }
+        Map<String, JsonNode> conflicts = new java.util.LinkedHashMap<>();
+        request.path("context_conflicts").forEach(value -> conflicts.put(value.path("conflict_id").asText(), value));
+        Set<String> resolved = new java.util.HashSet<>();
+        for (JsonNode resolution : response.path("conflict_resolutions")) {
+            String id = resolution.path("conflict_id").asText();
+            String decision = resolution.path("resolution").asText();
+            JsonNode value = resolution.path("value");
+            if (!conflicts.containsKey(id) || !resolved.add(id)
+                    || !Set.of("KEEP_CURRENT", "USE_NEW", "CUSTOM").contains(decision)
+                    || ("CUSTOM".equals(decision) && (value.isMissingNode() || value.isNull()
+                    || value.isTextual() && value.asText().isBlank()))) {
+                throw badRequest("conflict resolutions must identify known conflicts and valid decisions");
+            }
+            if ("USE_NEW".equals(decision)) {
+                JsonNode sourceValue = conflicts.get(id).get("value");
+                ((ObjectNode) resolution).set("value", sourceValue == null
+                        ? objectMapper.nullNode() : sourceValue.deepCopy());
+            } else if ("KEEP_CURRENT".equals(decision)) {
+                ((ObjectNode) resolution).remove("value");
+            }
+        }
+        for (JsonNode conflict : conflicts.values()) {
+            if (conflict.path("blocking").asBoolean() && !"RESOLVED".equals(conflict.path("status").asText())
+                    && !resolved.contains(conflict.path("conflict_id").asText())) {
+                throw badRequest("all blocking context conflicts must be resolved");
+            }
+        }
     }
 
     private ArrayNode jsonArray(String json) {

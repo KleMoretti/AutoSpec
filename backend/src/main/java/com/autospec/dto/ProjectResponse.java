@@ -10,16 +10,22 @@ public record ProjectResponse(
         String originalRequirement,
         String status,
         LocalDateTime createdAt,
-        LocalDateTime updatedAt
+        LocalDateTime updatedAt,
+        Boolean canEdit
 ) {
     public static ProjectResponse from(Project project) {
+        return from(project, null);
+    }
+
+    public static ProjectResponse from(Project project, Boolean canEdit) {
         return new ProjectResponse(
                 project.getId(),
                 project.getName(),
                 project.getOriginalRequirement(),
                 project.getStatus(),
                 project.getCreatedAt(),
-                project.getUpdatedAt()
+                project.getUpdatedAt(),
+                canEdit
         );
     }
 }

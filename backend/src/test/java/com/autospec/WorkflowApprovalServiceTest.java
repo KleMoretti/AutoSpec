@@ -233,7 +233,7 @@ class WorkflowApprovalServiceTest {
                   "round":1,"original_requirement_ref":"Build a tool",
                   "questions":[{"question_id":"q-1","category":"SCOPE",
                     "question":"Who uses it?","reason":"Role is missing","blocking":true}],
-                  "assumptions":[],"context_conflicts":[],"summary":"Need a role"
+                  "assumptions":[],"context_conflicts":[{"conflict_id":"c-1","blocking":true,"status":"UNRESOLVED"}],"summary":"Need a role"
                 }}
                 """;
 
@@ -248,6 +248,12 @@ class WorkflowApprovalServiceTest {
         assertThat(nodeRunMapper.selectById(node.getId()).getStatus())
                 .isEqualTo("WAITING_APPROVAL");
 
+        assertThatThrownBy(() -> approvalService.respondToClarification(
+                run.getId(), clarification.getId(), 0,
+                new WorkflowApprovalService.ClarificationResponseDecision(
+                        "incomplete-1", "[{\"question_id\":\"q-1\",\"value\":\"operator\"}]", "[]", "[]", 1L)))
+                .hasMessageContaining("blocking context conflicts");
+
         WorkflowClarification answered = approvalService.respondToClarification(
                 run.getId(),
                 clarification.getId(),
@@ -256,7 +262,7 @@ class WorkflowApprovalServiceTest {
                         "answer-1",
                         "[{\"question_id\":\"q-1\",\"value\":\"operator\"}]",
                         "[]",
-                        "[]",
+                        "[{\"conflict_id\":\"c-1\",\"resolution\":\"CUSTOM\",\"value\":\"operator\"}]",
                         1L
                 )
         );

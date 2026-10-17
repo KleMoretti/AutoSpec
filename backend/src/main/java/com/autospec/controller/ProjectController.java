@@ -97,7 +97,8 @@ public class ProjectController {
             @RequestHeader(value = "X-AutoSpec-Session-Token", required = false) String sessionToken
     ) {
         Long userId = projectAccessService.resolveUserId(sessionToken);
-        return ProjectResponse.from(projectAccessService.requireVisibleProject(projectId, userId));
+        Project project = projectAccessService.requireVisibleProject(projectId, userId);
+        return ProjectResponse.from(project, projectAccessService.canEdit(project, userId));
     }
 
     @GetMapping("/{projectId}/artifacts")

@@ -76,6 +76,13 @@ public class ProjectAccessService {
         return project;
     }
 
+    public boolean canEdit(Project project, Long userId) {
+        return userId.equals(project.getUserId()) || projectMemberService.lambdaQuery()
+                .eq(ProjectMember::getProjectId, project.getId())
+                .eq(ProjectMember::getUserId, userId)
+                .list().stream().anyMatch(member -> Set.of("OWNER", "EDITOR").contains(member.getRole()));
+    }
+
     public List<Project> listVisibleProjects(Long userId, int limit, int offset) {
         return projectService.listVisibleProjects(userId, limit, offset);
     }

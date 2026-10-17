@@ -1463,6 +1463,10 @@ components:
       - createdAt
       - updatedAt
       properties:
+        canEdit:
+          type: boolean
+          nullable: true
+          description: Whether the authenticated user may edit this project.
         projectId:
           type: integer
           format: int64
