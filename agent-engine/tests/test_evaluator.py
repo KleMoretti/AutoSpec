@@ -63,19 +63,37 @@ def verification_fact(**updates):
 
 
 def test_evaluator_preserves_only_current_trusted_verification_fact():
+    from spec_verifier.compiler import compile_spec
+    from spec_verifier.fixtures import spec_contract_from_artifacts
+
+    fixture = get_fixture("campus_marketplace")
+    digest = compile_spec(spec_contract_from_artifacts(
+        fixture.prd.model_copy(deep=True), fixture.backend.model_copy(deep=True), fixture.frontend.model_copy(deep=True), contract_id="GeneratedSpec"
+    )).source_digest
+    policy = {**VERIFICATION_POLICY, "source_digest": digest}
+    fact = verification_fact(source_digest=digest)
     report = evaluate_artifacts(
         requirement="Build a project workspace.",
-        prd=valid_prd(),
-        architecture_design=valid_architecture(),
-        backend_design=valid_backend(),
-        frontend_skeleton=valid_frontend(),
+        prd=fixture.prd.model_copy(deep=True),
+        architecture_design=fixture.architecture.model_copy(deep=True),
+        backend_design=fixture.backend.model_copy(deep=True),
+        frontend_skeleton=fixture.frontend.model_copy(deep=True),
         review_report=ReviewReport(score=100, issues=[]),
         records=successful_records(),
-        verification_policy=VERIFICATION_POLICY,
-        verification_fact=verification_fact(),
+        verification_policy=policy,
+        verification_fact=fact,
     )
 
     assert report.verification_fact["achieved_level"] == "L1"
+    changed = fixture.backend.model_copy(deep=True)
+    changed.tables[0].fields[1].nullable = not changed.tables[0].fields[1].nullable
+    with pytest.raises(VerificationEvidenceError, match="current artifact content"):
+        evaluate_artifacts(
+            requirement="Build a project workspace.", prd=fixture.prd.model_copy(deep=True),
+            architecture_design=fixture.architecture.model_copy(deep=True), backend_design=changed,
+            frontend_skeleton=fixture.frontend.model_copy(deep=True), review_report=ReviewReport(score=100, issues=[]),
+            records=successful_records(), verification_policy=policy, verification_fact=fact,
+        )
 
 
 @pytest.mark.parametrize(

@@ -37,9 +37,35 @@ def evaluate_artifacts(
     generated_files: list[dict[str, Any] | str] | None = None,
     verification_policy: dict[str, Any] | None = None,
     verification_fact: dict[str, Any] | VerificationFact | None = None,
+    requirement_baseline: dict[str, Any] | None = None,
 ) -> EvaluationReport | EvaluationReportV2:
     trusted_verification = _require_trusted_verification(verification_policy or {}, verification_fact)
     issues: list[EvaluationIssue] = []
+    if requirement_baseline is not None:
+        from schemas.runtime_input import RequirementBaselineInput
+
+        baseline = RequirementBaselineInput.model_validate(requirement_baseline)
+        if (baseline.scope != prd.model_dump(mode="json")["business_boundaries"]
+                or baseline.constraints != prd.model_dump(mode="json")["non_functional_requirements"]):
+            issues.append(EvaluationIssue(
+                severity="HIGH", issue_type="REQUIREMENT_BASELINE_MISMATCH",
+                description="The PRD scope or constraints differ from the user-confirmed baseline.",
+                suggestion="Restore the approved PRD or obtain a new user-confirmed baseline.",
+                evidence=[baseline.baseline_id], artifact_path="PRD", blocking=True,
+            ))
+    if trusted_verification is not None:
+        from spec_verifier.compiler import compile_spec
+        from spec_verifier.artifact_adapter import explicit_spec_contract_from_artifacts
+        from spec_verifier.fixtures import spec_contract_from_artifacts
+
+        adapter = (explicit_spec_contract_from_artifacts
+                   if (verification_policy or {}).get("verifier_version") == "spec-verifier-v2"
+                   else spec_contract_from_artifacts)
+        current_digest = compile_spec(adapter(
+            prd, backend_design, frontend_skeleton, contract_id="GeneratedSpec"
+        )).source_digest
+        if trusted_verification.scope != "FULL" or trusted_verification.source_digest != current_digest:
+            raise VerificationEvidenceError("verification evidence does not match the current artifact content")
     traceability = _build_requirement_traceability(
         prd,
         architecture_design,
