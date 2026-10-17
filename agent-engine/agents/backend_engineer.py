@@ -22,6 +22,7 @@ class BackendEngineerAgent:
         architecture_design: ArchitectureDesignArtifact | None = None,
         retrieved_sources: list[dict[str, Any]] | None = None,
         context_manifest: dict[str, Any] | None = None,
+        model_context: dict[str, Any] | None = None,
         rework_directive: dict[str, Any] | None = None,
         shared_contract_required: bool = False,
         explicit_contract_required: bool = False,
@@ -36,6 +37,7 @@ class BackendEngineerAgent:
             ),
             "retrieved_sources": retrieved_sources or [],
             "context_manifest": context_manifest or {},
+            **(model_context or {}),
         }
         if rework_directive is not None:
             input_payload["rework_directive"] = rework_directive

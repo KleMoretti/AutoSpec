@@ -108,7 +108,10 @@ def _apply_frozen_policy(
         - policy.prompt_token_reserve
         - policy.manifest_token_reserve
     )
-    required_paths = tuple(policy.required_paths)
+    required_paths = tuple(policy.required_paths) + tuple(
+        f"$.{field}" for field in ("requirement_baseline", "artifact_bindings")
+        if original.get(field)
+    )
     required = {
         key: copy.deepcopy(value)
         for key, value in original.items()

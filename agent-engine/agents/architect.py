@@ -20,6 +20,7 @@ class ArchitectAgent:
         prd: PrdArtifact,
         retrieved_sources: list[dict[str, Any]] | None = None,
         context_manifest: dict[str, Any] | None = None,
+        model_context: dict[str, Any] | None = None,
         rework_directive: dict[str, Any] | None = None,
         shared_contract_required: bool = False,
     ) -> ArchitectureDesignArtifact:
@@ -28,6 +29,7 @@ class ArchitectAgent:
             "prd": prd.model_dump(),
             "retrieved_sources": retrieved_sources or [],
             "context_manifest": context_manifest or {},
+            **(model_context or {}),
         }
         if rework_directive is not None:
             input_payload["rework_directive"] = rework_directive

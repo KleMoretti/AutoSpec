@@ -26,6 +26,7 @@ class HandlerRegistration:
     prompt_key: str | None = None
     prompt_version: str | None = None
     prompt_checksum: str | None = None
+    runtime_input_model: type[BaseModel] | None = None
 
 
 class HandlerRegistry:
@@ -45,6 +46,7 @@ class HandlerRegistry:
         prompt_key: str | None = None,
         prompt_version: str | None = None,
         prompt_checksum: str | None = None,
+        runtime_input_model: type[BaseModel] | None = None,
     ) -> None:
         key = (handler_key, handler_version)
         if key in self._registrations:
@@ -66,6 +68,7 @@ class HandlerRegistry:
             prompt_key=prompt_key,
             prompt_version=prompt_version,
             prompt_checksum=prompt_checksum,
+            runtime_input_model=runtime_input_model,
         )
 
     def resolve(self, handler_key: str, handler_version: str) -> HandlerRegistration:

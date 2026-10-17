@@ -138,8 +138,13 @@ async def test_backend_loop_replans_after_deterministic_validation_failure() -> 
         ]
     )
 
+    context = {"requirement_baseline": {"baseline_id": "RB-1-1"},
+               "project_memory": [{"fact_key": "scope", "value": "confirmed"}]}
+
     class Model:
         def generate_json(self, _prompt_name, _payload):
+            assert _payload["requirement_baseline"] == context["requirement_baseline"]
+            assert _payload["project_memory"] == context["project_memory"]
             return next(responses)
 
     result = await run_backend_agent_loop(
@@ -150,6 +155,7 @@ async def test_backend_loop_replans_after_deterministic_validation_failure() -> 
         context_manifest={},
         rework_directive=None,
         model_client=Model(),
+        model_context=context,
         policy=LoopPolicy(enabled=True, max_steps=6, max_replans=2),
     )
 

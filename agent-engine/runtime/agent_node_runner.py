@@ -27,6 +27,7 @@ from schemas.frontend_skeleton import (
     FrontendSkeletonArtifact,
 )
 from schemas.prd import PrdArtifact
+from schemas.runtime_input import decision_context
 
 
 SUPPORTED_AGENT_NODES = {
@@ -115,6 +116,7 @@ def _run_node_output(
     )
     retrieved_sources = payload.get("retrieved_sources", [])
     context_manifest = payload.get("context_manifest", {})
+    model_context = decision_context(payload)
     rework_directive = payload.get("rework_directive")
     shared_contract_required = payload.get("shared_contract_required", False)
     rule_profile = payload.get("rule_profile", "legacy-marketplace-v1")
@@ -127,11 +129,13 @@ def _run_node_output(
                 clarification_context=payload.get("clarification_context", {}),
                 retrieved_sources=retrieved_sources,
                 context_manifest=context_manifest,
+                model_context=model_context,
             )
         return ProductManagerAgent(model_client).run(
             requirement,
             retrieved_sources=retrieved_sources,
             context_manifest=context_manifest,
+            model_context=model_context,
         )
 
     prd = PrdArtifact.model_validate(payload["prd"])
@@ -141,6 +145,7 @@ def _run_node_output(
             prd,
             retrieved_sources=retrieved_sources,
             context_manifest=context_manifest,
+            model_context=model_context,
             rework_directive=rework_directive,
             shared_contract_required=shared_contract_required,
         )
@@ -156,6 +161,7 @@ def _run_node_output(
             architecture_design,
             retrieved_sources=retrieved_sources,
             context_manifest=context_manifest,
+            model_context=model_context,
             rework_directive=rework_directive,
             shared_contract_required=shared_contract_required,
             explicit_contract_required=explicit_contract_required,
@@ -175,6 +181,7 @@ def _run_node_output(
             None if shared_contract_required else BackendDesignArtifact.model_validate(payload["backend_design"]),
             retrieved_sources=retrieved_sources,
             context_manifest=context_manifest,
+            model_context=model_context,
             rework_directive=rework_directive,
             shared_contract_required=shared_contract_required,
             explicit_contract_required=explicit_contract_required,
@@ -209,6 +216,7 @@ def _run_node_output(
         generated_files=payload.get("generated_files", []),
         model_invocations=payload.get("model_invocations", []),
         context_manifest=context_manifest,
+        model_context=model_context,
         shared_contract_required=shared_contract_required,
         rule_profile=rule_profile,
         verification_fact=verification_fact,

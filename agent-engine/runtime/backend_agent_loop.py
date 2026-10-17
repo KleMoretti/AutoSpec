@@ -89,6 +89,7 @@ async def run_backend_agent_loop(
     rework_directive: dict[str, Any] | None,
     model_client: ModelClient | None,
     policy: LoopPolicy,
+    model_context: dict[str, Any] | None = None,
 ) -> AgentLoopResult:
     """Run the Backend Engineer's bounded plan/tool/validate loop.
 
@@ -111,6 +112,7 @@ async def run_backend_agent_loop(
         "architecture_design": architecture_design,
         "retrieved_sources": retrieved_sources,
         "context_manifest": context_manifest,
+        **(model_context or {}),
         "shared_contract_required": True,
         "explicit_contract_required": explicit_contract_required,
     }

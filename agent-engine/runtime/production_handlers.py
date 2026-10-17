@@ -43,6 +43,7 @@ from schemas.frontend_skeleton import (
     FrontendSkeletonArtifact,
 )
 from schemas.prd import PrdArtifact
+from schemas.runtime_input import RequirementBaselineInput, decision_context, runtime_input_model
 from schemas.rework import ReworkDirective
 from schemas.review import ReviewDecision, ReviewIssue, ReviewReport, ReviewReportV2, ReworkRoute
 from schemas.tool import ToolCallRequest
@@ -241,24 +242,28 @@ def build_production_registry(model_client: ModelClient | None = None) -> Handle
         prompt_key="evaluator",
         prompt_version="v1",
         prompt_checksum=_prompt_checksum("evaluator", "v1"),
+        runtime_input_model=runtime_input_model(EvaluationInput),
     )
     registry.register(
         "EvaluatorAgent", "v2", EvaluationRuntimeInput, EvaluationReport, _execute_evaluator,
         input_schema="EvaluationRuntimeInput", output_schema="EvaluationReport",
         prompt_key="evaluator", prompt_version="v1",
         prompt_checksum=_prompt_checksum("evaluator", "v1"),
+        runtime_input_model=runtime_input_model(EvaluationRuntimeInput),
     )
     registry.register(
         "EvaluatorAgent", "v3", EvaluationInputV2, EvaluationReportV2, _execute_evaluator,
         input_schema="EvaluationInputV2", output_schema="EvaluationReportV2",
         prompt_key="evaluator", prompt_version="v1",
         prompt_checksum=_prompt_checksum("evaluator", "v1"),
+        runtime_input_model=runtime_input_model(EvaluationInputV2),
     )
     registry.register(
         "EvaluatorAgent", "v4", EvaluationInputV3, EvaluationReportV2, _execute_evaluator,
         input_schema="EvaluationInputV3", output_schema="EvaluationReportV2",
         prompt_key="evaluator", prompt_version="v1",
         prompt_checksum=_prompt_checksum("evaluator", "v1"),
+        runtime_input_model=runtime_input_model(EvaluationInputV3),
     )
     return registry
 
@@ -288,7 +293,7 @@ def _register_agent_node(
             node_name,
             serialized_input,
             quality_profile,
-            input_model,
+            type(input_payload),
         )
         return compacted_input, quality_profile
 
@@ -479,6 +484,7 @@ def _register_agent_node(
                 retrieved_sources=list(compacted_input.get("retrieved_sources", [])),
                 context_manifest=dict(compacted_input.get("context_manifest", {})),
                 rework_directive=compacted_input.get("rework_directive"),
+                model_context=decision_context(compacted_input),
                 model_client=model_client,
                 policy=policy,
             )
@@ -634,12 +640,8 @@ def _compile_context(
     try:
         _validate_artifact_context(compacted_input)
         validation_input = dict(compacted_input)
-        # The baseline is trusted control-plane provenance. Historical
-        # evaluator schemas remain hash-compatible; the candidate evaluator
-        # carries this field in the envelope but does not widen the frozen v3
-        # model contract.
-        if input_model is EvaluationInputV3:
-            validation_input.pop("requirement_baseline", None)
+        if validation_input.get("requirement_baseline") is not None:
+            RequirementBaselineInput.model_validate(validation_input["requirement_baseline"])
         validated = input_model.model_validate(validation_input).model_dump(mode="json")
     except ValidationError as exception:
         raise ContextPolicyError(
@@ -756,6 +758,13 @@ def _execute_evaluator(input_payload: EvaluationInput) -> EvaluationReport | Eva
 
 
 def _evaluate(input_payload: EvaluationInput) -> EvaluationReport | EvaluationReportV2:
+    baseline = getattr(input_payload, "requirement_baseline", None)
+    if baseline is not None:
+        binding = getattr(input_payload, "artifact_bindings", {}).get("prd", {})
+        if (binding.get("artifact_id") != baseline.prd_artifact_id
+                or binding.get("version") != baseline.prd_version
+                or binding.get("content_hash") != baseline.prd_content_hash):
+            raise QualityGateBlockedError("The evaluated PRD does not match the user-confirmed baseline")
     explicit_contract = _explicit_contract_required(
         getattr(input_payload, "verification_policy", {})
     )
@@ -784,6 +793,10 @@ def _evaluate(input_payload: EvaluationInput) -> EvaluationReport | EvaluationRe
         generated_files=input_payload.generated_files,
         verification_policy=getattr(input_payload, "verification_policy", {}),
         verification_fact=getattr(input_payload, "verification_fact", None),
+        requirement_baseline=(
+            input_payload.requirement_baseline.model_dump(mode="json")
+            if getattr(input_payload, "requirement_baseline", None) is not None else None
+        ),
     )
     if report.gate_status == "BLOCKED":
         blockers = [

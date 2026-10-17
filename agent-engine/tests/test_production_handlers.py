@@ -264,6 +264,65 @@ async def test_backend_loop_v6_single_shot_consumes_shared_architecture_contract
     assert backend.output_payload is not None
 
 
+
+@pytest.mark.asyncio
+async def test_confirmed_baseline_and_memory_reach_every_model_and_evaluator():
+    from runtime.agent_node_runner import run_agent_node
+    from schemas.review import ReviewReport
+
+    fixture = get_fixture("campus_marketplace")
+    requirement = "Build a campus marketplace"
+    prd = fixture.prd.model_dump(mode="json")
+    baseline = {
+        "baseline_id": "RB-1-1", "version": 1, "content_hash": "a" * 64,
+        "original_requirement": requirement, "answers": [], "assumptions": [],
+        "conflict_resolutions": [], "context_conflicts": [],
+        "scope": prd["business_boundaries"], "constraints": prd["non_functional_requirements"],
+        "prd_artifact_id": 10, "prd_version": 1, "prd_content_hash": "b" * 64,
+        "confirmed_by_user_id": 1, "confirmed_at": "2026-10-14T10:00:00",
+    }
+    payload = {
+        "requirement": requirement, "prd": prd,
+        "architecture_design": fixture.architecture.model_dump(mode="json"),
+        "backend_design": fixture.backend.model_dump(mode="json"),
+        "frontend_skeleton": fixture.frontend.model_dump(mode="json"),
+        "requirement_baseline": baseline,
+        "project_memory": [{"fact_key": "release_scope", "value": "confirmed"}],
+        "context_conflicts": [],
+        "retrieved_sources": [{"citation_id": "artifact:1:v1", "content": "project knowledge"}],
+    }
+    outputs = {
+        "ProductManagerAgent_v1": prd,
+        "ArchitectAgent_v1": payload["architecture_design"],
+        "BackendEngineerAgent_v1": payload["backend_design"],
+        "FrontendEngineerAgent_v1": payload["frontend_skeleton"],
+        "ReviewerAgent_v1": ReviewReport(score=100, issues=[]).model_dump(mode="json"),
+    }
+
+    class RecordingModel:
+        def generate_json(self, prompt_name, input_payload):
+            assert input_payload["requirement_baseline"] == baseline
+            assert input_payload["project_memory"] == payload["project_memory"]
+            assert input_payload["retrieved_sources"] == payload["retrieved_sources"]
+            return outputs[prompt_name]
+
+    for role in ("product_manager", "architect", "backend_engineer", "frontend_engineer", "reviewer"):
+        run_agent_node(role, payload, RecordingModel())
+    evaluator_payload = {
+        **payload, "review_report": outputs["ReviewerAgent_v1"],
+        "artifact_bindings": {"prd": {"artifact_id": 10, "version": 1, "content_hash": "b" * 64}},
+    }
+    executor = NodeExecutor(build_production_registry())
+    result = await executor.execute(command("EvaluatorAgent", evaluator_payload, node_id="evaluator").model_copy(
+        update={"handler_version": "v4"}))
+    assert result.error_code == "QUALITY_GATE_BLOCKED", result.error_message
+    assert "RUNTIME_EVIDENCE_MISSING" in result.error_message  # baseline reached evaluation without extra-field failure
+    evaluator_payload["artifact_bindings"]["prd"]["version"] = 2
+    stale = await executor.execute(command("EvaluatorAgent", evaluator_payload, node_id="evaluator").model_copy(
+        update={"handler_version": "v4"}))
+    assert stale.error_code == "QUALITY_GATE_BLOCKED"
+    assert "user-confirmed baseline" in stale.error_message
+
 def _requirement_refs(value: object) -> set[str]:
     if isinstance(value, dict):
         direct = set(value.get("requirement_refs", []))

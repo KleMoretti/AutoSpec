@@ -52,6 +52,7 @@ class ReviewerAgent:
         generated_files: list[dict[str, Any] | str] | None = None,
         model_invocations: list[dict[str, Any]] | None = None,
         context_manifest: dict[str, Any] | None = None,
+        model_context: dict[str, Any] | None = None,
         shared_contract_required: bool = False,
         rule_profile: str = "legacy-marketplace-v1",
         verification_fact: dict[str, Any] | None = None,
@@ -83,6 +84,7 @@ class ReviewerAgent:
             if model_invocations is not None:
                 input_payload["model_invocations"] = model_invocations
             input_payload["context_manifest"] = context_manifest or {}
+            input_payload.update(model_context or {})
 
             semantic_prompt = self.prompt_name
             if shared_contract_required and semantic_prompt == "ReviewerAgent_v1":

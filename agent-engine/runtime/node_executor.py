@@ -397,7 +397,8 @@ class NodeExecutor:
         if project_key is None and execution_payload.get("retrieval_project_id") is not None:
             project_key = str(execution_payload.get("retrieval_project_id"))
         try:
-            validated_input = registration.input_model.model_validate(execution_payload)
+            input_model = registration.runtime_input_model or registration.input_model
+            validated_input = input_model.model_validate(execution_payload)
         except ValidationError as exception:
             return self._failure(command, started, "VALIDATION_ERROR", str(exception))
 

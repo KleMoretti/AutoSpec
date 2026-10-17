@@ -19,11 +19,13 @@ class ProductManagerAgent:
         requirement: str,
         retrieved_sources: list[dict[str, Any]] | None = None,
         context_manifest: dict[str, Any] | None = None,
+        model_context: dict[str, Any] | None = None,
     ) -> PrdArtifact:
         input_payload: Mapping[str, Any] = {
             "requirement": requirement,
             "retrieved_sources": retrieved_sources or [],
             "context_manifest": context_manifest or {},
+            **(model_context or {}),
         }
         if self.model_client is not None:
             return generate_structured_output(
@@ -42,12 +44,14 @@ class ProductManagerAgent:
         clarification_context: Mapping[str, Any] | None = None,
         retrieved_sources: list[dict[str, Any]] | None = None,
         context_manifest: dict[str, Any] | None = None,
+        model_context: dict[str, Any] | None = None,
     ) -> ProductManagerResult:
         input_payload: Mapping[str, Any] = {
             "requirement": requirement,
             "clarification_context": dict(clarification_context or {}),
             "retrieved_sources": retrieved_sources or [],
             "context_manifest": context_manifest or {},
+            **(model_context or {}),
         }
         if self.model_client is not None:
             return generate_structured_output(
