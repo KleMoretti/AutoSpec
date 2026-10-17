@@ -27,7 +27,8 @@ class WorkflowNodeInputAssemblerTest {
         var mapper = new ObjectMapper();
         com.baomidou.mybatisplus.core.metadata.TableInfoHelper.initTableInfo(
                 new org.apache.ibatis.builder.MapperBuilderAssistant(
-                        new org.apache.ibatis.session.Configuration(), "input-assembler-test"), WorkflowNodeRun.class);
+                        new com.baomidou.mybatisplus.core.MybatisConfiguration(), "input-assembler-test"),
+                WorkflowNodeRun.class);
         var nodes = mock(WorkflowNodeRunMapper.class);
         var artifacts = mock(ArtifactMapper.class);
         var memory = mock(ProjectMemoryService.class);
